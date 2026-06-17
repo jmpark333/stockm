@@ -20,8 +20,8 @@ NAVER_REALTIME_URL = "https://polling.finance.naver.com/api/realtime?query=SERVI
 history: dict[str, deque] = {}
 MAX_HISTORY = 12
 
-ZAI_URL = "https://api.z.ai/api/coding/paas/v4"
-ZAI_KEY = "136d90754ebd999f4a4cc4547b638.LUXSKaxDozJgFHLQ"
+ZAI_URL = "https://api.z.ai/api/coding/paas/v4/chat/completions"
+ZAI_KEY = "136d90754ebd453999f4a4cc4547b638.LUXSKaxDozJgFHLQ"
 
 ai_cache: dict[str, dict] = {}
 AI_CACHE_TTL = 300
@@ -244,11 +244,12 @@ def signal_from_zai(name, code, quote, articles):
         "model": "glm-5",
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.3,
-        "max_tokens": 600,
+        "max_tokens": 4096,
     }
     headers = {
         "Authorization": f"Bearer {ZAI_KEY}",
         "Content-Type": "application/json",
+        "Accept-Language": "en-US,en",
     }
     req = urllib.request.Request(
         ZAI_URL,
@@ -257,7 +258,7 @@ def signal_from_zai(name, code, quote, articles):
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=20) as resp:
+        with urllib.request.urlopen(req, timeout=60) as resp:
             raw = resp.read().decode("utf-8")
         result = json.loads(raw)
         content = result["choices"][0]["message"]["content"]
