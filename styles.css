@@ -251,6 +251,15 @@ td {
 .badge.sell       { background: rgba(234,179,8,0.2);   color: #fde047; }
 .badge.strong-sell{ background: rgba(34,197,94,0.2);   color: #86efac; }
 
+.trend-icon {
+  font-size: 14px;
+  margin-left: 4px;
+  font-weight: 700;
+}
+.trend-icon.up { color: var(--up); }
+.trend-icon.down { color: var(--down); }
+.trend-icon.flat { color: var(--muted); }
+
 .ai-btn {
   display: inline-flex;
   align-items: center;

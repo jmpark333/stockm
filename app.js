@@ -18,6 +18,9 @@ let autoTimer = null;
 let autoEnabled = true;
 let newsTimer = null;
 
+const aiResults = new Map();
+let profitHistory = [];
+
 /* Sidebar Resize */
 const sidebar = document.querySelector('#sidebar');
 const resizeHandle = document.querySelector('#resizeHandle');
@@ -111,12 +114,16 @@ const SIGNAL_LABELS = {
   strong_sell: { text: '🟢 강력매도', cls: 'strong-sell' },
 };
 
-function signalBadge(signal, reasons) {
+function signalBadge(signal, reasons, opts) {
+  opts = opts || {};
   const s = SIGNAL_LABELS[signal] || SIGNAL_LABELS.hold;
+  const prefix = opts.isAI ? 'AI ' : '';
   const dataAttr = reasons && reasons.length
     ? `data-reasons='${JSON.stringify(reasons).replace(/'/g, "&#39;")}'`
     : '';
-  return `<span class="badge ${s.cls}" data-signal="${signal}" ${dataAttr}>${s.text}</span>`;
+  const nsAttr = opts.newsSentiment ? ` data-news-sentiment="${opts.newsSentiment.replace(/"/g, '&quot;')}"` : '';
+  const aiAttr = opts.isAI ? ' data-ai="1"' : '';
+  return `<span class="badge ${s.cls}" data-signal="${signal}"${dataAttr}${nsAttr}${aiAttr}>${prefix}${s.text}</span>`;
 }
 
 function trendIcon(trend) {
@@ -202,7 +209,7 @@ function attachSignalHandlers(container) {
 
 /* Attach AI analysis button handlers */
 function attachAIHandlers(container) {
-  container.querySelectorAll('.ai-btn').forEach(btn => {
+  container.querySelectorAll('.ai-btn:not(.done)').forEach(btn => {
     btn.addEventListener('click', async () => {
       const code = btn.dataset.code;
       const name = btn.dataset.name;
@@ -210,9 +217,14 @@ function attachAIHandlers(container) {
       btn.disabled = true;
       try {
         const res = await fetch(`/api/analyze-signal?code=${code}`, { cache: 'no-store' });
-        if (!res.ok) throw new Error('API error');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         if (data.signal) {
+          aiResults.set(code, {
+            signal: data.signal,
+            reasons: data.reasons || [],
+            newsSentiment: data.newsSentiment || '',
+          });
           const td = btn.closest('td');
           const badge = td.querySelector('.badge');
           const s = SIGNAL_LABELS[data.signal] || SIGNAL_LABELS.hold;
@@ -230,7 +242,7 @@ function attachAIHandlers(container) {
           btn.textContent = 'AI';
           btn.disabled = false;
         }
-      } catch {
+      } catch (err) {
         btn.textContent = 'AI';
         btn.disabled = false;
       }
@@ -242,8 +254,13 @@ function renderHoldings(rows) {
   holdingsBody.innerHTML = '';
   rows.forEach(row => {
     const tr = document.createElement('tr');
-    const badgeHtml = signalBadge(row.trend.signal, row.trend.signalReasons || []);
-    const aiBtn = `<button class="ai-btn" data-code="${row.code}" data-name="${row.name}" title="AI 뉴스 분석">AI</button>`;
+    const cached = aiResults.get(row.code);
+    const badgeHtml = cached
+      ? signalBadge(cached.signal, cached.reasons, { isAI: true, newsSentiment: cached.newsSentiment })
+      : signalBadge(row.trend.signal, row.trend.signalReasons || []);
+    const aiBtnHtml = cached
+      ? `<button class="ai-btn done" data-code="${row.code}" data-name="${row.name}">✓</button>`
+      : `<button class="ai-btn" data-code="${row.code}" data-name="${row.name}" title="AI 뉴스 분석">AI</button>`;
     tr.innerHTML = `
       <td><div class="name-cell"><strong>${row.name}</strong><small>${row.code}</small></div></td>
       <td>${money.format(row.quantity)}주</td>
@@ -253,7 +270,7 @@ function renderHoldings(rows) {
       <td>${formatMoney(row.currentValue)}</td>
       <td class="${row.profit >= 0 ? 'up' : 'down'}">${formatPercent(row.profitRate)}</td>
       <td class="${row.profit >= 0 ? 'up' : 'down'}">${formatSignedMoney(row.profit)}</td>
-      <td>${badgeHtml} ${aiBtn}</td>
+      <td>${badgeHtml} ${aiBtnHtml}</td>
       <td>${row.session || row.error || '-'}</td>
     `;
     holdingsBody.appendChild(tr);
@@ -270,8 +287,13 @@ function renderWatchlist(rows) {
       ? `${formatMoney(row.low)} ~ ${formatMoney(row.high)}`
       : '-';
     const tr = document.createElement('tr');
-    const badgeHtml = signalBadge(t.signal, t.signalReasons || []);
-    const aiBtn = `<button class="ai-btn" data-code="${row.code}" data-name="${row.name}" title="AI 뉴스 분석">AI</button>`;
+    const cached = aiResults.get(row.code);
+    const badgeHtml = cached
+      ? signalBadge(cached.signal, cached.reasons, { isAI: true, newsSentiment: cached.newsSentiment })
+      : signalBadge(t.signal, t.signalReasons || []);
+    const aiBtnHtml = cached
+      ? `<button class="ai-btn done" data-code="${row.code}" data-name="${row.name}">✓</button>`
+      : `<button class="ai-btn" data-code="${row.code}" data-name="${row.name}" title="AI 뉴스 분석">AI</button>`;
     tr.innerHTML = `
       <td><div class="name-cell"><strong>${row.name}</strong><small>${row.code}</small></div></td>
       <td>${formatMoney(row.currentPrice)}</td>
@@ -279,7 +301,7 @@ function renderWatchlist(rows) {
       <td>${dayRange}<br>${rangeBar(t.rangePos)}</td>
       <td>${t.volatility}%</td>
       <td>${trendIcon(t.shortTrend)} ${t.shortTrend === 'up' ? '상승' : t.shortTrend === 'down' ? '하락' : '보합'}</td>
-      <td>${badgeHtml}${t.signal !== 'hold' && t.signalReasons.length ? '<br><small>' + t.signalReasons.join(', ') + '</small>' : ''} ${aiBtn}</td>
+      <td>${badgeHtml}${t.signal !== 'hold' && t.signalReasons.length ? '<br><small>' + t.signalReasons.join(', ') + '</small>' : ''} ${aiBtnHtml}</td>
       <td>${row.session || row.error || '-'}</td>
     `;
     watchlistBody.appendChild(tr);
@@ -293,6 +315,7 @@ function renderSummary(summary) {
   const totalCost = document.querySelector('#totalCost');
   const totalProfit = document.querySelector('#totalProfit');
   const totalRate = document.querySelector('#totalRate');
+  const profitTrend = document.querySelector('#profitTrend');
 
   totalValue.textContent = formatThousand(summary.currentValue);
   totalCost.textContent = formatThousand(summary.cost);
@@ -300,6 +323,20 @@ function renderSummary(summary) {
   totalRate.textContent = formatPercent(summary.profitRate);
   setSignedClass(totalProfit, summary.profit);
   setSignedClass(totalRate, summary.profitRate);
+
+  profitHistory.push(summary.profit);
+  if (profitHistory.length > 12) profitHistory.shift();
+  let trend = 'flat';
+  if (profitHistory.length >= 3) {
+    const first = profitHistory[0];
+    const last = profitHistory[profitHistory.length - 1];
+    if (last > first * 1.0005) trend = 'up';
+    else if (last < first * 0.9995) trend = 'down';
+  }
+  if (profitTrend) {
+    profitTrend.textContent = trend === 'up' ? '▲' : trend === 'down' ? '▼' : '―';
+    profitTrend.className = 'trend-icon ' + trend;
+  }
 }
 
 function renderNews(newsItems) {
