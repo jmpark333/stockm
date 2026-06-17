@@ -298,6 +298,38 @@ def build_news():
         items.append(fetch_news(w["name"], w["code"]))
     return items
 
+def fetch_chart_data(code, days=120):
+    try:
+        from datetime import datetime, timedelta
+        end = datetime.now()
+        start = end - timedelta(days=days)
+        s = start.strftime("%Y%m%d")
+        e = end.strftime("%Y%m%d")
+        url = f"https://api.finance.naver.com/siseJson.naver?symbol={code}&requestType=1&startTime={s}&endTime={e}&timeframe=day"
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "Mozilla/5.0",
+            "Referer": f"https://finance.naver.com/item/main.naver?code={code}"
+        })
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+        import ast
+        parsed = ast.literal_eval(raw.strip())
+        candles = []
+        for row in parsed[1:]:
+            if len(row) >= 5 and row[0] != "날짜":
+                date_str = str(row[0])
+                candles.append({
+                    "time": date_str[:4] + "-" + date_str[4:6] + "-" + date_str[6:8],
+                    "open": row[1],
+                    "high": row[2],
+                    "low": row[3],
+                    "close": row[4],
+                    "volume": row[5] if len(row) > 5 else 0,
+                })
+        return {"code": code, "candles": candles}
+    except Exception as exc:
+        return {"code": code, "candles": [], "error": str(exc)}
+
 def signal_from_zai(name, code, quote, articles):
     titles = "\n".join(a.get("title", "") for a in articles[:6])
     prompt = (
@@ -422,6 +454,14 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if p == "/api/news":
             self.send_json(build_news())
+            return
+        if p == "/api/chart":
+            qs = urllib.parse.parse_qs(parsed.query)
+            code = qs.get("code", [None])[0]
+            if not code:
+                self.send_json({"error": "code parameter required"})
+                return
+            self.send_json(fetch_chart_data(code))
             return
         if p == "/api/analyze-signal":
             qs = urllib.parse.parse_qs(parsed.query)

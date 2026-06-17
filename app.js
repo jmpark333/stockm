@@ -19,7 +19,6 @@ const chartModal = document.querySelector('#chartModal');
 const chartModalTitle = document.querySelector('#chartModalTitle');
 const chartModalClose = document.querySelector('#chartModalClose');
 const tvChartContainer = document.querySelector('#tvChartContainer');
-let tvWidget = null;
 
 let autoTimer = null;
 let autoEnabled = true;
@@ -219,41 +218,110 @@ function closeSignalModal() {
   signalModal.hidden = true;
 }
 
+let lwChart = null;
+let lwChartReady = false;
+
+function loadLightweightCharts() {
+  return new Promise((resolve, reject) => {
+    if (window.LightweightCharts) { resolve(); return; }
+    const s = document.createElement('script');
+    s.src = 'https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js';
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error('Failed to load lightweight-charts'));
+    document.head.appendChild(s);
+  });
+}
+
 function showChartModal(name, code) {
   chartModalTitle.textContent = `${name} 주가 차트`;
-  if (tvWidget) { try { tvWidget.remove(); } catch(e){} tvWidget = null; }
-  tvChartContainer.innerHTML = '';
-
-  function createWidget() {
-    tvWidget = new TradingView.widget({
-      container_id: 'tvChartContainer',
-      symbol: 'KRX:' + code,
-      interval: 'D',
-      timezone: 'Asia/Seoul',
-      theme: 'dark',
-      locale: 'kr',
-      hide_side_toolbar: true,
-      allow_symbol_change: false,
-      save_image: true,
-      studies: [],
-      autosize: true,
-    });
-  }
-
-  if (window.TradingView) {
-    createWidget();
-  } else {
-    const s = document.createElement('script');
-    s.src = 'https://s3.tradingview.com/tv.js';
-    s.onload = createWidget;
-    document.head.appendChild(s);
-  }
+  if (lwChart) { try { lwChart.remove(); } catch(e){} lwChart = null; }
+  tvChartContainer.innerHTML = '<p style="text-align:center;padding:40px;color:var(--muted)">차트 로딩 중...</p>';
   chartModal.hidden = false;
+
+  loadLightweightCharts().then(() => {
+    return fetch(`/api/chart?code=${code}`).then(r => r.json());
+  }).then(data => {
+    const candles = data.candles || [];
+    if (!candles.length) {
+      tvChartContainer.innerHTML = '<p style="text-align:center;padding:40px;color:var(--muted)">차트 데이터를 불러올 수 없습니다.</p>';
+      return;
+    }
+
+    tvChartContainer.innerHTML = '';
+    const chartOptions = {
+      layout: {
+        background: { color: '#131722' },
+        textColor: '#d1d4dc',
+        fontSize: 12,
+      },
+      grid: {
+        vertLines: { color: 'rgba(42,46,63,0.5)' },
+        horzLines: { color: 'rgba(42,46,63,0.5)' },
+      },
+      crosshair: { mode: 0 },
+      rightPriceScale: { borderColor: 'rgba(42,46,63,1)' },
+      timeScale: {
+        borderColor: 'rgba(42,46,63,1)',
+        timeVisible: false,
+      },
+      localization: {
+        priceFormatter: p => Math.round(p).toLocaleString('ko-KR') + '원',
+        locale: 'ko-KR',
+      },
+    };
+    lwChart = LightweightCharts.createChart(tvChartContainer, chartOptions);
+
+    const candleSeries = lwChart.addCandlestickSeries({
+      upColor: '#ef5350',
+      downColor: '#26a69a',
+      borderUpColor: '#ef5350',
+      borderDownColor: '#26a69a',
+      wickUpColor: '#ef5350',
+      wickDownColor: '#26a69a',
+    });
+
+    const volumeSeries = lwChart.addHistogramSeries({
+      color: 'rgba(76,175,80,0.3)',
+      priceFormat: { type: 'volume' },
+      priceScaleId: 'volume',
+    });
+    lwChart.priceScale('volume').applyOptions({
+      scaleMargins: { top: 0.85, bottom: 0 },
+    });
+
+    const candleData = candles.map(c => ({
+      time: c.time,
+      open: c.open,
+      high: c.high,
+      low: c.low,
+      close: c.close,
+    }));
+    const volumeData = candles.map(c => ({
+      time: c.time,
+      value: c.volume,
+      color: c.close >= c.open ? 'rgba(239,83,80,0.3)' : 'rgba(38,166,154,0.3)',
+    }));
+
+    candleSeries.setData(candleData);
+    volumeSeries.setData(volumeData);
+
+    lwChart.timeScale().fitContent();
+
+    const resizeObserver = new ResizeObserver(entries => {
+      if (entries.length > 0 && lwChart) {
+        const { width, height } = entries[0].contentRect;
+        lwChart.applyOptions({ width: Math.floor(width), height: Math.floor(height) });
+      }
+    });
+    resizeObserver.observe(tvChartContainer);
+  }).catch(err => {
+    tvChartContainer.innerHTML = '<p style="text-align:center;padding:40px;color:var(--muted)">차트 로드 실패: ' + err.message + '</p>';
+  });
 }
 
 function closeChartModal() {
   chartModal.hidden = true;
-  if (tvWidget) { try { tvWidget.remove(); } catch(e){} tvWidget = null; }
+  if (lwChart) { try { lwChart.remove(); } catch(e){} lwChart = null; }
   tvChartContainer.innerHTML = '';
 }
 
