@@ -15,6 +15,10 @@ const modalBody = document.querySelector('#modalBody');
 const modalClose = document.querySelector('#modalClose');
 const newsUpdatedAt = document.querySelector('#newsUpdatedAt');
 const aiUpdatedAt = document.querySelector('#aiUpdatedAt');
+const chartModal = document.querySelector('#chartModal');
+const chartModalTitle = document.querySelector('#chartModalTitle');
+const chartModalClose = document.querySelector('#chartModalClose');
+const chartFrame = document.querySelector('#chartFrame');
 
 let autoTimer = null;
 let autoEnabled = true;
@@ -214,6 +218,25 @@ function closeSignalModal() {
   signalModal.hidden = true;
 }
 
+function showChartModal(name, code) {
+  chartModalTitle.textContent = `${name} 주가 차트`;
+  chartFrame.src = `https://finance.naver.com/item/main.naver?code=${code}`;
+  chartModal.hidden = false;
+}
+
+function closeChartModal() {
+  chartModal.hidden = true;
+  chartFrame.src = '';
+}
+
+chartModalClose.addEventListener('click', closeChartModal);
+chartModal.addEventListener('click', e => {
+  if (e.target === chartModal) closeChartModal();
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeChartModal();
+});
+
 modalClose.addEventListener('click', closeSignalModal);
 signalModal.addEventListener('click', e => {
   if (e.target === signalModal) closeSignalModal();
@@ -318,6 +341,17 @@ function attachAIHandlers(container) {
   });
 }
 
+function attachChartHandlers(container) {
+  container.querySelectorAll('.clickable').forEach(el => {
+    el.style.cursor = 'pointer';
+    el.addEventListener('click', () => {
+      const code = el.dataset.code;
+      const name = el.dataset.name;
+      if (code && name) showChartModal(name, code);
+    });
+  });
+}
+
 function renderHoldings(rows) {
   holdingsBody.innerHTML = '';
   rows.forEach(row => {
@@ -330,9 +364,9 @@ function renderHoldings(rows) {
       ? `<button class="ai-btn done" data-code="${row.code}" data-name="${row.name}">✓</button>`
       : `<button class="ai-btn" data-code="${row.code}" data-name="${row.name}" title="AI 뉴스 분석">AI</button>`;
     tr.innerHTML = `
-      <td><div class="name-cell"><strong>${row.name}</strong><small>${row.code}</small></div></td>
+      <td><div class="name-cell"><strong class="clickable" data-code="${row.code}" data-name="${row.name}">${row.name}</strong><small>${row.code}</small></div></td>
       <td>${money.format(row.quantity)}주</td>
-      <td>${formatMoney(row.currentPrice)}</td>
+      <td class="clickable" data-code="${row.code}" data-name="${row.name}">${formatMoney(row.currentPrice)}</td>
       <td class="${row.change > 0 ? 'up' : row.change < 0 ? 'down' : 'neutral'}">${formatSignedMoney(row.change)} / ${formatPercent(row.changeRate)}</td>
       <td>${formatMoney(row.avgPrice)}</td>
       <td>${formatMoney(row.currentValue)}</td>
@@ -345,6 +379,7 @@ function renderHoldings(rows) {
   });
   attachSignalHandlers(holdingsBody);
   attachAIHandlers(holdingsBody);
+  attachChartHandlers(holdingsBody);
 }
 
 function renderWatchlist(rows) {
@@ -363,8 +398,8 @@ function renderWatchlist(rows) {
       ? `<button class="ai-btn done" data-code="${row.code}" data-name="${row.name}">✓</button>`
       : `<button class="ai-btn" data-code="${row.code}" data-name="${row.name}" title="AI 뉴스 분석">AI</button>`;
     tr.innerHTML = `
-      <td><div class="name-cell"><strong>${row.name}</strong><small>${row.code}</small></div></td>
-      <td>${formatMoney(row.currentPrice)}</td>
+      <td><div class="name-cell"><strong class="clickable" data-code="${row.code}" data-name="${row.name}">${row.name}</strong><small>${row.code}</small></div></td>
+      <td class="clickable" data-code="${row.code}" data-name="${row.name}">${formatMoney(row.currentPrice)}</td>
       <td class="${row.change > 0 ? 'up' : row.change < 0 ? 'down' : 'neutral'}">${formatSignedMoney(row.change)} / ${formatPercent(row.changeRate)}</td>
       <td>${dayRange}<br>${rangeBar(t.rangePos)}</td>
       <td>${t.volatility}%</td>
@@ -376,6 +411,7 @@ function renderWatchlist(rows) {
   });
   attachSignalHandlers(watchlistBody);
   attachAIHandlers(watchlistBody);
+  attachChartHandlers(watchlistBody);
 }
 
 function renderSummary(summary) {
@@ -508,7 +544,6 @@ async function loadPortfolio() {
     renderWatchlist(data.watchlist);
     sourceText.textContent = `네이버 금융 polling API · ${data.refreshSeconds}초 자동 갱신`;
     statusPill.textContent = `정상 · ${new Date().toLocaleTimeString('ko-KR')}`;
-    analyzeAllStocks(data.holdings, data.watchlist);
   } catch (error) {
     statusPill.textContent = '오류';
     setError(`데이터를 불러오지 못했습니다. 서버가 실행 중인지 확인하세요. ${error.message}`);
