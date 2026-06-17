@@ -345,35 +345,28 @@ def validate_signal(signal, quote, news_sentiment="", reasons=None):
     if not cp or not pc:
         return signal
     chg = (cp - pc) / pc * 100
-    
+
     reasons_text = " ".join(reasons) if reasons else ""
-    
-    if chg > 0.5 and "하락" in reasons_text:
-        reasons_text = reasons_text.replace("하락", "상승")
-    elif chg < -0.5 and "상승" in reasons_text:
-        reasons_text = reasons_text.replace("상승", "하락")
-    
+
     sentiment_lower = news_sentiment.lower() if news_sentiment else ""
     all_text = f"{sentiment_lower} {reasons_text}".lower()
-    
-    positive_keywords = ["긍정", "positive", "매수", "상승", "기대", "호재", "강세", "우호", "성장", "호조", "돌파", "신고가", "순매수", "목표가"]
-    negative_keywords = ["부정", "negative", "매도", "하락", "우려", "악재", "약세", "적자", "침체", "경고", "위기"]
-    
+
+    positive_keywords = ["긍정", "positive", "매수", "상승", "기대", "호재", "강세", "우호", "성장", "호조", "돌파", "신고가", "순매수", "목표가", "추가상승"]
+    negative_keywords = ["부정", "negative", "매도", "우려", "악재", "약세", "적자", "침체", "경고", "위기"]
+
     is_positive = any(kw in all_text for kw in positive_keywords)
     is_negative = any(kw in all_text for kw in negative_keywords)
-    
-    if signal == "hold":
-        if is_positive and not is_negative:
-            if chg >= 0:
-                return "buy"
-            else:
-                return "hold"
-        elif is_negative and not is_positive:
-            if chg <= 0:
-                return "sell"
-            else:
-                return "hold"
-    
+
+    if is_positive and not is_negative:
+        if signal in ("strong_sell", "sell"):
+            return "hold"
+        return signal
+
+    if is_negative and not is_positive:
+        if signal in ("strong_buy", "buy"):
+            return "hold"
+        return signal
+
     valid_signals = {
         "strong_buy": lambda x: x < -5,
         "buy": lambda x: x < -3,
