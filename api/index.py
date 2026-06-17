@@ -44,13 +44,25 @@ def fetch_quote(code):
         datas = areas[0].get("datas", []) if areas else []
         item = datas[0] if datas else {}
         extra = item.get("nxtOverMarketPriceInfo") or {}
+        
+        nv = item.get("nv") or item.get("sv")
+        pcv = item.get("pcv")
+        cv = item.get("cv")
+        cr = item.get("cr")
+        
+        if nv and pcv:
+            calculated_change = nv - pcv
+            if calculated_change != 0:
+                cv = calculated_change
+                cr = round(calculated_change / pcv * 100, 2) if pcv else cr
+        
         return {
             "code": code,
             "name": item.get("nm"),
-            "currentPrice": item.get("nv") or item.get("sv"),
-            "previousClose": item.get("pcv"),
-            "change": item.get("cv"),
-            "changeRate": item.get("cr"),
+            "currentPrice": nv,
+            "previousClose": pcv,
+            "change": cv,
+            "changeRate": cr,
             "session": item.get("ms"),
             "high": item.get("hv"),
             "low": item.get("lv"),
