@@ -269,10 +269,46 @@ def signal_from_zai(name, code, quote, articles):
                 "confidence": parsed.get("confidence", 0),
                 "reasons": parsed.get("reasons", []),
                 "newsSentiment": parsed.get("newsSentiment", ""),
+                "_source": "zai",
             }
     except Exception as exc:
         return {"error": str(exc)}
     return {"error": "JSON 파싱 실패"}
+
+POSITIVE_KW = ["호조", "상승", "증가", "성장", "호실적", "수혜", "기대", "긍정적", "강세", "신고가", "목표가", "매수", "반등", "턴어라운드", "개선", "흑자", "최대", "돌파", "회복", "확대", "낙관"]
+NEGATIVE_KW = ["하락", "감소", "악화", "부진", "우려", "하회", "적자", "약세", "신저가", "매도", "추락", "경고", "위기", "침체", "불안", "축소", "지연", "악재", "충격", "반토막"]
+
+def keyword_signal(name, code, quote, articles):
+    cp = quote.get("currentPrice")
+    pc = quote.get("previousClose")
+    text = " ".join(a.get("title", "") + " " + a.get("description", "") for a in articles)
+    pos = sum(1 for kw in POSITIVE_KW if kw in text)
+    neg = sum(1 for kw in NEGATIVE_KW if kw in text)
+    signal = "hold"
+    reasons = []
+    if cp and pc:
+        chg = (cp - pc) / pc * 100
+        if chg < -3: signal = "strong_buy"
+        elif chg < -1: signal = "buy"
+        elif chg > 3: signal = "strong_sell"
+        elif chg > 1: signal = "sell"
+    net = pos - neg
+    if net >= 2:
+        reasons.append(f"뉴스 긍정 ({net})")
+        if signal == "hold": signal = "buy"
+    elif net <= -2:
+        reasons.append(f"뉴스 부정 ({net})")
+        if signal == "hold": signal = "sell"
+    else:
+        reasons.append(f"뉴스 중립")
+    sentiment = "긍정적" if net >= 2 else ("부정적" if net <= -2 else "중립")
+    return {
+        "signal": signal,
+        "confidence": 50,
+        "reasons": reasons + [f"키워드 긍정 {pos} / 부정 {neg}"],
+        "newsSentiment": f"키워드: {sentiment}",
+        "_source": "keyword",
+    }
 
 def handle_analyze_signal(code):
     now = time.time()
@@ -294,9 +330,11 @@ def handle_analyze_signal(code):
         return {"error": "종목을 찾을 수 없습니다"}
     quote = fetch_quote(code)
     news = fetch_news(item["name"], code, limit=6)
-    result = signal_from_zai(item["name"], code, quote, news.get("articles", []))
+    articles = news.get("articles", [])
+    result = signal_from_zai(item["name"], code, quote, articles)
     if "error" in result:
-        return result
+        result = keyword_signal(item["name"], code, quote, articles)
+        result["_fallback"] = True
     result["_ts"] = now
     ai_cache[code] = result
     return {k: v for k, v in result.items() if k != "_ts"}

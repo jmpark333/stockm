@@ -215,37 +215,37 @@ function attachAIHandlers(container) {
       const name = btn.dataset.name;
       btn.textContent = '⏳';
       btn.disabled = true;
+      let data;
       try {
         const res = await fetch(`/api/analyze-signal?code=${code}`, { cache: 'no-store' });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        if (data.signal) {
-          aiResults.set(code, {
-            signal: data.signal,
-            reasons: data.reasons || [],
-            newsSentiment: data.newsSentiment || '',
-          });
-          const td = btn.closest('td');
-          const badge = td.querySelector('.badge');
-          const s = SIGNAL_LABELS[data.signal] || SIGNAL_LABELS.hold;
-          badge.className = `badge ${s.cls}`;
-          badge.textContent = `AI ${s.text}`;
-          badge.dataset.signal = data.signal;
-          badge.dataset.reasons = JSON.stringify(data.reasons || []);
-          badge.dataset.ai = '1';
-          if (data.newsSentiment) {
-            badge.dataset.newsSentiment = data.newsSentiment;
-          }
-          btn.textContent = '✓';
-          btn.classList.add('done');
-        } else {
-          btn.textContent = 'AI';
-          btn.disabled = false;
-        }
+        data = await res.json();
+        if (!data.signal) throw new Error(data.error || '분석 실패');
       } catch (err) {
         btn.textContent = 'AI';
         btn.disabled = false;
+        setError(`${name} AI 분석 실패: ${err.message}`);
+        return;
       }
+      aiResults.set(code, {
+        signal: data.signal,
+        reasons: data.reasons || [],
+        newsSentiment: data.newsSentiment || '',
+      });
+      const td = btn.closest('td');
+      const badge = td.querySelector('.badge');
+      const s = SIGNAL_LABELS[data.signal] || SIGNAL_LABELS.hold;
+      badge.className = `badge ${s.cls}`;
+      badge.textContent = `AI ${s.text}`;
+      badge.dataset.signal = data.signal;
+      badge.dataset.reasons = JSON.stringify(data.reasons || []);
+      badge.dataset.ai = '1';
+      if (data.newsSentiment) {
+        badge.dataset.newsSentiment = data.newsSentiment;
+      }
+      btn.textContent = '✓';
+      btn.classList.add('done');
+      setError('');
     });
   });
 }
