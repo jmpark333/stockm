@@ -132,7 +132,7 @@ function rangeBar(pos) {
 }
 
 /* Signal detail modal */
-function showSignalModal(name, signal, reasons) {
+function showSignalModal(name, signal, reasons, aiAnalysis) {
   const s = SIGNAL_LABELS[signal] || SIGNAL_LABELS.hold;
   modalTitle.textContent = `${name} — ${s.text}`;
   let html = '<ul class="signal-reasons">';
@@ -143,15 +143,29 @@ function showSignalModal(name, signal, reasons) {
   }
   html += '</ul>';
 
-  html += '<div class="signal-guide">';
-  if (signal === 'strong_buy' || signal === 'buy') {
-    html += '<p>📈 <strong>매수 고려</strong>: 현재 하락 구간으로 추가 하락 시 분할 매수 전략을 고려하세요.</p>';
-  } else if (signal === 'strong_sell' || signal === 'sell') {
-    html += '<p>📉 <strong>매도 고려</strong>: 현재 상승 구간으로 차익실현을 고려하세요.</p>';
+  if (aiAnalysis) {
+    html += '<div class="signal-guide" style="border-color:rgba(168,85,247,0.3);background:rgba(168,85,247,0.08);">';
+    html += '<p>🤖 <strong>AI 뉴스 분석</strong></p>';
+    if (aiAnalysis.reasons && aiAnalysis.reasons.length) {
+      html += '<ul class="signal-reasons">';
+      aiAnalysis.reasons.forEach(r => html += `<li>${r}</li>`);
+      html += '</ul>';
+    }
+    if (aiAnalysis.newsSentiment) {
+      html += `<p style="margin-top:8px;font-size:13px;color:var(--muted)">뉴스 감성: ${aiAnalysis.newsSentiment}</p>`;
+    }
+    html += '</div>';
   } else {
-    html += '<p>⏸️ <strong>관망</strong>: 현재 특별한 시그널이 없는 구간입니다. 추세를 지켜보세요.</p>';
+    html += '<div class="signal-guide">';
+    if (signal === 'strong_buy' || signal === 'buy') {
+      html += '<p>📈 <strong>매수 고려</strong>: 현재 하락 구간으로 추가 하락 시 분할 매수 전략을 고려하세요.</p>';
+    } else if (signal === 'strong_sell' || signal === 'sell') {
+      html += '<p>📉 <strong>매도 고려</strong>: 현재 상승 구간으로 차익실현을 고려하세요.</p>';
+    } else {
+      html += '<p>⏸️ <strong>관망</strong>: 현재 특별한 시그널이 없는 구간입니다. 추세를 지켜보세요.</p>';
+    }
+    html += '</div>';
   }
-  html += '</div>';
 
   modalBody.innerHTML = html;
   signalModal.hidden = false;
@@ -179,7 +193,47 @@ function attachSignalHandlers(container) {
       const name = row.querySelector('.name-cell strong')?.textContent || '';
       const signal = el.dataset.signal;
       const reasons = el.dataset.reasons ? JSON.parse(el.dataset.reasons) : [];
-      showSignalModal(name, signal, reasons);
+      const ai = el.dataset.ai;
+      const aiAnalysis = ai ? { reasons, newsSentiment: el.dataset.newsSentiment || '' } : null;
+      showSignalModal(name, signal, ai ? [] : reasons, aiAnalysis);
+    });
+  });
+}
+
+/* Attach AI analysis button handlers */
+function attachAIHandlers(container) {
+  container.querySelectorAll('.ai-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const code = btn.dataset.code;
+      const name = btn.dataset.name;
+      btn.textContent = '⏳';
+      btn.disabled = true;
+      try {
+        const res = await fetch(`/api/analyze-signal?code=${code}`, { cache: 'no-store' });
+        if (!res.ok) throw new Error('API error');
+        const data = await res.json();
+        if (data.signal) {
+          const td = btn.closest('td');
+          const badge = td.querySelector('.badge');
+          const s = SIGNAL_LABELS[data.signal] || SIGNAL_LABELS.hold;
+          badge.className = `badge ${s.cls}`;
+          badge.textContent = `AI ${s.text}`;
+          badge.dataset.signal = data.signal;
+          badge.dataset.reasons = JSON.stringify(data.reasons || []);
+          badge.dataset.ai = '1';
+          if (data.newsSentiment) {
+            badge.dataset.newsSentiment = data.newsSentiment;
+          }
+          btn.textContent = '✓';
+          btn.classList.add('done');
+        } else {
+          btn.textContent = 'AI';
+          btn.disabled = false;
+        }
+      } catch {
+        btn.textContent = 'AI';
+        btn.disabled = false;
+      }
     });
   });
 }
@@ -189,6 +243,7 @@ function renderHoldings(rows) {
   rows.forEach(row => {
     const tr = document.createElement('tr');
     const badgeHtml = signalBadge(row.trend.signal, row.trend.signalReasons || []);
+    const aiBtn = `<button class="ai-btn" data-code="${row.code}" data-name="${row.name}" title="AI 뉴스 분석">AI</button>`;
     tr.innerHTML = `
       <td><div class="name-cell"><strong>${row.name}</strong><small>${row.code}</small></div></td>
       <td>${money.format(row.quantity)}주</td>
@@ -198,12 +253,13 @@ function renderHoldings(rows) {
       <td>${formatMoney(row.currentValue)}</td>
       <td class="${row.profit >= 0 ? 'up' : 'down'}">${formatPercent(row.profitRate)}</td>
       <td class="${row.profit >= 0 ? 'up' : 'down'}">${formatSignedMoney(row.profit)}</td>
-      <td>${badgeHtml}</td>
+      <td>${badgeHtml} ${aiBtn}</td>
       <td>${row.session || row.error || '-'}</td>
     `;
     holdingsBody.appendChild(tr);
   });
   attachSignalHandlers(holdingsBody);
+  attachAIHandlers(holdingsBody);
 }
 
 function renderWatchlist(rows) {
@@ -215,6 +271,7 @@ function renderWatchlist(rows) {
       : '-';
     const tr = document.createElement('tr');
     const badgeHtml = signalBadge(t.signal, t.signalReasons || []);
+    const aiBtn = `<button class="ai-btn" data-code="${row.code}" data-name="${row.name}" title="AI 뉴스 분석">AI</button>`;
     tr.innerHTML = `
       <td><div class="name-cell"><strong>${row.name}</strong><small>${row.code}</small></div></td>
       <td>${formatMoney(row.currentPrice)}</td>
@@ -222,12 +279,13 @@ function renderWatchlist(rows) {
       <td>${dayRange}<br>${rangeBar(t.rangePos)}</td>
       <td>${t.volatility}%</td>
       <td>${trendIcon(t.shortTrend)} ${t.shortTrend === 'up' ? '상승' : t.shortTrend === 'down' ? '하락' : '보합'}</td>
-      <td>${badgeHtml}${t.signal !== 'hold' && t.signalReasons.length ? '<br><small>' + t.signalReasons.join(', ') + '</small>' : ''}</td>
+      <td>${badgeHtml}${t.signal !== 'hold' && t.signalReasons.length ? '<br><small>' + t.signalReasons.join(', ') + '</small>' : ''} ${aiBtn}</td>
       <td>${row.session || row.error || '-'}</td>
     `;
     watchlistBody.appendChild(tr);
   });
   attachSignalHandlers(watchlistBody);
+  attachAIHandlers(watchlistBody);
 }
 
 function renderSummary(summary) {

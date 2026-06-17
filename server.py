@@ -18,6 +18,12 @@ NAVER_REALTIME_URL = "https://polling.finance.naver.com/api/realtime?query=SERVI
 history: dict[str, deque] = {}
 MAX_HISTORY = 12
 
+ZAI_URL = "https://api.z.ai/api/coding/paas/v4"
+ZAI_KEY = "136d90754ebd999f4a4cc4547b638.LUXSKaxDozJgFHLQ"
+
+ai_cache: dict[str, dict] = {}
+AI_CACHE_TTL = 300
+
 def load_config():
     with DATA_FILE.open("r", encoding="utf-8") as f:
         return json.load(f)
@@ -237,6 +243,80 @@ def build_news():
         items.append(fetch_news(w["name"], w["code"]))
     return items
 
+def signal_from_zai(name, code, quote, articles):
+    titles = "\n".join(a.get("title", "") for a in articles[:6])
+    prompt = (
+        f"주식 분석 요청:\n"
+        f"종목: {name} ({code})\n"
+        f"현재가: {quote.get('currentPrice')}원\n"
+        f"전일종가: {quote.get('previousClose')}원\n"
+        f"변동: {quote.get('change')}원 ({quote.get('changeRate')}%)\n"
+        f"고가: {quote.get('high')}원 / 저가: {quote.get('low')}원\n"
+        f"\n최근 뉴스:\n{titles}\n"
+        f"\nJSON만 응답하세요:\n"
+        f'{{"signal":"strong_buy|buy|hold|sell|strong_sell","confidence":0-100,"reasons":["이유1","이유2","이유3"],"newsSentiment":"한줄 요약"}}'
+    )
+    payload = {
+        "model": "glm-5",
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.3,
+        "max_tokens": 600,
+    }
+    headers = {
+        "Authorization": f"Bearer {ZAI_KEY}",
+        "Content-Type": "application/json",
+    }
+    req = urllib.request.Request(
+        ZAI_URL,
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers=headers,
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            raw = resp.read().decode("utf-8")
+        result = json.loads(raw)
+        content = result["choices"][0]["message"]["content"]
+        match = re.search(r"\{.*\}", content, re.DOTALL)
+        if match:
+            parsed = json.loads(match.group())
+            return {
+                "signal": parsed.get("signal", "hold"),
+                "confidence": parsed.get("confidence", 0),
+                "reasons": parsed.get("reasons", []),
+                "newsSentiment": parsed.get("newsSentiment", ""),
+            }
+    except Exception as exc:
+        return {"error": str(exc)}
+    return {"error": "JSON 파싱 실패"}
+
+def handle_analyze_signal(code):
+    now = time.time()
+    cached = ai_cache.get(code)
+    if cached and now - cached.get("_ts", 0) < AI_CACHE_TTL:
+        return {k: v for k, v in cached.items() if k != "_ts"}
+    config = load_config()
+    item = None
+    for h in config["holdings"]:
+        if h["code"] == code:
+            item = h
+            break
+    if not item:
+        for w in config.get("watchlist", []):
+            if w["code"] == code:
+                item = w
+                break
+    if not item:
+        return {"error": "종목을 찾을 수 없습니다"}
+    quote = fetch_quote(code)
+    news = fetch_news(item["name"], code, limit=6)
+    result = signal_from_zai(item["name"], code, quote, news.get("articles", []))
+    if "error" in result:
+        return result
+    result["_ts"] = now
+    ai_cache[code] = result
+    return {k: v for k, v in result.items() if k != "_ts"}
+
 class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
@@ -249,6 +329,14 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if p == "/api/news":
             self.send_json(build_news())
+            return
+        if p == "/api/analyze-signal":
+            qs = urllib.parse.parse_qs(parsed.query)
+            code = qs.get("code", [None])[0]
+            if not code:
+                self.send_json({"error": "code parameter required"})
+                return
+            self.send_json(handle_analyze_signal(code))
             return
         path = BASE_DIR / ("index.html" if p == "/" else p.lstrip("/"))
         if not path.exists() or not path.is_file():
