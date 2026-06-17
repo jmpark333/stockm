@@ -13,6 +13,8 @@ const signalModal = document.querySelector('#signalModal');
 const modalTitle = document.querySelector('#modalTitle');
 const modalBody = document.querySelector('#modalBody');
 const modalClose = document.querySelector('#modalClose');
+const newsUpdatedAt = document.querySelector('#newsUpdatedAt');
+const aiUpdatedAt = document.querySelector('#aiUpdatedAt');
 
 let autoTimer = null;
 let autoEnabled = true;
@@ -466,6 +468,7 @@ async function analyzeAllStocks(holdings, watchlist) {
       continue;
     }
   }
+  if (aiUpdatedAt) aiUpdatedAt.textContent = `AI 분석: ${new Date().toLocaleTimeString('ko-KR')}`;
 }
 
 function updateSignalBadge(code) {
@@ -520,6 +523,7 @@ async function loadNews() {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     renderNews(data);
+    if (newsUpdatedAt) newsUpdatedAt.textContent = `최종 갱신: ${new Date().toLocaleTimeString('ko-KR')}`;
     refreshAISignals();
   } catch (error) {
     newsContainer.innerHTML = '<p class="muted">뉴스를 불러오지 못했습니다.</p>';

@@ -13,7 +13,10 @@
   <div class="layout">
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-head">
-        <p class="eyebrow">실시간 뉴스</p>
+        <div>
+          <p class="eyebrow">실시간 뉴스</p>
+          <small id="newsUpdatedAt" class="update-time">갱신 중...</small>
+        </div>
         <div class="sidebar-actions">
           <button id="newsRefreshBtn" class="icon-btn" title="뉴스 새로고침">⟳</button>
           <button id="sidebarCloseBtn" class="icon-btn sidebar-close-btn" title="닫기">&times;</button>
@@ -66,7 +69,10 @@
             <h2>📦 내 보유종목</h2>
             <p id="sourceText">데이터를 불러오는 중입니다.</p>
           </div>
-          <span id="statusPill" class="pill">대기 중</span>
+          <div class="status-area">
+            <small id="aiUpdatedAt" class="update-time">AI 분석 중...</small>
+            <span id="statusPill" class="pill">대기 중</span>
+          </div>
         </div>
         <div class="table-wrap">
           <table>
