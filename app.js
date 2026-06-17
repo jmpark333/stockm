@@ -520,9 +520,33 @@ async function loadNews() {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     renderNews(data);
+    refreshAISignals();
   } catch (error) {
     newsContainer.innerHTML = '<p class="muted">뉴스를 불러오지 못했습니다.</p>';
   }
+}
+
+function refreshAISignals() {
+  aiResults.clear();
+  document.querySelectorAll('.ai-btn.done').forEach(btn => {
+    btn.textContent = 'AI';
+    btn.classList.remove('done');
+  });
+  document.querySelectorAll('.badge').forEach(badge => {
+    if (badge.dataset.ai) {
+      badge.textContent = 'AI 분석중';
+      badge.className = 'badge hold';
+      delete badge.dataset.signal;
+      delete badge.dataset.reasons;
+      delete badge.dataset.ai;
+    }
+  });
+  fetch('/api/portfolio', { cache: 'no-store' })
+    .then(res => res.json())
+    .then(data => {
+      analyzeAllStocks(data.holdings, data.watchlist);
+    })
+    .catch(() => {});
 }
 
 function setAutoRefresh(enabled) {
@@ -540,7 +564,7 @@ function setAutoRefresh(enabled) {
 
 function setupNewsRefresh() {
   if (newsTimer) clearInterval(newsTimer);
-  newsTimer = setInterval(loadNews, 120000);
+  newsTimer = setInterval(loadNews, 600000);
   newsRefreshBtn.addEventListener('click', () => { loadNews(); });
 }
 
