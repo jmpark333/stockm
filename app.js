@@ -219,8 +219,12 @@ function closeSignalModal() {
 }
 
 function showChartModal(name, code) {
+  const isMobile = window.innerWidth <= 760;
   chartModalTitle.textContent = `${name} 주가 차트`;
-  chartFrame.src = `https://finance.naver.com/item/main.naver?code=${code}`;
+  const base = isMobile
+    ? `https://m.finance.naver.com/item/main.naver?code=${code}`
+    : `https://finance.naver.com/item/main.naver?code=${code}`;
+  chartFrame.src = base;
   chartModal.hidden = false;
 }
 

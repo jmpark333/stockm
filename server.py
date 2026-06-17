@@ -28,6 +28,21 @@ def load_config():
     with DATA_FILE.open("r", encoding="utf-8") as f:
         return json.load(f)
 
+def fetch_previous_close(code):
+    """네이버 증권 메인 페이지에서 정확한 전일 종가를 가져온다.
+    실시간 API의 pcv는 장 마감 후 오늘 종가로 덮어씌워지는 버그가 있어 별도 스크랩이 필요."""
+    url = f"https://finance.naver.com/item/main.naver?code={code}"
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            html = resp.read().decode("utf-8", errors="replace")
+        match = re.search(r"전일가\s*([\d,]+)", html)
+        if match:
+            return int(match.group(1).replace(",", ""))
+    except Exception:
+        pass
+    return None
+
 def fetch_quote(code):
     url = NAVER_REALTIME_URL.format(code=code)
     request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
@@ -48,11 +63,15 @@ def fetch_quote(code):
         cv = item.get("cv")
         cr = item.get("cr")
 
+        # 실시간 API pcv는 장 마감 후 오늘 종가로 덮어씌워지므로
+        # 웹페이지에서 정확한 전일 종가를 가져와 사용
+        real_prev_close = fetch_previous_close(code)
+        if real_prev_close:
+            pcv = real_prev_close
+
         if nv and pcv:
-            calculated_change = nv - pcv
-            if calculated_change != 0:
-                cv = calculated_change
-                cr = round(calculated_change / pcv * 100, 2) if pcv else cr
+            cv = nv - pcv
+            cr = round(cv / pcv * 100, 2)
 
         after_market_price = None
         if extra.get("tradingSessionType") == "AFTER_MARKET" and extra.get("overPrice"):
