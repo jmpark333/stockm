@@ -71,18 +71,23 @@ def fetch_quote(code):
         if real_prev_close:
             pcv = real_prev_close
         
-        if nv and pcv:
-            cv = nv - pcv
-            cr = round(cv / pcv * 100, 2)
+        # 프리마켓/애프터마켓: overPrice가 실시간가, nv는 stale
+        over_price = None
+        session_type = extra.get("tradingSessionType")
+        if session_type in ("PRE_MARKET", "AFTER_MARKET") and extra.get("overPrice"):
+            over_price = int(extra["overPrice"].replace(",", ""))
         
-        after_market_price = None
-        if extra.get("tradingSessionType") == "AFTER_MARKET" and extra.get("overPrice"):
-            after_market_price = int(extra["overPrice"].replace(",", ""))
+        # 실제 현재가 결정: overPrice > nv 순서
+        current = over_price or nv
+        
+        if current and pcv:
+            cv = current - pcv
+            cr = round(cv / pcv * 100, 2)
         
         return {
             "code": code,
             "name": item.get("nm"),
-            "currentPrice": after_market_price or nv,
+            "currentPrice": current,
             "previousClose": pcv,
             "change": cv,
             "changeRate": cr,
@@ -90,7 +95,7 @@ def fetch_quote(code):
             "high": item.get("hv"),
             "low": item.get("lv"),
             "open": item.get("ov"),
-            "afterMarketPrice": after_market_price,
+            "afterMarketPrice": over_price,
             "updatedAt": extra.get("localTradedAt") or payload.get("time"),
         }
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
