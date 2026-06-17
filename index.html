@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>실전 포트폴리오</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-head">
+        <p class="eyebrow">실시간 뉴스</p>
+        <button id="newsRefreshBtn" class="icon-btn" title="뉴스 새로고침">⟳</button>
+      </div>
+      <div id="newsContainer" class="news-container">
+        <p class="muted">뉴스를 불러오는 중입니다...</p>
+      </div>
+    </aside>
+    <div class="resize-handle" id="resizeHandle"></div>
+    <main class="page">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Smart Portfolio</p>
+          <h1>스마트 포트폴리오</h1>
+          <p class="subtitle">보유종목 손익 · 관심종목 추세 · 매매시그널을 한눈에 확인하세요.</p>
+        </div>
+        <div class="controls">
+          <button id="refreshBtn" type="button">지금 새로고침</button>
+          <button id="autoBtn" type="button" class="secondary" aria-pressed="true">자동 갱신 ON</button>
+        </div>
+      </section>
+
+      <section id="errorBox" class="error-box" role="alert" hidden></section>
+
+      <section class="summary-grid" aria-label="포트폴리오 요약">
+        <article class="card accent">
+          <span>총 평가금</span>
+          <strong id="totalValue">-</strong>
+        </article>
+        <article class="card">
+          <span>총 투자원금</span>
+          <strong id="totalCost">-</strong>
+        </article>
+        <article class="card">
+          <span>실현가능 손익</span>
+          <strong id="totalProfit">-</strong>
+        </article>
+        <article class="card">
+          <span>총 수익률</span>
+          <strong id="totalRate">-</strong>
+        </article>
+      </section>
+
+      <section class="table-card">
+        <div class="table-head">
+          <div>
+            <h2>📦 내 보유종목</h2>
+            <p id="sourceText">데이터를 불러오는 중입니다.</p>
+          </div>
+          <span id="statusPill" class="pill">대기 중</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>종목명</th>
+                <th>보유</th>
+                <th>현재가</th>
+                <th>전일비</th>
+                <th>평균단가</th>
+                <th>평가금액</th>
+                <th>수익률</th>
+                <th>수익금</th>
+                <th>시그널</th>
+                <th>상태</th>
+              </tr>
+            </thead>
+            <tbody id="holdingsBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="table-card">
+        <div class="table-head">
+          <div>
+            <h2>👀 관심종목</h2>
+            <p>매수기회를 포착할 종목을 모니터링합니다.</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>종목명</th>
+                <th>현재가</th>
+                <th>전일비</th>
+                <th>일중범위</th>
+                <th>변동성</th>
+                <th>단기추세</th>
+                <th>시그널</th>
+                <th>상태</th>
+              </tr>
+            </thead>
+            <tbody id="watchlistBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="signalModal" class="modal-overlay" hidden>
+    <div class="modal-box">
+      <div class="modal-head">
+        <span id="modalTitle">시그널 상세</span>
+        <button id="modalClose" class="icon-btn">&times;</button>
+      </div>
+      <div id="modalBody" class="modal-body"></div>
+    </div>
+  </div>
+
+  <script src="/app.js?v=2"></script>
+</body>
+</html>
