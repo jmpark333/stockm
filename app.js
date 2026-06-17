@@ -220,7 +220,20 @@ function closeSignalModal() {
 
 function showChartModal(name, code) {
   chartModalTitle.textContent = `${name} 주가 차트`;
-  chartFrame.src = `https://finance.naver.com/item/main.naver?code=${code}`;
+  const tvUrl = 'https://s.tradingview.com/widgetembed/?frameElementId=chartFrame'
+    + `&symbol=KRX%3A${code}`
+    + '&interval=D'
+    + '&hidesidetoolbar=1'
+    + '&hidetoptoolbar=0'
+    + '&hidestatusbar=0'
+    + '&theme=dark'
+    + '&locale=kr'
+    + '&allowpop=1'
+    + '&saveimage=1'
+    + '&studies=[]'
+    + '&showpopupbutton=0'
+    + '&timezone=Asia%2FSeoul';
+  chartFrame.src = tvUrl;
   chartModal.hidden = false;
 }
 
