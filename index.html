@@ -14,14 +14,19 @@
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-head">
         <p class="eyebrow">실시간 뉴스</p>
-        <button id="newsRefreshBtn" class="icon-btn" title="뉴스 새로고침">⟳</button>
+        <div class="sidebar-actions">
+          <button id="newsRefreshBtn" class="icon-btn" title="뉴스 새로고침">⟳</button>
+          <button id="sidebarCloseBtn" class="icon-btn sidebar-close-btn" title="닫기">&times;</button>
+        </div>
       </div>
       <div id="newsContainer" class="news-container">
         <p class="muted">뉴스를 불러오는 중입니다...</p>
       </div>
     </aside>
     <div class="resize-handle" id="resizeHandle"></div>
+    <div id="sidebarOverlay" class="sidebar-overlay"></div>
     <main class="page">
+      <button id="sidebarToggle" class="sidebar-toggle" title="뉴스 사이드바 열기">☰</button>
       <section class="hero">
         <div>
           <p class="eyebrow">Smart Portfolio</p>

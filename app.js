@@ -21,7 +21,20 @@ let newsTimer = null;
 /* Sidebar Resize */
 const sidebar = document.querySelector('#sidebar');
 const resizeHandle = document.querySelector('#resizeHandle');
+const sidebarToggle = document.querySelector('#sidebarToggle');
+const sidebarClose = document.querySelector('#sidebarCloseBtn');
+const sidebarOverlay = document.querySelector('#sidebarOverlay');
 let isResizing = false;
+
+function toggleSidebar(open) {
+  sidebar.classList.toggle('open', open);
+  sidebarOverlay.classList.toggle('show', open);
+  document.body.style.overflow = open ? 'hidden' : '';
+}
+
+sidebarToggle.addEventListener('click', () => toggleSidebar(true));
+sidebarClose.addEventListener('click', () => toggleSidebar(false));
+sidebarOverlay.addEventListener('click', () => toggleSidebar(false));
 
 function initResize() {
   const saved = localStorage.getItem('sidebarWidth');
