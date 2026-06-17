@@ -241,10 +241,11 @@ def signal_from_zai(name, code, quote, articles):
         f'{{"signal":"strong_buy|buy|hold|sell|strong_sell","confidence":0-100,"reasons":["이유1","이유2","이유3"],"newsSentiment":"한줄 요약"}}'
     )
     payload = {
-        "model": "glm-5",
+        "model": "glm-4.5",
         "messages": [{"role": "user", "content": prompt}],
+        "thinking": {"type": "disabled"},
         "temperature": 0.3,
-        "max_tokens": 4096,
+        "max_tokens": 600,
     }
     headers = {
         "Authorization": f"Bearer {ZAI_KEY}",
@@ -258,7 +259,7 @@ def signal_from_zai(name, code, quote, articles):
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        with urllib.request.urlopen(req, timeout=15) as resp:
             raw = resp.read().decode("utf-8")
         result = json.loads(raw)
         content = result["choices"][0]["message"]["content"]
