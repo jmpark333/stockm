@@ -288,19 +288,13 @@ def keyword_signal(name, code, quote, articles):
     neg = sum(1 for kw in NEGATIVE_KW if kw in text)
     signal = "hold"
     reasons = []
-    if cp and pc:
-        chg = (cp - pc) / pc * 100
-        if chg < -3: signal = "strong_buy"
-        elif chg < -1: signal = "buy"
-        elif chg > 3: signal = "strong_sell"
-        elif chg > 1: signal = "sell"
     net = pos - neg
     if net >= 2:
         reasons.append(f"뉴스 긍정 ({net})")
-        if signal == "hold": signal = "buy"
+        signal = "buy"
     elif net <= -2:
         reasons.append(f"뉴스 부정 ({net})")
-        if signal == "hold": signal = "sell"
+        signal = "sell"
     else:
         reasons.append(f"뉴스 중립")
     sentiment = "긍정적" if net >= 2 else ("부정적" if net <= -2 else "중립")
@@ -311,6 +305,50 @@ def keyword_signal(name, code, quote, articles):
         "newsSentiment": f"키워드: {sentiment}",
         "_source": "keyword",
     }
+
+def validate_signal(signal, quote, news_sentiment="", reasons=None):
+    cp = quote.get("currentPrice")
+    pc = quote.get("previousClose")
+    if not cp or not pc:
+        return signal
+    chg = (cp - pc) / pc * 100
+    
+    sentiment_lower = news_sentiment.lower() if news_sentiment else ""
+    reasons_text = " ".join(reasons) if reasons else ""
+    all_text = f"{sentiment_lower} {reasons_text}".lower()
+    
+    positive_keywords = ["긍정", "positive", "매수", "상승", "기대", "호재", "강세", "우호", "성장", "호조", "돌파", "신고가", "순매수", "목표가"]
+    negative_keywords = ["부정", "negative", "매도", "하락", "우려", "악재", "약세", "적자", "침체", "경고", "위기"]
+    
+    is_positive = any(kw in all_text for kw in positive_keywords)
+    is_negative = any(kw in all_text for kw in negative_keywords)
+    
+    if signal == "hold":
+        if is_positive and not is_negative:
+            if chg >= 0:
+                return "buy"
+            else:
+                return "hold"
+        elif is_negative and not is_positive:
+            if chg <= 0:
+                return "sell"
+            else:
+                return "hold"
+    
+    valid_signals = {
+        "strong_buy": lambda x: x < -5,
+        "buy": lambda x: x < -3,
+        "hold": lambda x: True,
+        "sell": lambda x: x > 3,
+        "strong_sell": lambda x: x > 5,
+    }
+    if signal in valid_signals and not valid_signals[signal](chg):
+        if chg > 5: return "strong_sell"
+        if chg > 3: return "sell"
+        if chg < -5: return "strong_buy"
+        if chg < -3: return "buy"
+        return "hold"
+    return signal
 
 def handle_analyze_signal(code):
     now = time.time()
@@ -337,6 +375,22 @@ def handle_analyze_signal(code):
     if "error" in result:
         result = keyword_signal(item["name"], code, quote, articles)
         result["_fallback"] = True
+        news_sentiment = result.get("newsSentiment", "")
+        reasons = result.get("reasons", [])
+        result["signal"] = validate_signal(result.get("signal", "hold"), quote, news_sentiment, reasons)
+    else:
+        news_sentiment = result.get("newsSentiment", "")
+        reasons = result.get("reasons", [])
+        result["signal"] = validate_signal(result.get("signal", "hold"), quote, news_sentiment, reasons)
+    result["news"] = articles
+    result["stockName"] = item["name"]
+    result["stockCode"] = code
+    result["currentPrice"] = quote.get("currentPrice")
+    result["previousClose"] = quote.get("previousClose")
+    result["change"] = quote.get("change")
+    result["changeRate"] = quote.get("changeRate")
+    result["high"] = quote.get("high")
+    result["low"] = quote.get("low")
     result["_ts"] = now
     ai_cache[code] = result
     return {k: v for k, v in result.items() if k != "_ts"}

@@ -479,13 +479,17 @@ td {
   inset: 0;
   background: rgba(0,0,0,0.6);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
+  padding: 20px;
   z-index: 100;
+  overflow-y: auto;
 }
 
 .modal-box {
   width: min(440px, calc(100% - 32px));
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
   background: var(--panel-strong);
   border: 1px solid var(--line);
   border-radius: 24px;
@@ -530,6 +534,59 @@ td {
   border: 1px solid rgba(96,165,250,0.15);
   font-size: 13px;
   line-height: 1.7;
+}
+
+.modal-body h3 {
+  margin: 16px 0 10px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.modal-body h3:first-child {
+  margin-top: 0;
+}
+
+.stock-info {
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(148,163,184,0.08);
+  margin-bottom: 16px;
+}
+
+.stock-price {
+  font-size: 18px;
+  margin-bottom: 4px;
+}
+
+.stock-change {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.stock-range {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.news-links {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.news-links .news-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.news-links .news-item {
+  padding: 10px 12px;
+}
+
+.news-links .news-title {
+  font-size: 12px;
 }
 
 @media (max-width: 1024px) {

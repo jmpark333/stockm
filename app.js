@@ -142,27 +142,41 @@ function rangeBar(pos) {
 function showSignalModal(name, signal, reasons, aiAnalysis) {
   const s = SIGNAL_LABELS[signal] || SIGNAL_LABELS.hold;
   modalTitle.textContent = `${name} — ${s.text}`;
-  let html = '<ul class="signal-reasons">';
-  if (reasons && reasons.length) {
-    reasons.forEach(r => { html += `<li>${r}</li>`; });
-  } else {
-    html += '<li class="muted">특이사항 없음</li>';
-  }
-  html += '</ul>';
+  let html = '';
 
-  if (aiAnalysis) {
-    html += '<div class="signal-guide" style="border-color:rgba(168,85,247,0.3);background:rgba(168,85,247,0.08);">';
-    html += '<p>🤖 <strong>AI 뉴스 분석</strong></p>';
-    if (aiAnalysis.reasons && aiAnalysis.reasons.length) {
-      html += '<ul class="signal-reasons">';
-      aiAnalysis.reasons.forEach(r => html += `<li>${r}</li>`);
-      html += '</ul>';
+  if (aiAnalysis && aiAnalysis.currentPrice) {
+    const cp = aiAnalysis.currentPrice;
+    const pc = aiAnalysis.previousClose;
+    const chg = aiAnalysis.change;
+    const chgRate = aiAnalysis.changeRate;
+    const high = aiAnalysis.high;
+    const low = aiAnalysis.low;
+    const chgClass = chg > 0 ? 'up' : chg < 0 ? 'down' : 'neutral';
+    html += '<div class="stock-info">';
+    html += `<div class="stock-price"><strong>${formatMoney(cp)}</strong></div>`;
+    html += `<div class="stock-change ${chgClass}">${formatSignedMoney(chg)} / ${formatPercent(chgRate)}</div>`;
+    if (high && low) {
+      html += `<div class="stock-range">고가: ${formatMoney(high)} / 저가: ${formatMoney(low)}</div>`;
     }
+    html += '</div>';
+  }
+
+  html += '<h3>📊 시그널 분석</h3>';
+  if (aiAnalysis && aiAnalysis.reasons && aiAnalysis.reasons.length) {
+    html += '<ul class="signal-reasons">';
+    aiAnalysis.reasons.forEach(r => html += `<li>${r}</li>`);
+    html += '</ul>';
     if (aiAnalysis.newsSentiment) {
       html += `<p style="margin-top:8px;font-size:13px;color:var(--muted)">뉴스 감성: ${aiAnalysis.newsSentiment}</p>`;
     }
-    html += '</div>';
   } else {
+    html += '<ul class="signal-reasons">';
+    if (reasons && reasons.length) {
+      reasons.forEach(r => { html += `<li>${r}</li>`; });
+    } else {
+      html += '<li class="muted">특이사항 없음</li>';
+    }
+    html += '</ul>';
     html += '<div class="signal-guide">';
     if (signal === 'strong_buy' || signal === 'buy') {
       html += '<p>📈 <strong>매수 고려</strong>: 현재 하락 구간으로 추가 하락 시 분할 매수 전략을 고려하세요.</p>';
@@ -171,6 +185,22 @@ function showSignalModal(name, signal, reasons, aiAnalysis) {
     } else {
       html += '<p>⏸️ <strong>관망</strong>: 현재 특별한 시그널이 없는 구간입니다. 추세를 지켜보세요.</p>';
     }
+    html += '</div>';
+  }
+
+  if (aiAnalysis && aiAnalysis.news && aiAnalysis.news.length) {
+    html += '<div class="news-links">';
+    html += '<h3>📰 관련 뉴스</h3>';
+    html += '<div class="news-list">';
+    aiAnalysis.news.forEach(a => {
+      const src = a.source ? `<span class="news-source">${a.source}</span>` : '';
+      html += `<a class="news-item" href="${a.url}" target="_blank" rel="noopener">
+        <div class="news-title">${a.title}</div>
+        <div class="news-meta">${src}</div>
+      </a>`;
+    });
+    html += '</div>';
+    html += `<a class="news-more" href="https://finance.naver.com/item/news.naver?code=${aiAnalysis.stockCode}" target="_blank" rel="noopener">네이버 금융 뉴스 보기 →</a>`;
     html += '</div>';
   }
 
@@ -198,10 +228,24 @@ function attachSignalHandlers(container) {
       const row = el.closest('tr');
       if (!row) return;
       const name = row.querySelector('.name-cell strong')?.textContent || '';
+      const code = row.querySelector('.name-cell small')?.textContent || '';
       const signal = el.dataset.signal;
       const reasons = el.dataset.reasons ? JSON.parse(el.dataset.reasons) : [];
       const ai = el.dataset.ai;
-      const aiAnalysis = ai ? { reasons, newsSentiment: el.dataset.newsSentiment || '' } : null;
+      const cached = aiResults.get(code);
+      const aiAnalysis = cached ? {
+        reasons: cached.reasons || [],
+        newsSentiment: cached.newsSentiment || '',
+        news: cached.news || [],
+        stockName: cached.stockName || name,
+        stockCode: cached.stockCode || code,
+        currentPrice: cached.currentPrice,
+        previousClose: cached.previousClose,
+        change: cached.change,
+        changeRate: cached.changeRate,
+        high: cached.high,
+        low: cached.low,
+      } : (ai ? { reasons, newsSentiment: el.dataset.newsSentiment || '' } : null);
       showSignalModal(name, signal, ai ? [] : reasons, aiAnalysis);
     });
   });
@@ -231,6 +275,15 @@ function attachAIHandlers(container) {
         signal: data.signal,
         reasons: data.reasons || [],
         newsSentiment: data.newsSentiment || '',
+        news: data.news || [],
+        stockName: data.stockName || name,
+        stockCode: data.stockCode || code,
+        currentPrice: data.currentPrice,
+        previousClose: data.previousClose,
+        change: data.change,
+        changeRate: data.changeRate,
+        high: data.high,
+        low: data.low,
       });
       const td = btn.closest('td');
       const badge = td.querySelector('.badge');
@@ -246,6 +299,19 @@ function attachAIHandlers(container) {
       btn.textContent = '✓';
       btn.classList.add('done');
       setError('');
+      showSignalModal(name, data.signal, data.reasons || [], {
+        reasons: data.reasons || [],
+        newsSentiment: data.newsSentiment || '',
+        news: data.news || [],
+        stockName: data.stockName || name,
+        stockCode: data.stockCode || code,
+        currentPrice: data.currentPrice,
+        previousClose: data.previousClose,
+        change: data.change,
+        changeRate: data.changeRate,
+        high: data.high,
+        low: data.low,
+      });
     });
   });
 }
