@@ -229,15 +229,31 @@ def build_news():
 
 def signal_from_zai(name, code, quote, articles):
     titles = "\n".join(a.get("title", "") for a in articles[:6])
+    cp = quote.get("currentPrice")
+    pc = quote.get("previousClose")
+    chg = quote.get("change")
+    chg_rate = quote.get("changeRate")
+    
+    if cp and pc:
+        if cp > pc:
+            trend_desc = f"상승 중 (+{chg}원, +{chg_rate}%)"
+        elif cp < pc:
+            trend_desc = f"하락 중 ({chg}원, {chg_rate}%)"
+        else:
+            trend_desc = "보합 (변동 없음)"
+    else:
+        trend_desc = f"{chg}원 ({chg_rate}%)"
+    
     prompt = (
         f"주식 분석 요청:\n"
         f"종목: {name} ({code})\n"
-        f"현재가: {quote.get('currentPrice')}원\n"
-        f"전일종가: {quote.get('previousClose')}원\n"
-        f"변동: {quote.get('change')}원 ({quote.get('changeRate')}%)\n"
+        f"현재가: {cp}원\n"
+        f"전일종가: {pc}원\n"
+        f"현재 추세: {trend_desc}\n"
         f"고가: {quote.get('high')}원 / 저가: {quote.get('low')}원\n"
         f"\n최근 뉴스:\n{titles}\n"
-        f"\nJSON만 응답하세요:\n"
+        f"\n중요: 현재가가 전일종가보다 높으면 상승, 낮으면 하락입니다.\n"
+        f"JSON만 응답하세요:\n"
         f'{{"signal":"strong_buy|buy|hold|sell|strong_sell","confidence":0-100,"reasons":["이유1","이유2","이유3"],"newsSentiment":"한줄 요약"}}'
     )
     payload = {
@@ -313,8 +329,14 @@ def validate_signal(signal, quote, news_sentiment="", reasons=None):
         return signal
     chg = (cp - pc) / pc * 100
     
-    sentiment_lower = news_sentiment.lower() if news_sentiment else ""
     reasons_text = " ".join(reasons) if reasons else ""
+    
+    if chg > 0.5 and "하락" in reasons_text:
+        reasons_text = reasons_text.replace("하락", "상승")
+    elif chg < -0.5 and "상승" in reasons_text:
+        reasons_text = reasons_text.replace("상승", "하락")
+    
+    sentiment_lower = news_sentiment.lower() if news_sentiment else ""
     all_text = f"{sentiment_lower} {reasons_text}".lower()
     
     positive_keywords = ["긍정", "positive", "매수", "상승", "기대", "호재", "강세", "우호", "성장", "호조", "돌파", "신고가", "순매수", "목표가"]
