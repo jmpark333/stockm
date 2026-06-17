@@ -42,22 +42,26 @@ def fetch_quote(code):
         datas = areas[0].get("datas", []) if areas else []
         item = datas[0] if datas else {}
         extra = item.get("nxtOverMarketPriceInfo") or {}
-        
+
         nv = item.get("nv") or item.get("sv")
         pcv = item.get("pcv")
         cv = item.get("cv")
         cr = item.get("cr")
-        
+
         if nv and pcv:
             calculated_change = nv - pcv
             if calculated_change != 0:
                 cv = calculated_change
                 cr = round(calculated_change / pcv * 100, 2) if pcv else cr
-        
+
+        after_market_price = None
+        if extra.get("tradingSessionType") == "AFTER_MARKET" and extra.get("overPrice"):
+            after_market_price = int(extra["overPrice"].replace(",", ""))
+
         return {
             "code": code,
             "name": item.get("nm"),
-            "currentPrice": nv,
+            "currentPrice": after_market_price or nv,
             "previousClose": pcv,
             "change": cv,
             "changeRate": cr,
@@ -65,6 +69,7 @@ def fetch_quote(code):
             "high": item.get("hv"),
             "low": item.get("lv"),
             "open": item.get("ov"),
+            "afterMarketPrice": after_market_price,
             "updatedAt": extra.get("localTradedAt") or payload.get("time"),
         }
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
