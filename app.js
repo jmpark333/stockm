@@ -323,7 +323,7 @@ function renderHoldings(rows) {
     const cached = aiResults.get(row.code);
     const badgeHtml = cached
       ? signalBadge(cached.signal, cached.reasons, { isAI: true, newsSentiment: cached.newsSentiment })
-      : signalBadge(row.trend.signal, row.trend.signalReasons || []);
+      : `<span class="badge hold">AI 분석중</span>`;
     const aiBtnHtml = cached
       ? `<button class="ai-btn done" data-code="${row.code}" data-name="${row.name}">✓</button>`
       : `<button class="ai-btn" data-code="${row.code}" data-name="${row.name}" title="AI 뉴스 분석">AI</button>`;
@@ -356,7 +356,7 @@ function renderWatchlist(rows) {
     const cached = aiResults.get(row.code);
     const badgeHtml = cached
       ? signalBadge(cached.signal, cached.reasons, { isAI: true, newsSentiment: cached.newsSentiment })
-      : signalBadge(t.signal, t.signalReasons || []);
+      : `<span class="badge hold">AI 분석중</span>`;
     const aiBtnHtml = cached
       ? `<button class="ai-btn done" data-code="${row.code}" data-name="${row.name}">✓</button>`
       : `<button class="ai-btn" data-code="${row.code}" data-name="${row.name}" title="AI 뉴스 분석">AI</button>`;
@@ -367,7 +367,7 @@ function renderWatchlist(rows) {
       <td>${dayRange}<br>${rangeBar(t.rangePos)}</td>
       <td>${t.volatility}%</td>
       <td>${trendIcon(t.shortTrend)} ${t.shortTrend === 'up' ? '상승' : t.shortTrend === 'down' ? '하락' : '보합'}</td>
-      <td>${badgeHtml}${t.signal !== 'hold' && t.signalReasons.length ? '<br><small>' + t.signalReasons.join(', ') + '</small>' : ''} ${aiBtnHtml}</td>
+      <td>${badgeHtml} ${aiBtnHtml}</td>
       <td>${row.session || row.error || '-'}</td>
     `;
     watchlistBody.appendChild(tr);
@@ -434,6 +434,64 @@ function renderNews(newsItems) {
   });
 }
 
+async function analyzeAllStocks(holdings, watchlist) {
+  const allCodes = [
+    ...holdings.map(h => ({ code: h.code, name: h.name })),
+    ...watchlist.map(w => ({ code: w.code, name: w.name }))
+  ];
+  
+  for (const item of allCodes) {
+    if (aiResults.has(item.code)) continue;
+    try {
+      const res = await fetch(`/api/analyze-signal?code=${item.code}`, { cache: 'no-store' });
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (!data.signal) continue;
+      aiResults.set(item.code, {
+        signal: data.signal,
+        reasons: data.reasons || [],
+        newsSentiment: data.newsSentiment || '',
+        news: data.news || [],
+        stockName: data.stockName || item.name,
+        stockCode: data.stockCode || item.code,
+        currentPrice: data.currentPrice,
+        previousClose: data.previousClose,
+        change: data.change,
+        changeRate: data.changeRate,
+        high: data.high,
+        low: data.low,
+      });
+      updateSignalBadge(item.code);
+    } catch (err) {
+      continue;
+    }
+  }
+}
+
+function updateSignalBadge(code) {
+  const cached = aiResults.get(code);
+  if (!cached) return;
+  const s = SIGNAL_LABELS[cached.signal] || SIGNAL_LABELS.hold;
+  const badgeHtml = signalBadge(cached.signal, cached.reasons, { isAI: true, newsSentiment: cached.newsSentiment });
+  
+  document.querySelectorAll('tr').forEach(tr => {
+    const small = tr.querySelector('.name-cell small');
+    if (small && small.textContent === code) {
+      const badge = tr.querySelector('.badge');
+      if (badge) {
+        const temp = document.createElement('div');
+        temp.innerHTML = badgeHtml;
+        badge.replaceWith(temp.firstChild);
+      }
+      const aiBtn = tr.querySelector('.ai-btn');
+      if (aiBtn) {
+        aiBtn.textContent = '✓';
+        aiBtn.classList.add('done');
+      }
+    }
+  });
+}
+
 async function loadPortfolio() {
   refreshBtn.disabled = true;
   statusPill.textContent = '갱신 중';
@@ -447,6 +505,7 @@ async function loadPortfolio() {
     renderWatchlist(data.watchlist);
     sourceText.textContent = `네이버 금융 polling API · ${data.refreshSeconds}초 자동 갱신`;
     statusPill.textContent = `정상 · ${new Date().toLocaleTimeString('ko-KR')}`;
+    analyzeAllStocks(data.holdings, data.watchlist);
   } catch (error) {
     statusPill.textContent = '오류';
     setError(`데이터를 불러오지 못했습니다. 서버가 실행 중인지 확인하세요. ${error.message}`);
