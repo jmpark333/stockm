@@ -67,6 +67,15 @@ function formatMoney(value) {
   return `${money.format(Math.round(value || 0))}원`;
 }
 
+function formatThousand(value) {
+  return `${money.format(Math.round((value || 0) / 1000))}천원`;
+}
+
+function formatSignedThousand(value) {
+  const prefix = value > 0 ? '+' : '';
+  return `${prefix}${money.format(Math.round(Math.abs(value || 0) / 1000))}천원`;
+}
+
 function formatSignedMoney(value) {
   const prefix = value > 0 ? '+' : '';
   return `${prefix}${money.format(Math.round(value || 0))}원`;
@@ -227,9 +236,9 @@ function renderSummary(summary) {
   const totalProfit = document.querySelector('#totalProfit');
   const totalRate = document.querySelector('#totalRate');
 
-  totalValue.textContent = formatMoney(summary.currentValue);
-  totalCost.textContent = formatMoney(summary.cost);
-  totalProfit.textContent = formatSignedMoney(summary.profit);
+  totalValue.textContent = formatThousand(summary.currentValue);
+  totalCost.textContent = formatThousand(summary.cost);
+  totalProfit.textContent = formatSignedThousand(summary.profit);
   totalRate.textContent = formatPercent(summary.profitRate);
   setSignedClass(totalProfit, summary.profit);
   setSignedClass(totalRate, summary.profitRate);
