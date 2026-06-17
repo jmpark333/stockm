@@ -367,6 +367,18 @@ def validate_signal(signal, quote, news_sentiment="", reasons=None):
             return "hold"
         return signal
 
+    if is_positive and is_negative:
+        pos_count = sum(1 for kw in positive_keywords if kw in all_text)
+        neg_count = sum(1 for kw in negative_keywords if kw in all_text)
+        if pos_count > neg_count:
+            if signal in ("strong_sell", "sell"):
+                return "hold"
+            return signal
+        elif neg_count > pos_count:
+            if signal in ("strong_buy", "buy"):
+                return "hold"
+            return signal
+
     valid_signals = {
         "strong_buy": lambda x: x < -5,
         "buy": lambda x: x < -3,
