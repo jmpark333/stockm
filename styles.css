@@ -591,4 +591,8 @@ td {
     padding: 16px;
     border-radius: 20px;
   }
+
+  .card strong {
+    font-size: clamp(16px, 4.5vw, 24px);
+  }
 }
