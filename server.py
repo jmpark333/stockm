@@ -250,7 +250,7 @@ def build_portfolio():
 
 def fetch_news(name, code, limit=4):
     try:
-        query = f"{name} 주식"
+        query = f"{name} when:1d"
         encoded = urllib.parse.quote(query)
         url = f"https://news.google.com/rss/search?q={encoded}&hl=ko&gl=KR&ceid=KR:ko"
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
@@ -259,19 +259,33 @@ def fetch_news(name, code, limit=4):
         root = ET.fromstring(raw)
         items = root.findall(".//item")
         articles = []
-        for item in items[:limit]:
+        for item in items[:limit * 3]:
             title_el = item.find("title")
             link_el = item.find("link")
             source_el = item.find("source")
             desc_el = item.find("description")
+            pub_el = item.find("pubDate")
             if title_el is not None and title_el.text:
+                pub_str = pub_el.text.strip() if pub_el is not None and pub_el.text else ""
+                pub_ts = 0
+                if pub_str:
+                    try:
+                        from email.utils import parsedate_to_datetime
+                        pub_ts = parsedate_to_datetime(pub_str).timestamp()
+                    except Exception:
+                        pass
                 articles.append({
                     "title": re.sub(r"\s+", " ", title_el.text).strip(),
                     "url": link_el.text.strip() if link_el is not None and link_el.text else "#",
                     "source": source_el.text.strip() if source_el is not None and source_el.text else "",
                     "description": re.sub(r"\s+", " ", desc_el.text).strip()[:120] if desc_el is not None and desc_el.text else "",
+                    "pubDate": pub_str,
+                    "_ts": pub_ts,
                 })
-        return {"code": code, "name": name, "articles": articles}
+        articles.sort(key=lambda x: x.get("_ts", 0), reverse=True)
+        for a in articles:
+            a.pop("_ts", None)
+        return {"code": code, "name": name, "articles": articles[:limit]}
     except Exception as exc:
         return {"code": code, "name": name, "articles": [], "error": str(exc)}
 

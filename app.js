@@ -18,7 +18,8 @@ const aiUpdatedAt = document.querySelector('#aiUpdatedAt');
 const chartModal = document.querySelector('#chartModal');
 const chartModalTitle = document.querySelector('#chartModalTitle');
 const chartModalClose = document.querySelector('#chartModalClose');
-const chartFrame = document.querySelector('#chartFrame');
+const tvChartContainer = document.querySelector('#tvChartContainer');
+let tvWidget = null;
 
 let autoTimer = null;
 let autoEnabled = true;
@@ -220,26 +221,40 @@ function closeSignalModal() {
 
 function showChartModal(name, code) {
   chartModalTitle.textContent = `${name} 주가 차트`;
-  const tvUrl = 'https://s.tradingview.com/widgetembed/?frameElementId=chartFrame'
-    + `&symbol=KRX%3A${code}`
-    + '&interval=D'
-    + '&hidesidetoolbar=1'
-    + '&hidetoptoolbar=0'
-    + '&hidestatusbar=0'
-    + '&theme=dark'
-    + '&locale=kr'
-    + '&allowpop=1'
-    + '&saveimage=1'
-    + '&studies=[]'
-    + '&showpopupbutton=0'
-    + '&timezone=Asia%2FSeoul';
-  chartFrame.src = tvUrl;
+  if (tvWidget) { try { tvWidget.remove(); } catch(e){} tvWidget = null; }
+  tvChartContainer.innerHTML = '';
+
+  function createWidget() {
+    tvWidget = new TradingView.widget({
+      container_id: 'tvChartContainer',
+      symbol: 'KRX:' + code,
+      interval: 'D',
+      timezone: 'Asia/Seoul',
+      theme: 'dark',
+      locale: 'kr',
+      hide_side_toolbar: true,
+      allow_symbol_change: false,
+      save_image: true,
+      studies: [],
+      autosize: true,
+    });
+  }
+
+  if (window.TradingView) {
+    createWidget();
+  } else {
+    const s = document.createElement('script');
+    s.src = 'https://s3.tradingview.com/tv.js';
+    s.onload = createWidget;
+    document.head.appendChild(s);
+  }
   chartModal.hidden = false;
 }
 
 function closeChartModal() {
   chartModal.hidden = true;
-  chartFrame.src = '';
+  if (tvWidget) { try { tvWidget.remove(); } catch(e){} tvWidget = null; }
+  tvChartContainer.innerHTML = '';
 }
 
 chartModalClose.addEventListener('click', closeChartModal);

@@ -625,9 +625,13 @@ td {
   background: var(--bg);
 }
 
-.chart-modal-body iframe {
+#tvChartContainer {
   width: 100%;
   height: 100%;
+}
+#tvChartContainer iframe {
+  width: 100% !important;
+  height: 100% !important;
   border: none;
 }
 
@@ -718,8 +722,8 @@ td {
   }
 
   .chart-modal-body iframe {
-    width: 100%;
-    height: 100%;
+    width: 100% !important;
+    height: 100% !important;
     border: none;
   }
 
