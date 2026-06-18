@@ -388,6 +388,8 @@ def signal_from_zai(name, code, quote, articles):
     return {"error": "JSON 파싱 실패"}
 
 def signal_from_openrouter(name, code, quote, articles):
+    if not OPENROUTER_KEY:
+        return {"error": "OPENROUTER_KEY not set"}
     titles = "\n".join(a.get("title", "") for a in articles[:6])
     prompt = (
         f"주식 분석 요청:\n"
@@ -495,10 +497,13 @@ def handle_analyze_signal(code):
     articles = news.get("articles", [])
     result = signal_from_zai(item["name"], code, quote, articles)
     if result.get("error") == "rate_limited":
-        result = signal_from_openrouter(item["name"], code, quote, articles)
-        if "error" in result:
+        or_result = signal_from_openrouter(item["name"], code, quote, articles)
+        if "error" in or_result:
             result = keyword_signal(item["name"], code, quote, articles)
             result["_fallback"] = True
+            result["_or_error"] = or_result.get("error")
+        else:
+            result = or_result
     elif "error" in result:
         result = keyword_signal(item["name"], code, quote, articles)
         result["_fallback"] = True
