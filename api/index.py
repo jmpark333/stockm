@@ -25,7 +25,7 @@ ZAI_KEY = "136d90754ebd453999f4a4cc4547b638.LUXSKaxDozJgFHLQ"
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 OPENROUTER_KEY = os.environ.get("OPENROUTER_KEY", "").strip()
-OPENROUTER_MODEL = "nex-agi/nex-n2-pro:free"
+OPENROUTER_MODELS = ["nex-agi/nex-n2-pro:free", "openai/gpt-oss-120b:free"]
 
 ai_cache: dict[str, dict] = {}
 AI_CACHE_TTL = 300
@@ -388,9 +388,11 @@ def signal_from_zai(name, code, quote, articles):
         return {"error": str(exc)}
     return {"error": "JSON 파싱 실패"}
 
-def signal_from_openrouter(name, code, quote, articles):
+def signal_from_openrouter(name, code, quote, articles, model=None):
     if not OPENROUTER_KEY:
         return {"error": "OPENROUTER_KEY not set"}
+    if not model:
+        model = OPENROUTER_MODELS[0]
     titles = "\n".join(a.get("title", "") for a in articles[:6])
     cp = quote.get("currentPrice")
     pc = quote.get("previousClose")
@@ -420,7 +422,7 @@ def signal_from_openrouter(name, code, quote, articles):
         f'{{"signal":"strong_buy|buy|hold|sell|strong_sell","confidence":0-100,"reasons":["이유1","이유2","이유3"],"newsSentiment":"한줄 요약"}}'
     )
     payload = {
-        "model": OPENROUTER_MODEL,
+        "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.3,
         "max_tokens": 600,
@@ -442,6 +444,8 @@ def signal_from_openrouter(name, code, quote, articles):
             raw = resp.read().decode("utf-8")
         result = json.loads(raw)
         content = result["choices"][0]["message"]["content"]
+        if not content:
+            return {"error": "empty content"}
         match = re.search(r"\{.*\}", content, re.DOTALL)
         if match:
             parsed = json.loads(match.group())
@@ -563,15 +567,23 @@ def handle_analyze_signal(code):
     articles = news.get("articles", [])
     result = signal_from_zai(item["name"], code, quote, articles)
     if result.get("error") == "rate_limited":
-        or_result = signal_from_openrouter(item["name"], code, quote, articles)
-        if "error" in or_result:
+        for or_model in OPENROUTER_MODELS:
+            or_result = signal_from_openrouter(item["name"], code, quote, articles, model=or_model)
+            if "error" not in or_result:
+                result = or_result
+                break
+        else:
             result = keyword_signal(item["name"], code, quote, articles)
             result["_fallback"] = True
-        else:
-            result = or_result
     elif "error" in result:
-        result = keyword_signal(item["name"], code, quote, articles)
-        result["_fallback"] = True
+        for or_model in OPENROUTER_MODELS:
+            or_result = signal_from_openrouter(item["name"], code, quote, articles, model=or_model)
+            if "error" not in or_result:
+                result = or_result
+                break
+        else:
+            result = keyword_signal(item["name"], code, quote, articles)
+            result["_fallback"] = True
     news_sentiment = result.get("newsSentiment", "")
     reasons = result.get("reasons", [])
     result["signal"] = validate_signal(result.get("signal", "hold"), quote, news_sentiment, reasons)
