@@ -24,7 +24,7 @@ ZAI_URL = "https://api.z.ai/api/coding/paas/v4/chat/completions"
 ZAI_KEY = "136d90754ebd453999f4a4cc4547b638.LUXSKaxDozJgFHLQ"
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-OPENROUTER_KEY = os.environ.get("OPENROUTER_KEY", "")
+OPENROUTER_KEY = os.environ.get("OPENROUTER_KEY", "").strip()
 OPENROUTER_MODEL = "nex-agi/nex-n2-pro:free"
 
 ai_cache: dict[str, dict] = {}
@@ -567,7 +567,6 @@ def handle_analyze_signal(code):
         if "error" in or_result:
             result = keyword_signal(item["name"], code, quote, articles)
             result["_fallback"] = True
-            result["_or_error"] = or_result.get("error")
         else:
             result = or_result
     elif "error" in result:
