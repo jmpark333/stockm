@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 import mimetypes
+import os
 import re
 import time
 import urllib.error
@@ -20,6 +21,10 @@ MAX_HISTORY = 12
 
 ZAI_URL = "https://api.z.ai/api/coding/paas/v4"
 ZAI_KEY = "136d90754ebd999f4a4cc4547b638.LUXSKaxDozJgFHLQ"
+
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+OPENROUTER_KEY = os.environ.get("OPENROUTER_KEY", "")
+OPENROUTER_MODEL = "nex-agi/nex-n2-pro:free"
 
 ai_cache: dict[str, dict] = {}
 AI_CACHE_TTL = 300
@@ -374,6 +379,60 @@ def signal_from_zai(name, code, quote, articles):
                 "newsSentiment": parsed.get("newsSentiment", ""),
                 "_source": "zai",
             }
+    except urllib.error.HTTPError as exc:
+        if exc.code in (429, 401, 403):
+            return {"error": "rate_limited"}
+        return {"error": str(exc)}
+    except Exception as exc:
+        return {"error": str(exc)}
+    return {"error": "JSON 파싱 실패"}
+
+def signal_from_openrouter(name, code, quote, articles):
+    titles = "\n".join(a.get("title", "") for a in articles[:6])
+    prompt = (
+        f"주식 분석 요청:\n"
+        f"종목: {name} ({code})\n"
+        f"현재가: {quote.get('currentPrice')}원\n"
+        f"전일종가: {quote.get('previousClose')}원\n"
+        f"변동: {quote.get('change')}원 ({quote.get('changeRate')}%)\n"
+        f"고가: {quote.get('high')}원 / 저가: {quote.get('low')}원\n"
+        f"\n최근 뉴스:\n{titles}\n"
+        f"\nJSON만 응답하세요:\n"
+        f'{{"signal":"strong_buy|buy|hold|sell|strong_sell","confidence":0-100,"reasons":["이유1","이유2","이유3"],"newsSentiment":"한줄 요약"}}'
+    )
+    payload = {
+        "model": OPENROUTER_MODEL,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.3,
+        "max_tokens": 600,
+    }
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_KEY}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://stock-dashboard.vercel.app",
+        "X-Title": "Stock Dashboard",
+    }
+    req = urllib.request.Request(
+        OPENROUTER_URL,
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers=headers,
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            raw = resp.read().decode("utf-8")
+        result = json.loads(raw)
+        content = result["choices"][0]["message"]["content"]
+        match = re.search(r"\{.*\}", content, re.DOTALL)
+        if match:
+            parsed = json.loads(match.group())
+            return {
+                "signal": parsed.get("signal", "hold"),
+                "confidence": parsed.get("confidence", 0),
+                "reasons": parsed.get("reasons", []),
+                "newsSentiment": parsed.get("newsSentiment", ""),
+                "_source": "openrouter",
+            }
     except Exception as exc:
         return {"error": str(exc)}
     return {"error": "JSON 파싱 실패"}
@@ -435,7 +494,12 @@ def handle_analyze_signal(code):
     news = fetch_news(item["name"], code, limit=6)
     articles = news.get("articles", [])
     result = signal_from_zai(item["name"], code, quote, articles)
-    if "error" in result:
+    if result.get("error") == "rate_limited":
+        result = signal_from_openrouter(item["name"], code, quote, articles)
+        if "error" in result:
+            result = keyword_signal(item["name"], code, quote, articles)
+            result["_fallback"] = True
+    elif "error" in result:
         result = keyword_signal(item["name"], code, quote, articles)
         result["_fallback"] = True
     result["_ts"] = now

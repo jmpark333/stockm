@@ -23,6 +23,10 @@ MAX_HISTORY = 12
 ZAI_URL = "https://api.z.ai/api/coding/paas/v4/chat/completions"
 ZAI_KEY = "136d90754ebd453999f4a4cc4547b638.LUXSKaxDozJgFHLQ"
 
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+OPENROUTER_KEY = os.environ.get("OPENROUTER_KEY", "")
+OPENROUTER_MODEL = "nex-agi/nex-n2-pro:free"
+
 ai_cache: dict[str, dict] = {}
 AI_CACHE_TTL = 300
 
@@ -376,6 +380,76 @@ def signal_from_zai(name, code, quote, articles):
                 "newsSentiment": parsed.get("newsSentiment", ""),
                 "_source": "zai",
             }
+    except urllib.error.HTTPError as exc:
+        if exc.code in (429, 401, 403):
+            return {"error": "rate_limited"}
+        return {"error": str(exc)}
+    except Exception as exc:
+        return {"error": str(exc)}
+    return {"error": "JSON 파싱 실패"}
+
+def signal_from_openrouter(name, code, quote, articles):
+    titles = "\n".join(a.get("title", "") for a in articles[:6])
+    cp = quote.get("currentPrice")
+    pc = quote.get("previousClose")
+    chg = quote.get("change")
+    chg_rate = quote.get("changeRate")
+    
+    if cp and pc:
+        if cp > pc:
+            trend_desc = f"상승 중 (+{chg}원, +{chg_rate}%)"
+        elif cp < pc:
+            trend_desc = f"하락 중 ({chg}원, {chg_rate}%)"
+        else:
+            trend_desc = "보합 (변동 없음)"
+    else:
+        trend_desc = f"{chg}원 ({chg_rate}%)"
+    
+    prompt = (
+        f"주식 분석 요청:\n"
+        f"종목: {name} ({code})\n"
+        f"현재가: {cp}원\n"
+        f"전일종가: {pc}원\n"
+        f"현재 추세: {trend_desc}\n"
+        f"고가: {quote.get('high')}원 / 저가: {quote.get('low')}원\n"
+        f"\n최근 뉴스:\n{titles}\n"
+        f"\n중요: 현재가가 전일종가보다 높으면 상승, 낮으면 하락입니다.\n"
+        f"JSON만 응답하세요:\n"
+        f'{{"signal":"strong_buy|buy|hold|sell|strong_sell","confidence":0-100,"reasons":["이유1","이유2","이유3"],"newsSentiment":"한줄 요약"}}'
+    )
+    payload = {
+        "model": OPENROUTER_MODEL,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.3,
+        "max_tokens": 600,
+    }
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_KEY}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://stock-dashboard.vercel.app",
+        "X-Title": "Stock Dashboard",
+    }
+    req = urllib.request.Request(
+        OPENROUTER_URL,
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers=headers,
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            raw = resp.read().decode("utf-8")
+        result = json.loads(raw)
+        content = result["choices"][0]["message"]["content"]
+        match = re.search(r"\{.*\}", content, re.DOTALL)
+        if match:
+            parsed = json.loads(match.group())
+            return {
+                "signal": parsed.get("signal", "hold"),
+                "confidence": parsed.get("confidence", 0),
+                "reasons": parsed.get("reasons", []),
+                "newsSentiment": parsed.get("newsSentiment", ""),
+                "_source": "openrouter",
+            }
     except Exception as exc:
         return {"error": str(exc)}
     return {"error": "JSON 파싱 실패"}
@@ -486,16 +560,17 @@ def handle_analyze_signal(code):
     news = fetch_news(item["name"], code, limit=6)
     articles = news.get("articles", [])
     result = signal_from_zai(item["name"], code, quote, articles)
-    if "error" in result:
+    if result.get("error") == "rate_limited":
+        result = signal_from_openrouter(item["name"], code, quote, articles)
+        if "error" in result:
+            result = keyword_signal(item["name"], code, quote, articles)
+            result["_fallback"] = True
+    elif "error" in result:
         result = keyword_signal(item["name"], code, quote, articles)
         result["_fallback"] = True
-        news_sentiment = result.get("newsSentiment", "")
-        reasons = result.get("reasons", [])
-        result["signal"] = validate_signal(result.get("signal", "hold"), quote, news_sentiment, reasons)
-    else:
-        news_sentiment = result.get("newsSentiment", "")
-        reasons = result.get("reasons", [])
-        result["signal"] = validate_signal(result.get("signal", "hold"), quote, news_sentiment, reasons)
+    news_sentiment = result.get("newsSentiment", "")
+    reasons = result.get("reasons", [])
+    result["signal"] = validate_signal(result.get("signal", "hold"), quote, news_sentiment, reasons)
     result["news"] = articles
     result["stockName"] = item["name"]
     result["stockCode"] = code
