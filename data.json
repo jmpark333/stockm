@@ -5,14 +5,21 @@
     {
       "code": "000660",
       "name": "SK하이닉스",
-      "quantity": 10,
-      "avgPrice": 2025000
+      "quantity": 11,
+      "avgPrice": 2100272
+    },
+    {
+      "code": "005380",
+      "name": "현대차",
+      "quantity": 20,
+      "avgPrice": 595000
     }
   ],
   "watchlist": [
     { "code": "005930", "name": "삼성전자" },
     { "code": "005380", "name": "현대차" },
     { "code": "454910", "name": "두산로보틱스" },
-    { "code": "277810", "name": "레인보우로보틱스" }
+    { "code": "277810", "name": "레인보우로보틱스" },
+    { "code": "000660", "name": "SK하이닉스" }
   ]
 }

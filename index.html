@@ -145,6 +145,62 @@
     </div>
   </div>
 
+  <div id="calcModal" class="modal-overlay" hidden>
+    <div class="modal-box calc-modal-box">
+      <div class="modal-head">
+        <span id="calcModalTitle">물타기 계산기</span>
+        <button id="calcModalClose" class="icon-btn">&times;</button>
+      </div>
+      <div id="calcModalBody" class="modal-body calc-body">
+        <div class="calc-current">
+          <h3>📌 현재 보유 정보</h3>
+          <div class="calc-info-grid">
+            <div class="calc-info-item"><span>종목</span><strong id="calcName">-</strong></div>
+            <div class="calc-info-item"><span>보유수량</span><strong id="calcQty">-</strong></div>
+            <div class="calc-info-item"><span>평균단가</span><strong id="calcAvgPrice">-</strong></div>
+            <div class="calc-info-item"><span>현재가</span><strong id="calcCurPrice">-</strong></div>
+            <div class="calc-info-item"><span>현재 평가금</span><strong id="calcCurValue">-</strong></div>
+            <div class="calc-info-item"><span>현재 수익금</span><strong id="calcCurProfit">-</strong></div>
+          </div>
+        </div>
+        <div class="calc-input-section">
+          <div class="calc-tabs">
+            <button class="calc-tab active" data-type="buy">추가매수</button>
+            <button class="calc-tab" data-type="sell">매도</button>
+          </div>
+          <div class="calc-input-grid">
+            <div class="calc-field">
+              <label for="calcAddPrice" id="calcPriceLabel">추가 매수가</label>
+              <input type="number" id="calcAddPrice" placeholder="0" min="0" step="1">
+            </div>
+            <div class="calc-field">
+              <label for="calcAddQty" id="calcQtyLabel">추가 매수량</label>
+              <input type="number" id="calcAddQty" placeholder="0" min="0" step="1">
+            </div>
+          </div>
+        </div>
+        <div class="calc-result-section">
+          <h3>📊 계산 결과</h3>
+          <div class="calc-info-grid">
+            <div class="calc-info-item result"><span id="calcCostLabel">추가 투자금</span><strong id="calcAddCost">0원</strong></div>
+            <div class="calc-info-item result"><span id="calcAvgLabel">새 평균단가</span><strong id="calcNewAvg">-</strong></div>
+            <div class="calc-info-item result"><span id="calcQtyResultLabel">새 총 수량</span><strong id="calcNewQty">-</strong></div>
+            <div class="calc-info-item result"><span id="calcTotalCostLabel">새 총 투자금</span><strong id="calcNewTotalCost">-</strong></div>
+            <div class="calc-info-item result"><span id="calcValueLabel">새 평가금</span><strong id="calcNewValue">-</strong></div>
+            <div class="calc-info-item result"><span id="calcProfitLabel">새 수익금</span><strong id="calcNewProfit">-</strong></div>
+            <div class="calc-info-item result"><span id="calcDiffLabel">평균단가 변화</span><strong id="calcAvgDiff">-</strong></div>
+            <div class="calc-info-item result"><span id="calcDiffRateLabel">평균단가 변화율</span><strong id="calcAvgDiffRate">-</strong></div>
+          </div>
+          <div class="calc-diff-row" id="calcDiffRow" hidden>
+            <span id="calcResultLabel">수익금 변동</span>
+            <strong id="calcDiff">-</strong>
+          </div>
+        </div>
+        <p class="calc-note">* 추가매수 시 평균단가 변화로 인한 수익/손실을 계산합니다.</p>
+      </div>
+    </div>
+  </div>
+
   <script src="/app.js?v=7"></script>
 </body>
 </html>

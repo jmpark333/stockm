@@ -329,8 +329,219 @@ chartModalClose.addEventListener('click', closeChartModal);
 chartModal.addEventListener('click', e => {
   if (e.target === chartModal) closeChartModal();
 });
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') closeChartModal();
+
+/* Water-Average Calculator Modal */
+const calcModal = document.querySelector('#calcModal');
+const calcModalTitle = document.querySelector('#calcModalTitle');
+const calcModalClose = document.querySelector('#calcModalClose');
+const calcName = document.querySelector('#calcName');
+const calcQty = document.querySelector('#calcQty');
+const calcAvgPrice = document.querySelector('#calcAvgPrice');
+const calcCurPrice = document.querySelector('#calcCurPrice');
+const calcCurValue = document.querySelector('#calcCurValue');
+const calcCurProfit = document.querySelector('#calcCurProfit');
+const calcAddPrice = document.querySelector('#calcAddPrice');
+const calcAddQty = document.querySelector('#calcAddQty');
+const calcAddCost = document.querySelector('#calcAddCost');
+const calcNewAvg = document.querySelector('#calcNewAvg');
+const calcNewQty = document.querySelector('#calcNewQty');
+const calcNewTotalCost = document.querySelector('#calcNewTotalCost');
+const calcNewValue = document.querySelector('#calcNewValue');
+const calcNewProfit = document.querySelector('#calcNewProfit');
+const calcAvgDiff = document.querySelector('#calcAvgDiff');
+const calcAvgDiffRate = document.querySelector('#calcAvgDiffRate');
+
+let calcState = { avgPrice: 0, quantity: 0, currentPrice: 0, totalCost: 0, profit: 0 };
+let calcMode = 'buy';
+
+function updateCalcResult() {
+  const addP = parseFloat(calcAddPrice.value) || 0;
+  const addQ = parseInt(calcAddQty.value) || 0;
+  const diffRow = document.querySelector('#calcDiffRow');
+  const diffEl = document.querySelector('#calcDiff');
+
+  if (addP <= 0 || addQ <= 0) {
+    calcAddCost.textContent = '0원';
+    calcNewAvg.textContent = '-';
+    calcNewQty.textContent = '-';
+    calcNewTotalCost.textContent = '-';
+    calcNewValue.textContent = '-';
+    calcNewProfit.textContent = '-';
+    calcNewProfit.className = '';
+    calcAvgDiff.textContent = '-';
+    calcAvgDiff.className = '';
+    calcAvgDiffRate.textContent = '-';
+    calcAvgDiffRate.className = '';
+    diffRow.hidden = true;
+    return;
+  }
+
+  if (calcMode === 'sell') {
+    const sellQty = Math.min(addQ, calcState.quantity);
+    const addCost = 0;
+    const newQty = calcState.quantity - sellQty;
+    const newTotalCost = calcState.avgPrice * newQty;
+    const newValue = calcState.currentPrice * newQty;
+    const newProfit = (calcState.currentPrice - calcState.avgPrice) * newQty;
+    const avgDiff = 0;
+    const avgDiffRate = 0;
+    const sellProfit = (addP - calcState.avgPrice) * sellQty;
+
+    calcAddCost.textContent = formatSignedMoney(sellProfit);
+    calcAddCost.className = sellProfit >= 0 ? 'up' : 'down';
+    calcNewAvg.textContent = formatMoney(calcState.avgPrice);
+    calcNewQty.textContent = newQty.toLocaleString('ko-KR') + '주';
+    calcNewTotalCost.textContent = formatMoney(newTotalCost);
+    calcNewValue.textContent = formatMoney(newValue);
+    calcNewProfit.textContent = formatSignedMoney(newProfit);
+    calcNewProfit.className = newProfit >= 0 ? 'up' : 'down';
+    calcAvgDiff.textContent = formatSignedMoney(avgDiff);
+    calcAvgDiff.className = '';
+    calcAvgDiffRate.textContent = formatPercent(avgDiffRate);
+    calcAvgDiffRate.className = '';
+
+    diffRow.hidden = false;
+    diffEl.textContent = formatSignedMoney(sellProfit);
+    diffEl.className = sellProfit >= 0 ? 'up' : 'down';
+  } else {
+    const addCost = addP * addQ;
+    const newQty = calcState.quantity + addQ;
+    const newTotalCost = calcState.totalCost + addCost;
+    const newAvg = newQty > 0 ? newTotalCost / newQty : 0;
+    const newValue = calcState.currentPrice * newQty;
+    const newProfit = (calcState.currentPrice - newAvg) * newQty;
+    const avgDiff = calcState.avgPrice - newAvg;
+    const avgDiffRate = calcState.avgPrice > 0 ? (avgDiff / calcState.avgPrice) * 100 : 0;
+
+    calcAddCost.textContent = formatMoney(addCost);
+    calcNewAvg.textContent = formatMoney(newAvg);
+    calcNewQty.textContent = newQty.toLocaleString('ko-KR') + '주';
+    calcNewTotalCost.textContent = formatMoney(newTotalCost);
+    calcNewValue.textContent = formatMoney(newValue);
+    calcNewProfit.textContent = formatSignedMoney(newProfit);
+    calcNewProfit.className = newProfit >= 0 ? 'up' : 'down';
+    calcAvgDiff.textContent = formatSignedMoney(avgDiff);
+    calcAvgDiff.className = avgDiff >= 0 ? 'up' : 'down';
+    calcAvgDiffRate.textContent = formatPercent(avgDiffRate);
+    calcAvgDiffRate.className = avgDiff >= 0 ? 'up' : 'down';
+
+    diffRow.hidden = false;
+    const profitDiff = newProfit - calcState.profit;
+    diffEl.textContent = formatSignedMoney(profitDiff);
+    diffEl.className = profitDiff >= 0 ? 'up' : 'down';
+  }
+}
+
+function showCalcModal(name, avgPrice, quantity, currentPrice) {
+  const totalCost = avgPrice * quantity;
+  const currentValue = currentPrice * quantity;
+  const profit = currentValue - totalCost;
+
+  calcState = { avgPrice, quantity, currentPrice, totalCost, profit };
+
+  calcModalTitle.textContent = `물타기 계산기 — ${name}`;
+  calcName.textContent = name;
+  calcQty.textContent = quantity.toLocaleString('ko-KR') + '주';
+  calcAvgPrice.textContent = formatMoney(avgPrice);
+  calcCurPrice.textContent = formatMoney(currentPrice);
+  calcCurValue.textContent = formatMoney(currentValue);
+  calcCurProfit.textContent = formatSignedMoney(profit);
+  calcCurProfit.className = profit >= 0 ? 'up' : 'down';
+
+  calcAddPrice.value = '';
+  calcAddQty.value = '';
+  calcAddPrice.placeholder = formatMoney(currentPrice).replace('원', '');
+  calcAddCost.textContent = '0원';
+  calcNewAvg.textContent = '-';
+  calcNewQty.textContent = '-';
+  calcNewTotalCost.textContent = '-';
+  calcNewValue.textContent = '-';
+  calcNewProfit.textContent = '-';
+  calcNewProfit.className = '';
+  calcAvgDiff.textContent = '-';
+  calcAvgDiff.className = '';
+  calcAvgDiffRate.textContent = '-';
+  calcAvgDiffRate.className = '';
+
+  calcMode = 'buy';
+  document.querySelectorAll('.calc-tab').forEach(t => t.classList.remove('active'));
+  document.querySelector('.calc-tab[data-type="buy"]').classList.add('active');
+  document.querySelector('#calcPriceLabel').textContent = '추가 매수가';
+  document.querySelector('#calcQtyLabel').textContent = '추가 매수량';
+  document.querySelector('#calcCostLabel').textContent = '추가 투자금';
+  document.querySelector('#calcAvgLabel').textContent = '새 평균단가';
+  document.querySelector('#calcQtyResultLabel').textContent = '새 총 수량';
+  document.querySelector('#calcTotalCostLabel').textContent = '새 총 투자금';
+  document.querySelector('#calcValueLabel').textContent = '새 평가금';
+  document.querySelector('#calcProfitLabel').textContent = '새 수익금';
+  document.querySelector('#calcDiffLabel').textContent = '평균단가 변화';
+  document.querySelector('#calcDiffRateLabel').textContent = '평균단가 변화율';
+  document.querySelector('#calcResultLabel').textContent = '수익금 변동';
+
+  calcModal.hidden = false;
+  calcAddPrice.focus();
+}
+
+function closeCalcModal() {
+  calcModal.hidden = true;
+}
+
+calcModalClose.addEventListener('click', closeCalcModal);
+calcModal.addEventListener('click', e => {
+  if (e.target === calcModal) closeCalcModal();
+});
+
+calcAddPrice.addEventListener('input', updateCalcResult);
+calcAddQty.addEventListener('input', updateCalcResult);
+
+document.querySelectorAll('.calc-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.calc-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    calcMode = tab.dataset.type;
+    const priceLabel = document.querySelector('#calcPriceLabel');
+    const qtyLabel = document.querySelector('#calcQtyLabel');
+    const costLabel = document.querySelector('#calcCostLabel');
+    const avgLabel = document.querySelector('#calcAvgLabel');
+    const qtyResultLabel = document.querySelector('#calcQtyResultLabel');
+    const totalCostLabel = document.querySelector('#calcTotalCostLabel');
+    const valueLabel = document.querySelector('#calcValueLabel');
+    const profitLabel = document.querySelector('#calcProfitLabel');
+    const diffLabel = document.querySelector('#calcDiffLabel');
+    const diffRateLabel = document.querySelector('#calcDiffRateLabel');
+    const resultLabel = document.querySelector('#calcResultLabel');
+
+    if (calcMode === 'sell') {
+      priceLabel.textContent = '매도가';
+      qtyLabel.textContent = '매도량';
+      costLabel.textContent = '매도 수익';
+      avgLabel.textContent = '평균단가 (변경없음)';
+      qtyResultLabel.textContent = '매도 후 수량';
+      totalCostLabel.textContent = '매도 후 투자금';
+      valueLabel.textContent = '매도 후 평가금';
+      profitLabel.textContent = '매도 후 수익금';
+      diffLabel.textContent = '평균단가 변화';
+      diffRateLabel.textContent = '평균단가 변화율';
+      resultLabel.textContent = '매도 수익금';
+      calcAddPrice.placeholder = formatMoney(calcState.currentPrice).replace('원', '');
+      calcAddQty.placeholder = calcState.quantity + '주';
+    } else {
+      priceLabel.textContent = '추가 매수가';
+      qtyLabel.textContent = '추가 매수량';
+      costLabel.textContent = '추가 투자금';
+      avgLabel.textContent = '새 평균단가';
+      qtyResultLabel.textContent = '새 총 수량';
+      totalCostLabel.textContent = '새 총 투자금';
+      valueLabel.textContent = '새 평가금';
+      profitLabel.textContent = '새 수익금';
+      diffLabel.textContent = '평균단가 변화';
+      diffRateLabel.textContent = '평균단가 변화율';
+      resultLabel.textContent = '수익금 변동';
+      calcAddPrice.placeholder = formatMoney(calcState.currentPrice).replace('원', '');
+      calcAddQty.placeholder = '';
+    }
+    updateCalcResult();
+  });
 });
 
 modalClose.addEventListener('click', closeSignalModal);
@@ -338,7 +549,11 @@ signalModal.addEventListener('click', e => {
   if (e.target === signalModal) closeSignalModal();
 });
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') closeSignalModal();
+  if (e.key === 'Escape') {
+    closeChartModal();
+    closeCalcModal();
+    closeSignalModal();
+  }
 });
 
 /* Attach signal click handlers */
@@ -448,6 +663,19 @@ function attachChartHandlers(container) {
   });
 }
 
+function attachCalcHandlers(container) {
+  container.querySelectorAll('.avg-price-cell').forEach(el => {
+    el.style.cursor = 'pointer';
+    el.addEventListener('click', () => {
+      const name = el.dataset.name;
+      const avgPrice = parseFloat(el.dataset.avg) || 0;
+      const quantity = parseInt(el.dataset.qty) || 0;
+      const currentPrice = parseFloat(el.dataset.price) || 0;
+      showCalcModal(name, avgPrice, quantity, currentPrice);
+    });
+  });
+}
+
 function renderHoldings(rows) {
   holdingsBody.innerHTML = '';
   rows.forEach(row => {
@@ -464,7 +692,7 @@ function renderHoldings(rows) {
       <td>${money.format(row.quantity)}주</td>
       <td class="clickable" data-code="${row.code}" data-name="${row.name}">${formatMoney(row.currentPrice)}</td>
       <td class="${row.change > 0 ? 'up' : row.change < 0 ? 'down' : 'neutral'}">${formatSignedMoney(row.change)} / ${formatPercent(row.changeRate)}</td>
-      <td>${formatMoney(row.avgPrice)}</td>
+      <td class="avg-price-cell" data-code="${row.code}" data-name="${row.name}" data-avg="${row.avgPrice}" data-qty="${row.quantity}" data-price="${row.currentPrice}">${formatMoney(row.avgPrice)}</td>
       <td>${formatMoney(row.currentValue)}</td>
       <td class="${row.profit >= 0 ? 'up' : 'down'}">${formatPercent(row.profitRate)}</td>
       <td class="${row.profit >= 0 ? 'up' : 'down'}">${formatSignedMoney(row.profit)}</td>
@@ -476,6 +704,7 @@ function renderHoldings(rows) {
   attachSignalHandlers(holdingsBody);
   attachAIHandlers(holdingsBody);
   attachChartHandlers(holdingsBody);
+  attachCalcHandlers(holdingsBody);
 }
 
 function renderWatchlist(rows) {
