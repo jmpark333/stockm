@@ -1008,6 +1008,30 @@ td {
   line-height: 1;
 }
 
+.chat-header-btns {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.chat-sess-btn {
+  background: rgba(37, 99, 235, 0.15);
+  border: 1px solid rgba(37, 99, 235, 0.3);
+  border-radius: 8px;
+  padding: 4px 10px;
+  color: #60a5fa;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+.chat-sess-btn:hover {
+  background: rgba(37, 99, 235, 0.25);
+  color: #93c5fd;
+}
+
 .chat-messages {
   flex: 1;
   overflow-y: auto;
@@ -1231,6 +1255,10 @@ td {
   .chat-header .icon-btn {
     font-size: 20px;
     padding: 2px 4px;
+  }
+  .chat-sess-btn {
+    padding: 4px 8px;
+    font-size: 11px;
   }
   .chat-header-info strong {
     font-size: 13px;

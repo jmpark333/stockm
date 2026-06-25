@@ -208,9 +208,12 @@
     <div class="chat-header">
       <div class="chat-header-info">
         <strong>Stock Manager AI</strong>
-        <span class="chat-status">포트폴리오 분석중</span>
+        <span id="chatSessionLabel" class="chat-status">오늘</span>
       </div>
-      <button id="chatClose" class="icon-btn">&times;</button>
+      <div class="chat-header-btns">
+        <button id="chatSessionsBtn" class="chat-sess-btn" title="대화목록">목록</button>
+        <button id="chatClose" class="icon-btn">&times;</button>
+      </div>
     </div>
     <div id="chatMessages" class="chat-messages">
       <div class="chat-welcome">
