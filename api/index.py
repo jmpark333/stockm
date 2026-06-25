@@ -1003,7 +1003,7 @@ def call_llm(messages):
     return {"reply": "죄송합니다. 현재 AI 서비스에 일시적인 문제가 있습니다. 잠시 후 다시 시도해 주세요.", "_source": "fallback"}
 
 MCP_SEARCH_URL = "https://api.z.ai/api/mcp/web_search_prime/mcp"
-BRAVE_API_KEY = "BSA3o4oVTmgJh4ECkKNYtHfKDfYh0YF"
+BRAVE_API_KEY = os.environ.get("BRAVE_API_KEY", "").strip()
 
 def is_irrelevant_result(url, text):
     """Filter out obviously irrelevant results."""
