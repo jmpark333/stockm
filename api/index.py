@@ -18,36 +18,39 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_FILE = BASE_DIR / "data.json"
 CHAT_HISTORY_FILE = BASE_DIR / "chat_history.json"
 
-# Vercel KV (uses REST API when env vars are set)
-KV_URL = os.environ.get("KV_REST_API_URL", "")
-KV_TOKEN = os.environ.get("KV_REST_API_TOKEN", "")
+# Upstash Redis (REST API)
+REDIS_URL = os.environ.get("UPSTASH_REDIS_REST_URL", "")
+REDIS_TOKEN = os.environ.get("UPSTASH_REDIS_REST_TOKEN", "")
 
 
 def kv_get(key):
-    if not KV_URL or not KV_TOKEN:
+    if not REDIS_URL or not REDIS_TOKEN:
         return None
     try:
-        url = f"{KV_URL}/get?key={urllib.parse.quote(key)}"
+        url = f"{REDIS_URL}/get/{urllib.parse.quote(key)}"
         req = urllib.request.Request(url, headers={
-            "Authorization": f"Bearer {KV_TOKEN}",
+            "Authorization": f"Bearer {REDIS_TOKEN}",
         })
         with urllib.request.urlopen(req, timeout=5) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            return data.get("result")
+            result = json.loads(resp.read().decode("utf-8")).get("result")
+            if result is None:
+                return None
+            return json.loads(result)
     except Exception:
         return None
 
 
 def kv_set(key, value):
-    if not KV_URL or not KV_TOKEN:
+    if not REDIS_URL or not REDIS_TOKEN:
         return False
     try:
-        body = json.dumps({"key": key, "value": value}, ensure_ascii=False).encode("utf-8")
+        body = json.dumps(value, ensure_ascii=False).encode("utf-8")
+        url = f"{REDIS_URL}/set/{urllib.parse.quote(key)}"
         req = urllib.request.Request(
-            f"{KV_URL}/set",
+            url,
             data=body,
             headers={
-                "Authorization": f"Bearer {KV_TOKEN}",
+                "Authorization": f"Bearer {REDIS_TOKEN}",
                 "Content-Type": "application/json",
             },
             method="POST",
@@ -765,8 +768,8 @@ def load_chat_sessions():
 def save_chat_sessions(sessions_data):
     global _chat_sessions_cache
     _chat_sessions_cache = sessions_data
-    # Try Vercel KV first
-    if KV_URL and KV_TOKEN:
+    # Try Upstash Redis first
+    if REDIS_URL and REDIS_TOKEN:
         kv_set("chat_sessions", sessions_data)
     # Also write to filesystem (works locally, may fail on Vercel)
     try:
