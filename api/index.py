@@ -827,21 +827,75 @@ def call_llm(messages):
 
 MCP_SEARCH_URL = "https://api.z.ai/api/mcp/web_search_prime/mcp"
 
+def fetch_vi_news():
+    """네이버 검색에서 오늘 VI(변동성완화장치) 발동 뉴스를 가져옵니다."""
+    try:
+        from bs4 import BeautifulSoup
+        url = "https://search.naver.com/search.naver?where=news&query=VI+%EB%B3%80%EB%8F%99%EC%84%B1%EC%99%84%ED%99%94%EC%9E%A5%EC%B9%98+%EB%B0%9C%EB%8F%99&sm=tab_opt&sort=0"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            html = resp.read()
+        soup = BeautifulSoup(html, "lxml")
+        news_items = soup.select("div.news_wrap.api_ani_send")
+        results = []
+        for item in news_items[:5]:
+            title_tag = item.select_one("a.news_tit")
+            if not title_tag:
+                continue
+            title = title_tag.get("title", "") or title_tag.text.strip()
+            link = title_tag.get("href", "")
+            desc_tag = item.select_one("div.news_dsc")
+            desc = desc_tag.text.strip() if desc_tag else ""
+            if title and link:
+                results.append({"text": f"[VI 뉴스] {title} {desc[:300]}", "url": link})
+        if results:
+            print(f"[fetch_vi_news] {len(results)} news items")
+            return results
+    except Exception as e:
+        print(f"[fetch_vi_news] error: {e}")
+    return []
+
 def search_web_ddg(query):
     try:
         from duckduckgo_search import DDGS
-        sq = f"한국 주식 {query[:180]}"
-        with DDGS() as ddgs:
-            raw = list(ddgs.text(sq, max_results=5))
-            return [{"text": r.get("body", "")[:2000], "url": r.get("href", "")} for r in raw if r.get("body")]
+        queries = [
+            f"한국 주식 {query[:150]}",
+            f"VI 변동성완화장치 발동 종목 {query[:100]}",
+        ]
+        seen_urls = set()
+        results = []
+        for sq in queries:
+            try:
+                with DDGS() as ddgs:
+                    raw = list(ddgs.text(sq, max_results=5))
+                    for r in raw:
+                        body = r.get("body", "")
+                        url = r.get("href", "")
+                        if body and url not in seen_urls:
+                            seen_urls.add(url)
+                            results.append({"text": body[:2000], "url": url})
+            except Exception:
+                continue
+        return results[:8]
     except Exception as e:
         print(f"[search_web] DuckDuckGo error: {e}")
         return []
 
-def search_web(query):
-    """Z.AI MCP → DuckDuckGo fallback 순서로 웹 검색"""
+def search_web(query, fetch_vi=True):
+    """Z.AI MCP → DuckDuckGo + 네이버 VI 뉴스 병합"""
     if not query or not query.strip():
         return []
+    all_results = []
+    seen_urls = set()
+
+    def add_results(results):
+        for r in results:
+            url = r.get("url", "")
+            if url and url not in seen_urls:
+                seen_urls.add(url)
+                all_results.append(r)
+
+    # 1) Z.AI MCP
     headers = {
         "Authorization": f"Bearer {ZAI_KEY}",
         "Content-Type": "application/json",
@@ -875,7 +929,6 @@ def search_web(query):
             raw = resp.read().decode("utf-8")
         data = json.loads(raw)
         items = data if isinstance(data, list) else [data]
-        results = []
         for item in items:
             content_list = None
             if isinstance(item, dict) and "result" in item:
@@ -893,15 +946,28 @@ def search_web(query):
                         resource = c.get("resource")
                         if isinstance(resource, dict):
                             url = resource.get("uri", url)
-                        results.append({"text": text[:2000], "url": url})
-        if results:
-            print(f"[search_web] Z.AI MCP: {len(results)} results")
-            return results[:5]
-        print(f"[search_web] Z.AI MCP: no results")
+                        if text and url:
+                            add_results([{"text": text[:2000], "url": url}])
+        print(f"[search_web] Z.AI MCP: {len(all_results)} results so far")
     except Exception as e:
         print(f"[search_web] Z.AI MCP error: {e}")
-    print(f"[search_web] falling back to DuckDuckGo...")
-    return search_web_ddg(query)
+
+    # 2) DuckDuckGo fallback (always run to supplement)
+    try:
+        ddg_results = search_web_ddg(query)
+        add_results(ddg_results)
+    except Exception as e:
+        print(f"[search_web] DuckDuckGo error: {e}")
+
+    # 3) VI 뉴스 (if query mentions VI or volatility)
+    if fetch_vi and ("vi" in query.lower() or "변동성" in query or "발동" in query):
+        try:
+            vi_news = fetch_vi_news()
+            add_results(vi_news)
+        except Exception as e:
+            print(f"[search_web] VI news error: {e}")
+
+    return all_results[:8]
 
 def chat_with_ai(user_message, history, portfolio, news, search_results=None):
     context = build_chat_context(portfolio, news)
@@ -921,9 +987,10 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
         "5. 한국어로 답변하세요.\n"
         "6. 답변은 800자 이내로 간결하게 작성하세요.\n"
         "7. 필요시 포트폴리오 내 특정 종목에 대한 구체적인 분석을 제공하세요.\n"
-        "8. ⚠️ 절대 상상하여 답변하지 마세요. 아래 검색 결과 파일에서 얻은 정보만 사용하세요. "
+        "8. ⚠️ 절대 상상하여 답변하지 마세요. 제공된 대화 내역과 아래 웹 검색 결과를 모두 활용하여 답변하세요. "
+        "대화 내역(history)에 이전에 나눈 내용이 있다면 그 정보도 적극 활용하세요. "
         "답변에는 반드시 출처 번호 [1][2]를 표시하고, 답변 하단에 📚 출처: 섹션을 추가하세요. "
-        "검색 결과에 충분한 정보가 없으면 솔직히 '검색 결과로는 알 수 없습니다'라고 답변하세요."
+        "검색 결과와 대화 내역 모두에 충분한 정보가 없으면 솔직히 '알 수 없습니다'라고 답변하세요."
     )
     messages = [{"role": "system", "content": system_prompt}]
     sliced = history[-CHAT_MSG_LIMIT:] if history else []
