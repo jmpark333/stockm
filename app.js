@@ -1109,7 +1109,7 @@ function showChatSessions() {
               chatViewingSession = null;
               switchToCurrentSession();
             }
-            renderSessionList();
+            showChatSessions();
           } catch (err) {
             console.error('세션 삭제 실패:', err);
             alert('삭제 중 오류가 발생했습니다.');
