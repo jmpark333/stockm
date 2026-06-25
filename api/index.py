@@ -778,6 +778,8 @@ def load_chat_sessions():
 def save_chat_sessions(sessions_data):
     global _chat_sessions_cache
     _chat_sessions_cache = sessions_data
+    if not isinstance(sessions_data, dict) or "sessions" not in sessions_data:
+        return
     # Try Upstash Redis first
     if REDIS_URL and REDIS_TOKEN:
         kv_set("chat_sessions", sessions_data)
@@ -805,6 +807,8 @@ def get_or_create_session(timestamp_ms=None):
             last_ts = last_msg.get("timestamp", 0)
             if timestamp_ms - last_ts < SESSION_TIMEOUT_MS:
                 return current_id, data
+        elif sess.get("createdAt", 0) and timestamp_ms - sess["createdAt"] < SESSION_TIMEOUT_MS:
+            return current_id, data
     # Create new session
     sid = f"sess_{timestamp_ms}"
     data.setdefault("sessions", {})[sid] = {
