@@ -915,6 +915,7 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
     messages.append({"role": "user", "content": user_message})
     result = call_llm(messages)
     reply = result["reply"]
+    reply = re.sub(r'\n*📚\s*출처[:：][\s\S]*$', '', reply).rstrip()
     h_refs = re.findall(r'\[H(\d+)\]', reply) if previous else []
     has_urls = search_results and any(r.get("url") for r in search_results)
     if has_urls or h_refs:
