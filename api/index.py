@@ -1097,10 +1097,29 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
     context = build_chat_context(portfolio, news)
     if search_results is None:
         search_results = search_web(user_message)
+    now = datetime.now()
+    hour = now.hour
+    minute = now.minute
+    weekday = now.weekday()  # 0=Mon, 6=Sun
+    is_weekday = weekday < 5
+    is_market_hours = is_weekday and ((9 <= hour < 15) or (hour == 15 and minute == 0))
+    is_lunch = is_weekday and hour == 12
+    market_status = (
+        "장 운영 중 (09:00~15:30, 점심시간 12:00~13:00 포함)" if is_market_hours
+        else "장 마감" if is_weekday and hour >= 16
+        else "장 시작 전" if is_weekday and hour < 9
+        else "주말/공휴일"
+    )
+
     system_prompt = (
         "당신은 전문 주식 투자 어드바이저 'Stock Manager AI'입니다. "
         "사용자의 포트폴리오 정보와 시장 데이터를 바탕으로 투자 조언을 제공합니다.\n\n"
-        f"📅 오늘 날짜: {datetime.now().strftime('%Y년 %m월 %d일')}\n\n"
+        f"📅 오늘 날짜: {now.strftime('%Y년 %m월 %d일')} ({['월','화','수','목','금','토','일'][weekday]}요일)\n"
+        f"⏰ 현재 시간: {now.strftime('%H:%M')} | 장 상태: {market_status}\n\n"
+        "⚠️ 중요: 장 운영시간과 현재 시간을 반드시 확인하고 답변하세요. "
+        "점심시간(12:00~13:00)에는 실시간 거래가 일시 정지될 수 있습니다. "
+        "장 마감 후에는 당일 종가 기준으로 답변하세요. "
+        "현재가가 변동 없으면 '보합' 또는 '장 마감으로 현재가 고정'이라고 명시하세요.\n\n"
         "【 현재 포트폴리오 상태 】\n"
         f"{context}\n"
         "【 대시보드 지표 산출 방식 】\n"

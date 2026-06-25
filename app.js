@@ -1249,6 +1249,7 @@ function restoreChatState() {
 
 async function sendChatMessage(text) {
   if (!text.trim()) return;
+  if (chatSend.disabled) return;
 
   // If viewing archived session, switch to current first
   if (chatViewingSession) {
@@ -1256,10 +1257,13 @@ async function sendChatMessage(text) {
     chatHistory = [];
   }
 
-  addChatMessage('user', text.trim());
-  chatInput.value = '';
   chatSend.disabled = true;
+  chatInput.value = '';
 
+  // Add user message locally
+  chatHistory.push({ role: 'user', content: text.trim(), timestamp: Date.now() });
+  syncLocalStorage();
+  renderChatMessages();
   showTypingIndicator();
 
   try {
@@ -1295,11 +1299,20 @@ async function sendChatMessage(text) {
                 updateTypingPhase(data.phase);
               } else if (currentEvent === 'result') {
                 hideTypingIndicator();
-                if (data.history) {
-                  replaceHistory(data.history);
+                if (data.history && data.history.length > 0) {
+                  // Use server history as source of truth (no local add needed)
+                  chatHistory = data.history;
+                  syncLocalStorage();
+                  renderChatMessages();
                   loadChatSessions();
                 } else if (data.reply) {
-                  addChatMessage('assistant', data.reply);
+                  // Fallback: add reply only if not already in history
+                  const lastMsg = chatHistory[chatHistory.length - 1];
+                  if (!lastMsg || lastMsg.role !== 'assistant' || lastMsg.content !== data.reply) {
+                    chatHistory.push({ role: 'assistant', content: data.reply, timestamp: Date.now() });
+                    syncLocalStorage();
+                    renderChatMessages();
+                  }
                 }
               }
             } catch (e) {}
