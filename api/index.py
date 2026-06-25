@@ -1003,23 +1003,41 @@ def call_llm(messages):
     return {"reply": "죄송합니다. 현재 AI 서비스에 일시적인 문제가 있습니다. 잠시 후 다시 시도해 주세요.", "_source": "fallback"}
 
 MCP_SEARCH_URL = "https://api.z.ai/api/mcp/web_search_prime/mcp"
+BRAVE_API_KEY = "BSA3o4oVTmgJh4ECkKNYtHfKDfYh0YF"
 
 def is_irrelevant_result(url, text):
-    """Filter out obviously irrelevant results like generic Wikipedia."""
+    """Filter out obviously irrelevant results."""
     url_lower = url.lower()
+    text_lower = text.lower()
+    # Irrelevant domains (messaging, social, generic)
+    irrelevant_domains = [
+        "whatsapp.com", "wa.me", "web.whatsapp.com",
+        "facebook.com", "fb.com", "instagram.com", "twitter.com", "x.com",
+        "tiktok.com", "youtube.com", "netflix.com",
+        "apple.com", "microsoft.com", "google.com/support",
+        "amazon.com", "ebay.com",
+    ]
+    for domain in irrelevant_domains:
+        if domain in url_lower:
+            return True
     # Skip generic encyclopedia/dictionary pages unrelated to stocks
     if "wikipedia.org" in url_lower:
-        if not any(kw in url_lower + text.lower() for kw in ["stock", "주식", "kospi", "kosdaq", "vi", "volatility",
-                                                              "finance", "market", "invest", "trading", "배당",
-                                                              "상장", "공매도", "액면", "변동", "호재", "악재"]):
+        stock_kw = ["stock", "주식", "kospi", "kosdaq", "vi", "volatility",
+                     "finance", "market", "invest", "trading", "배당",
+                     "상장", "공매도", "액면", "변동", "호재", "악재"]
+        if not any(kw in url_lower + text_lower for kw in stock_kw):
             return True
+    # Skip results with no Korean/financial content
+    if text and len(text) < 20:
+        return True
     return False
 
 def search_web_ddg(query):
     try:
         from duckduckgo_search import DDGS
         queries = [
-            query[:180],
+            f"{query} 한국 주식 2026",
+            f"{query} 증시 전망",
             f"주식 {query[:150]}",
         ]
         seen_urls = set()
@@ -1044,8 +1062,50 @@ def search_web_ddg(query):
         print(f"[search_web] DuckDuckGo error: {e}")
         return []
 
+def search_web_brave(query):
+    """Brave Search API — news + web 검색"""
+    results = []
+    seen_urls = set()
+    headers = {
+        "X-Subscription-Token": BRAVE_API_KEY,
+        "Accept": "application/json",
+    }
+    # 1) News search (최근 7일)
+    try:
+        encoded = urllib.parse.quote(query[:200])
+        url = f"https://api.search.brave.com/res/v1/news/search?q={encoded}&freshness=pw&count=5"
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        for r in data.get("results", []):
+            r_url = r.get("url", "")
+            if r_url and r_url not in seen_urls and not is_irrelevant_result(r_url, r.get("title", "")):
+                seen_urls.add(r_url)
+                desc = r.get("description", "") or r.get("title", "")
+                results.append({"text": desc[:2000], "url": r_url})
+        print(f"[search_web] Brave news: {len(results)} results")
+    except Exception as e:
+        print(f"[search_web] Brave news error: {e}")
+    # 2) Web search (최근 7일)
+    try:
+        encoded = urllib.parse.quote(query[:200])
+        url = f"https://api.search.brave.com/res/v1/web/search?q={encoded}&freshness=pw&count=5"
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        for r in data.get("web", {}).get("results", []):
+            r_url = r.get("url", "")
+            if r_url and r_url not in seen_urls and not is_irrelevant_result(r_url, r.get("description", "")):
+                seen_urls.add(r_url)
+                desc = r.get("description", "") or r.get("title", "")
+                results.append({"text": desc[:2000], "url": r_url})
+        print(f"[search_web] Brave web: {len(results)} results (total)")
+    except Exception as e:
+        print(f"[search_web] Brave web error: {e}")
+    return results[:8]
+
 def search_web(query):
-    """Z.AI MCP + DuckDuckGo — topic-agnostic search merger"""
+    """Brave Search + DuckDuckGo 폴백"""
     if not query or not query.strip():
         return []
     all_results = []
@@ -1058,69 +1118,20 @@ def search_web(query):
                 seen_urls.add(url)
                 all_results.append(r)
 
-    # 1) Z.AI MCP
-    headers = {
-        "Authorization": f"Bearer {ZAI_KEY}",
-        "Content-Type": "application/json",
-    }
-    batch = [
-        {
-            "jsonrpc": "2.0", "id": "1", "method": "initialize",
-            "params": {
-                "protocolVersion": "2024-11-05",
-                "capabilities": {},
-                "clientInfo": {"name": "stock-dashboard", "version": "1.0.0"},
-            },
-        },
-        {"jsonrpc": "2.0", "method": "notifications/initialized"},
-        {
-            "jsonrpc": "2.0", "id": "2", "method": "tools/call",
-            "params": {
-                "name": "webSearchPrime",
-                "arguments": {"search_query": query[:200]},
-            },
-        },
-    ]
+    # 1) Brave Search (news + web)
     try:
-        req = urllib.request.Request(
-            MCP_SEARCH_URL,
-            data=json.dumps(batch, ensure_ascii=False).encode("utf-8"),
-            headers=headers,
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            raw = resp.read().decode("utf-8")
-        data = json.loads(raw)
-        items = data if isinstance(data, list) else [data]
-        for item in items:
-            content_list = None
-            if isinstance(item, dict) and "result" in item:
-                content_list = item["result"].get("content", [])
-            elif isinstance(item, dict) and "content" in item:
-                content_list = item["content"]
-            if content_list:
-                for c in content_list:
-                    if c.get("type") == "text":
-                        text = c.get("text", "")
-                        url = ""
-                        annotations = c.get("annotations")
-                        if isinstance(annotations, dict):
-                            url = annotations.get("source", "")
-                        resource = c.get("resource")
-                        if isinstance(resource, dict):
-                            url = resource.get("uri", url)
-                        if text and url:
-                            add_results([{"text": text[:2000], "url": url}])
-        print(f"[search_web] Z.AI MCP: {len(all_results)} results")
+        brave_results = search_web_brave(query)
+        add_results(brave_results)
     except Exception as e:
-        print(f"[search_web] Z.AI MCP error: {e}")
+        print(f"[search_web] Brave search error: {e}")
 
-    # 2) DuckDuckGo
-    try:
-        ddg_results = search_web_ddg(query)
-        add_results(ddg_results)
-    except Exception as e:
-        print(f"[search_web] DuckDuckGo error: {e}")
+    # 2) DuckDuckGo 폴백 (Brave 결과가 부족할 때)
+    if len(all_results) < 3:
+        try:
+            ddg_results = search_web_ddg(query)
+            add_results(ddg_results)
+        except Exception as e:
+            print(f"[search_web] DuckDuckGo error: {e}")
 
     return all_results[:8]
 
