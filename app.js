@@ -1031,6 +1031,7 @@ function updateSessionLabel() {
 function showChatSessions() {
   const msgs = chatMessages;
   msgs.querySelectorAll('.chat-msg').forEach(el => el.remove());
+  msgs.querySelectorAll('.chat-session-list').forEach(el => el.remove());
   const welcome = msgs.querySelector('.chat-welcome');
   if (welcome) welcome.remove();
 
@@ -1076,18 +1077,6 @@ function showChatSessions() {
         badge.textContent = '현재';
         dateRow.appendChild(badge);
       }
-      item.appendChild(dateRow);
-
-      const preview = document.createElement('div');
-      preview.className = 'sess-preview';
-      preview.textContent = sess.preview || '(메시지 없음)';
-      item.appendChild(preview);
-
-      const meta = document.createElement('div');
-      meta.className = 'sess-meta';
-      meta.textContent = `메시지 ${sess.messageCount}개`;
-      item.appendChild(meta);
-
       if (!sess.isCurrent) {
         const delBtn = document.createElement('button');
         delBtn.className = 'sess-delete-btn';
@@ -1115,8 +1104,19 @@ function showChatSessions() {
             alert('삭제 중 오류가 발생했습니다.');
           }
         });
-        item.appendChild(delBtn);
+        dateRow.appendChild(delBtn);
       }
+      item.appendChild(dateRow);
+
+      const preview = document.createElement('div');
+      preview.className = 'sess-preview';
+      preview.textContent = sess.preview || '(메시지 없음)';
+      item.appendChild(preview);
+
+      const meta = document.createElement('div');
+      meta.className = 'sess-meta';
+      meta.textContent = `메시지 ${sess.messageCount}개`;
+      item.appendChild(meta);
 
       item.addEventListener('click', () => {
         if (sess.isCurrent) {

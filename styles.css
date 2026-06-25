@@ -1254,6 +1254,7 @@ td {
   opacity: 0;
   transition: opacity 0.15s, color 0.15s, background 0.15s;
   flex-shrink: 0;
+  margin-left: auto;
 }
 
 .chat-session-item:hover .sess-delete-btn {
@@ -1263,6 +1264,12 @@ td {
 .sess-delete-btn:hover {
   color: #ef4444;
   background: rgba(239, 68, 68, 0.1);
+}
+
+@media (hover: none) {
+  .sess-delete-btn {
+    opacity: 1;
+  }
 }
 
 @media (max-width: 480px) {
