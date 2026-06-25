@@ -952,6 +952,7 @@ const chatMessages = document.querySelector('#chatMessages');
 const chatInput = document.querySelector('#chatInput');
 const chatSend = document.querySelector('#chatSend');
 const chatSessionsBtn = document.querySelector('#chatSessionsBtn');
+const chatNewBtn = document.querySelector('#chatNewBtn');
 const chatSessionLabel = document.querySelector('#chatSessionLabel');
 const CHAT_STORAGE_KEY = 'stock_chat_history';
 
@@ -1335,6 +1336,19 @@ chatClose.addEventListener('click', () => toggleChat(false));
 
 chatSessionsBtn.addEventListener('click', () => {
   loadChatSessions().then(() => showChatSessions());
+});
+
+chatNewBtn.addEventListener('click', async () => {
+  try {
+    const res = await fetch('/api/chat/new-session', { method: 'POST', cache: 'no-store' });
+    if (res.ok) {
+      chatHistory = [];
+      chatViewingSession = null;
+      syncLocalStorage();
+      renderChatMessages();
+      loadChatSessions();
+    }
+  } catch (e) {}
 });
 
 chatSend.addEventListener('click', () => {

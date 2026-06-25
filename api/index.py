@@ -1225,6 +1225,28 @@ def api_chat_history():
         headers={"Cache-Control": "no-store", "Access-Control-Allow-Origin": "*"},
     )
 
+@app.route("/api/chat/new-session", methods=["POST"])
+def api_new_session():
+    global _chat_sessions_cache
+    _chat_sessions_cache = None
+    now_ms = int(time.time() * 1000)
+    sid = f"sess_{now_ms}"
+    now_dt = datetime.fromtimestamp(now_ms / 1000)
+    data = load_chat_sessions()
+    data["sessions"][sid] = {
+        "id": sid, "createdAt": now_ms,
+        "date": now_dt.strftime("%Y-%m-%d"),
+        "time": now_dt.strftime("%H:%M"),
+        "messages": [],
+    }
+    data["current"] = sid
+    save_chat_sessions(data)
+    return Response(
+        json.dumps({"sessionId": sid}, ensure_ascii=False),
+        mimetype="application/json",
+        headers={"Cache-Control": "no-store", "Access-Control-Allow-Origin": "*"},
+    )
+
 @app.route("/api/chat/sessions")
 def api_chat_sessions():
     return Response(
