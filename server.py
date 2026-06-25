@@ -4,7 +4,7 @@ import mimetypes
 import os
 import re
 import time
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -50,13 +50,23 @@ def fetch_previous_close(code):
         pass
     return None
 
+def _decode_naver_response(raw: bytes) -> str:
+    """네이버 API 응답을 안전하게 디코딩. UTF-8 우선, EUC-KR/CP949 fallback."""
+    for enc in ("utf-8", "euc-kr", "cp949"):
+        try:
+            return raw.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    return raw.decode("utf-8", errors="replace")
+
+
 def fetch_quote(code):
     url = NAVER_REALTIME_URL.format(code=code)
     request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
     try:
         with urllib.request.urlopen(request, timeout=8) as response:
             raw = response.read()
-        text = raw.decode("euc-kr", errors="replace")
+        text = _decode_naver_response(raw)
         payload = json.loads(text)
         if payload.get("resultCode") != "success":
             return {"code": code, "error": "네이버 금융 응답 실패"}
@@ -606,7 +616,7 @@ def chat_from_zai(messages):
         "model": "glm-5",
         "messages": messages,
         "temperature": 0.7,
-        "max_tokens": 1000,
+        "max_tokens": 2000,
     }
     headers = {
         "Authorization": f"Bearer {ZAI_KEY}",
@@ -640,7 +650,7 @@ def chat_from_openrouter(messages, model=None):
         "model": model,
         "messages": messages,
         "temperature": 0.7,
-        "max_tokens": 1000,
+        "max_tokens": 2000,
     }
     headers = {
         "Authorization": f"Bearer {OPENROUTER_KEY}",
@@ -797,14 +807,53 @@ def search_web(query):
 
     return all_results[:8]
 
+def get_market_status() -> tuple[str, str, datetime]:
+    """현재 KST 시각과 토스증권 국내주식 장 상태를 반환.
+
+    Returns:
+        (phase_label, trade_status, now_kst)
+    """
+    kst = timezone(timedelta(hours=9))
+    now_kst = datetime.now(kst)
+    if now_kst.weekday() >= 5:
+        return ("클로즈(주말)", "거래 불가 — 다음 거래일 프리마켓 08:00부터 주문 가능", now_kst)
+    hhmm = now_kst.strftime("%H:%M")
+    if "08:00" <= hhmm < "08:50":
+        return ("프리마켓(장전)", "실시간 거래 가능 (토스증권)", now_kst)
+    if "08:50" <= hhmm < "09:00":
+        return ("프리마켓 마감~정규장 개시 전", "거래 불가 — 09:00 정규장 개시 대기", now_kst)
+    if "09:00" <= hhmm < "15:20":
+        return ("메인마켓(정규장)", "실시간 거래 가능 (가장 유동성 높음)", now_kst)
+    if "15:20" <= hhmm < "15:30":
+        return ("정규장 마감~시가단일가 준비", "거래 불가 — 15:30 시가단일가 대기", now_kst)
+    if "15:30" <= hhmm < "15:40":
+        return ("시가단일가 마감임박", "단일가 주문만 가능 (토스증권)", now_kst)
+    if "15:40" <= hhmm < "20:00":
+        return ("애프터마켓(장후)", "실시간 거래 가능 (유동성 낮음, 슬리피지 주의)", now_kst)
+    return ("클로즈(장 마감)", "거래 불가 — 다음 거래일 프리마켓 08:00부터 주문 가능", now_kst)
+
+
 def chat_with_ai(user_message, history, portfolio, news, search_results=None):
     context = build_chat_context(portfolio, news)
     if search_results is None:
         search_results = search_web(user_message)
+    phase_label, trade_status, now_kst = get_market_status()
+    weekday_kr = ["월", "화", "수", "목", "금", "토", "일"][now_kst.weekday()]
     system_prompt = (
         "당신은 전문 주식 투자 어드바이저 'Stock Manager AI'입니다. "
         "사용자의 포트폴리오 정보와 시장 데이터를 바탕으로 투자 조언을 제공합니다.\n\n"
-        f"📅 오늘 날짜: {datetime.now().strftime('%Y년 %m월 %d일')}\n\n"
+        f"📅 오늘 날짜: {now_kst.strftime('%Y년 %m월 %d일')} ({weekday_kr}요일)\n"
+        f"🕒 현재 시각 (KST): {now_kst.strftime('%H시 %M분')}\n"
+        f"📈 현재 장 상태: **{phase_label}** — {trade_status}\n\n"
+        "【 토스증권 국내주식 장 운영 시간 】\n"
+        "- 프리마켓(장전): 08:00~08:50 — 실시간 거래 가능\n"
+        "- 메인마켓(정규장): 09:00~15:20 — 실시간 거래 가능\n"
+        "- 시가단일가 마감임박: 15:30~15:40 — 단일가 주문만 가능\n"
+        "- 애프터마켓(장후): 15:40~20:00 — 실시간 거래 가능\n"
+        "- 클로즈(장 마감): 20:00~익일 08:00 — 거래 불가\n\n"
+        "⚠️ 중요: 매매 추천 시 반드시 위 '현재 장 상태'를 기준으로 안내하세요. "
+        "거래 불가 상태면 '다음 거래일 프리마켓 08:00 시작 후 주문' 형태로 안내하고, "
+        "애프터마켓/프리마켓은 유동성이 낮아 슬리피지 위험이 크다는 점을 반드시 명시하세요.\n\n"
         "【 현재 포트폴리오 상태 】\n"
         f"{context}\n"
         "【 응답 원칙 】\n"
@@ -813,15 +862,30 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
         "3. 리스크 관리의 중요성을 강조하세요.\n"
         "4. 전문적이고 친근한 어조로 답변하세요.\n"
         "5. 한국어로 답변하세요.\n"
-        "6. 답변은 800자 이내로 간결하게 작성하세요.\n"
+        "6. 답변은 완전하게 작성하세요. 절대 중략하거나 생략하지 마세요. 테이블이나 목록도 모든 항목을 빠짐없이 포함하세요.\n"
         "7. 필요시 포트폴리오 내 특정 종목에 대한 구체적인 분석을 제공하세요.\n"
         "8. ⚠️ 절대 상상하여 답변하지 마세요. 제공된 대화 내역과 아래 웹 검색 결과를 모두 활용하여 답변하세요. "
         "대화 내역(history)에 이전에 나눈 내용이 있다면 그 정보도 적극 활용하세요. "
-        "답변에는 반드시 출처 번호 [1][2]를 표시하고, 답변 하단에 📚 출처: 섹션을 추가하세요. "
-        "검색 결과와 대화 내역 모두에 충분한 정보가 없으면 솔직히 '알 수 없습니다'라고 답변하세요."
+        "이전 대화 내용을 인용할 때는 [H숫자] 형식으로 출처를 표시하세요. "
+        "[H3]은 인덱스 3번 메시지를 의미합니다. "
+        "답변에는 반드시 출처 번호 [1][2]와 [H...]를 함께 표시하고, 답변 하단에 📚 출처: 섹션을 추가하세요. "
+        "검색 결과와 대화 내역 모두에 충분한 정보가 없으면 솔직히 '알 수 없습니다'라고 답변하세요.\n"
+        "9. 🚫 출처 할루네이션 금지: 검색 결과(search_results)가 0건이거나 비어 있으면, "
+        "답변에 절대 [1][2] 같은 출처 번호를 만들지 마세요. "
+        "반드시 실제로 제공된 search_results 안의 URL만 인용하고, 없으면 '최신 실시간 데이터 확인이 필요합니다'라고 솔직히 답변하세요."
     )
     messages = [{"role": "system", "content": system_prompt}]
     sliced = history[-CHAT_MSG_LIMIT:] if history else []
+    previous = sliced[:-1] if len(sliced) > 1 else []
+    first_h_idx = max(0, len(history) - CHAT_MSG_LIMIT) if history else 0
+    if previous:
+        h_ref = "【 이전 대화 참조 (인용 시 [H...] 사용) 】\n"
+        for i, h in enumerate(previous, 1):
+            display_idx = first_h_idx + i
+            role_label = "사용자" if h["role"] == "user" else "어드바이저"
+            preview = h["content"][:150].replace("\n", " ")
+            h_ref += f"[H{display_idx}] ({role_label}): {preview}\n"
+        messages.append({"role": "system", "content": h_ref})
     for h in sliced:
         messages.append({"role": h["role"], "content": h["content"]})
     if search_results:
@@ -846,12 +910,23 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
     messages.append({"role": "user", "content": user_message})
     result = call_llm(messages)
     reply = result["reply"]
-    if search_results:
-        urls = [(i, r.get("url", "")) for i, r in enumerate(search_results, 1) if r.get("url")]
-        if urls:
-            reply += "\n\n📚 출처:\n"
-            for i, url in urls:
-                reply += f"[{i}] {url}\n"
+    h_refs = re.findall(r'\[H(\d+)\]', reply) if previous else []
+    has_urls = search_results and any(r.get("url") for r in search_results)
+    if has_urls or h_refs:
+        reply += "\n\n📚 출처:\n"
+        if search_results:
+            for i, r in enumerate(search_results, 1):
+                if r.get("url"):
+                    reply += f"[{i}] {r['url']}\n"
+        if h_refs:
+            for hn in sorted(set(h_refs), key=int):
+                display_idx = int(hn)
+                zero_idx = display_idx - 1
+                if first_h_idx <= zero_idx < first_h_idx + len(previous):
+                    h = previous[zero_idx - first_h_idx]
+                    role_label = "사용자" if h["role"] == "user" else "어드바이저"
+                    preview = h["content"][:60].replace("\n", " ")
+                    reply += f"[H{hn}] {role_label}: \"{preview}\"\n"
     return reply
 
 

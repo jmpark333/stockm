@@ -927,7 +927,7 @@ def chat_from_zai(messages):
         "messages": messages,
         "thinking": {"type": "disabled"},
         "temperature": 0.7,
-        "max_tokens": 1000,
+        "max_tokens": 2000,
     }
     headers = {
         "Authorization": f"Bearer {ZAI_KEY}",
@@ -962,7 +962,7 @@ def chat_from_openrouter(messages, model=None):
         "model": model,
         "messages": messages,
         "temperature": 0.7,
-        "max_tokens": 1000,
+        "max_tokens": 2000,
     }
     headers = {
         "Authorization": f"Bearer {OPENROUTER_KEY}",
@@ -1199,7 +1199,7 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
         "3. 리스크 관리의 중요성을 강조하세요.\n"
         "4. 전문적이고 친근한 어조로 답변하세요.\n"
         "5. 한국어로 답변하세요.\n"
-        "6. 답변은 800자 이내로 간결하게 작성하세요.\n"
+        "6. 답변은 완전하게 작성하세요. 절대 중략하거나 생략하지 마세요. 테이블이나 목록도 모든 항목을 빠짐없이 포함하세요.\n"
         "7. 필요시 포트폴리오 내 특정 종목에 대한 구체적인 분석을 제공하세요.\n"
         "8. ⚠️ 절대 상상하여 답변하지 마세요. 제공된 대화 내역과 아래 웹 검색 결과를 모두 활용하여 답변하세요. "
         "대화 내역(history)에 이전에 나눈 내용이 있다면 그 정보도 적극 활용하세요. "
