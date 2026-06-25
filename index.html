@@ -201,6 +201,28 @@
     </div>
   </div>
 
-  <script src="/app.js?v=7"></script>
+  <!-- Stock Manager AI Chat -->
+  <button id="chatFab" class="chat-fab" title="Stock Manager AI">💬</button>
+
+  <div id="chatPopup" class="chat-popup">
+    <div class="chat-header">
+      <div class="chat-header-info">
+        <strong>Stock Manager AI</strong>
+        <span class="chat-status">포트폴리오 분석중</span>
+      </div>
+      <button id="chatClose" class="icon-btn">&times;</button>
+    </div>
+    <div id="chatMessages" class="chat-messages">
+      <div class="chat-welcome">
+        <p>💡 궁금한 점을 물어보세요!<br>예: "지금 포트폴리오 어떤가요?", "SK하이닉스 지금 사도 될까요?"</p>
+      </div>
+    </div>
+    <div class="chat-input-area">
+      <input type="text" id="chatInput" placeholder="투자 질문을 입력하세요..." autocomplete="off">
+      <button id="chatSend" class="chat-send-btn">전송</button>
+    </div>
+  </div>
+
+  <script src="/app.js?v=8"></script>
 </body>
 </html>

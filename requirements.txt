@@ -1,1 +1,2 @@
 flask>=3.0
+duckduckgo_search>=7.0

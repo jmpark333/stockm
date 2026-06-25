@@ -5,13 +5,13 @@
     {
       "code": "000660",
       "name": "SK하이닉스",
-      "quantity": 34,
+      "quantity": 20,
       "avgPrice": 2510205
     },
     {
       "code": "005380",
       "name": "현대차",
-      "quantity": 40,
+      "quantity": 10,
       "avgPrice": 554500
     }
   ],
@@ -21,5 +21,9 @@
     { "code": "454910", "name": "두산로보틱스" },
     { "code": "277810", "name": "레인보우로보틱스" },
     { "code": "000660", "name": "SK하이닉스" }
+  ],
+  "trades": [
+    { "date": "2026-06-25", "type": "sell", "code": "000660", "name": "SK하이닉스", "price": 2859000, "quantity": 5, "note": "아침 장중 매도" },
+    { "date": "2026-06-25", "type": "sell", "code": "000660", "name": "SK하이닉스", "price": 2860000, "quantity": 9, "note": "아침 장중 매도" }
   ]
 }

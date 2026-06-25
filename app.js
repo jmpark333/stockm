@@ -553,6 +553,7 @@ document.addEventListener('keydown', e => {
     closeChartModal();
     closeCalcModal();
     closeSignalModal();
+    toggleChat(false);
   }
 });
 
@@ -940,3 +941,204 @@ loadPortfolio();
 loadNews();
 setAutoRefresh(true);
 setupNewsRefresh();
+
+/* ──────────────────────────────────────────
+   Stock Manager AI Chat
+   ────────────────────────────────────────── */
+const chatFab = document.querySelector('#chatFab');
+const chatPopup = document.querySelector('#chatPopup');
+const chatClose = document.querySelector('#chatClose');
+const chatMessages = document.querySelector('#chatMessages');
+const chatInput = document.querySelector('#chatInput');
+const chatSend = document.querySelector('#chatSend');
+const CHAT_STORAGE_KEY = 'stock_chat_history';
+
+let chatHistory = [];
+
+async function loadChatHistory() {
+  try {
+    const res = await fetch('/api/chat/history', { cache: 'no-store' });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.history) {
+        chatHistory = data.history;
+        syncLocalStorage();
+        renderChatMessages();
+        return;
+      }
+    }
+  } catch (e) {}
+  try {
+    const saved = localStorage.getItem(CHAT_STORAGE_KEY);
+    if (saved) chatHistory = JSON.parse(saved);
+  } catch (e) {
+    chatHistory = [];
+  }
+  renderChatMessages();
+}
+
+function syncLocalStorage() {
+  try {
+    localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(chatHistory.slice(-50)));
+  } catch (e) {}
+}
+
+function addChatMessage(role, content) {
+  chatHistory.push({ role, content, timestamp: Date.now() });
+  syncLocalStorage();
+  renderChatMessages();
+}
+
+function renderMessageContent(text) {
+  const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const withLinks = escaped.replace(
+    /(https?:\/\/[^\s<>)]+)/g,
+    '<a href="$1" target="_blank" rel="noopener noreferrer" style="color:#58a6ff;text-decoration:underline">$1</a>'
+  );
+  const withBreaks = withLinks.replace(/\n/g, '<br>');
+  return withBreaks;
+}
+
+function replaceHistory(history) {
+  chatHistory = history;
+  syncLocalStorage();
+  renderChatMessages();
+}
+
+function renderChatMessages() {
+  const msgs = chatMessages;
+  const welcome = msgs.querySelector('.chat-welcome');
+  if (welcome) welcome.remove();
+
+  msgs.querySelectorAll('.chat-msg').forEach(el => el.remove());
+
+  for (const msg of chatHistory) {
+    const div = document.createElement('div');
+    div.className = `chat-msg ${msg.role}`;
+    div.innerHTML = renderMessageContent(msg.content);
+    msgs.appendChild(div);
+  }
+
+  if (!chatHistory.length) {
+    const w = document.createElement('div');
+    w.className = 'chat-welcome';
+    w.innerHTML = '<p>💡 궁금한 점을 물어보세요!<br>예: "지금 포트폴리오 어떤가요?", "SK하이닉스 지금 사도 될까요?"</p>';
+    msgs.appendChild(w);
+  }
+
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function showTypingIndicator() {
+  const div = document.createElement('div');
+  div.className = 'chat-msg assistant typing';
+  div.id = 'chatTyping';
+  div.textContent = '준비중...';
+  chatMessages.appendChild(div);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function updateTypingPhase(phase) {
+  const labels = {
+    loading: '포트폴리오 데이터 로딩중...',
+    searching: '웹 검색중...',
+    analyzing: 'AI 분석중...',
+  };
+  const el = document.querySelector('#chatTyping');
+  if (el) {
+    el.textContent = labels[phase] || '분석중...';
+  }
+}
+
+function hideTypingIndicator() {
+  const el = document.querySelector('#chatTyping');
+  if (el) el.remove();
+}
+
+function toggleChat(open) {
+  chatPopup.classList.toggle('open', open);
+  if (open) {
+    chatInput.focus();
+  }
+}
+
+async function sendChatMessage(text) {
+  if (!text.trim()) return;
+
+  addChatMessage('user', text.trim());
+  chatInput.value = '';
+  chatSend.disabled = true;
+
+  showTypingIndicator();
+
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text.trim() }),
+    });
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let currentEvent = '';
+    let done = false;
+
+    while (!done) {
+      const { done: streamDone, value } = await reader.read();
+      done = streamDone;
+      if (value) {
+        buffer += decoder.decode(value, { stream: !done });
+        const parts = buffer.split('\n');
+        buffer = parts.pop() || '';
+        for (const line of parts) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith('event: ')) {
+            currentEvent = trimmed.slice(7);
+          } else if (trimmed.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(trimmed.slice(6));
+              if (currentEvent === 'status') {
+                updateTypingPhase(data.phase);
+              } else if (currentEvent === 'result') {
+                hideTypingIndicator();
+                if (data.history) {
+                  replaceHistory(data.history);
+                } else if (data.reply) {
+                  addChatMessage('assistant', data.reply);
+                }
+              }
+            } catch (e) {}
+          }
+        }
+      }
+    }
+  } catch (err) {
+    hideTypingIndicator();
+    addChatMessage('assistant', `죄송합니다. AI 서비스와 연결할 수 없습니다. (${err.message})`);
+  } finally {
+    chatSend.disabled = false;
+    chatInput.focus();
+  }
+}
+
+chatFab.addEventListener('click', () => toggleChat(true));
+
+chatClose.addEventListener('click', () => toggleChat(false));
+
+chatSend.addEventListener('click', () => {
+  const text = chatInput.value;
+  if (text.trim()) sendChatMessage(text);
+});
+
+chatInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    const text = chatInput.value;
+    if (text.trim()) sendChatMessage(text);
+  }
+});
+
+loadChatHistory();

@@ -2,6 +2,7 @@ import json
 import os
 import re
 import time
+from datetime import datetime
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -15,6 +16,7 @@ app = Flask(__name__, static_folder=None)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_FILE = BASE_DIR / "data.json"
+CHAT_HISTORY_FILE = BASE_DIR / "chat_history.json"
 NAVER_REALTIME_URL = "https://polling.finance.naver.com/api/realtime?query=SERVICE_ITEM:{code}"
 
 history: dict[str, deque] = {}
@@ -234,6 +236,7 @@ def build_portfolio():
         },
         "holdings": holdings_rows,
         "watchlist": watchlist_rows,
+        "trades": config.get("trades", []),
     }
 
 def fetch_news(name, code, limit=4):
@@ -348,7 +351,7 @@ def signal_from_zai(name, code, quote, articles):
         f'{{"signal":"strong_buy|buy|hold|sell|strong_sell","confidence":0-100,"reasons":["이유1","이유2","이유3"],"newsSentiment":"한줄 요약"}}'
     )
     payload = {
-        "model": "glm-4.5",
+        "model": "glm-5",
         "messages": [{"role": "user", "content": prompt}],
         "thinking": {"type": "disabled"},
         "temperature": 0.3,
@@ -667,4 +670,345 @@ def api_analyze_signal():
         json.dumps(handle_analyze_signal(code), ensure_ascii=False),
         mimetype="application/json",
         headers={"Cache-Control": "no-store", "Access-Control-Allow-Origin": "*"},
+    )
+
+# ──────────────────────────────────────────
+# Stock Manager AI Chat
+# ──────────────────────────────────────────
+
+CHAT_MSG_LIMIT = 20
+
+_chat_history_cache = None
+
+def load_chat_history():
+    global _chat_history_cache
+    if _chat_history_cache is not None:
+        return _chat_history_cache
+    try:
+        with CHAT_HISTORY_FILE.open("r", encoding="utf-8") as f:
+            _chat_history_cache = json.load(f)
+            return _chat_history_cache
+    except (FileNotFoundError, json.JSONDecodeError):
+        _chat_history_cache = []
+        return _chat_history_cache
+
+def save_chat_history(history):
+    global _chat_history_cache
+    _chat_history_cache = history
+    try:
+        with CHAT_HISTORY_FILE.open("w", encoding="utf-8") as f:
+            json.dump(history, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+def build_chat_context(portfolio, news):
+    lines = []
+    summary = portfolio["summary"]
+    lines.append("📊 포트폴리오 현황")
+    lines.append(f"• 총 평가금: {summary['currentValue']:,.0f}원")
+    lines.append(f"• 총 투자원금: {summary['cost']:,.0f}원")
+    lines.append(f"• 총 손익: {summary['profit']:+,.0f}원 ({summary['profitRate']:+.2f}%)")
+    lines.append("")
+    if portfolio.get("holdings"):
+        lines.append("📦 보유종목")
+        for h in portfolio["holdings"]:
+            err = h.get("error")
+            if err:
+                lines.append(f"• {h['name']}({h['code']}): 데이터 없음")
+            else:
+                profit_emoji = "🔴" if h["profitRate"] > 0 else ("🔵" if h["profitRate"] < 0 else "⚪")
+                lines.append(f"• {h['name']}({h['code']}): {h['quantity']}주")
+                lines.append(f"  평균 {h['avgPrice']:,.0f}원 → 현재 {h['currentPrice']:,.0f}원")
+                lines.append(f"  {profit_emoji} 수익 {h['profit']:+,.0f}원 ({h['profitRate']:+.2f}%) | 시그널: {h['trend']['signal']}")
+        lines.append("")
+    if portfolio.get("watchlist"):
+        lines.append("👀 관심종목")
+        for w in portfolio["watchlist"]:
+            err = w.get("error")
+            if err:
+                lines.append(f"• {w['name']}({w['code']}): 데이터 없음")
+            else:
+                emoji = "📈" if w["changeRate"] > 0 else ("📉" if w["changeRate"] < 0 else "📊")
+                lines.append(f"• {emoji} {w['name']}({w['code']}): 현재 {w['currentPrice']:,.0f}원 ({w['changeRate']:+.2f}%) | 추세: {w['trend']['shortTrend']}")
+        lines.append("")
+    if portfolio.get("trades"):
+        lines.append("📋 오늘의 거래내역")
+        for t in portfolio["trades"]:
+            emoji = "🟢" if t["type"] == "buy" else "🔴"
+            action = "매도" if t["type"] == "sell" else "매수"
+            lines.append(f"  {emoji} {t['name']} {t['quantity']}주 {action} @ {t['price']:,.0f}원 ({t.get('note','')})")
+        lines.append("")
+    if news:
+        lines.append("📰 최근 뉴스")
+        for n in news:
+            if n.get("articles"):
+                for article in n["articles"][:2]:
+                    title = article["title"][:80]
+                    lines.append(f"• [{n['name']}] {title}")
+        lines.append("")
+    return "\n".join(lines)
+
+def chat_from_zai(messages):
+    payload = {
+        "model": "glm-5",
+        "messages": messages,
+        "thinking": {"type": "disabled"},
+        "temperature": 0.7,
+        "max_tokens": 1000,
+    }
+    headers = {
+        "Authorization": f"Bearer {ZAI_KEY}",
+        "Content-Type": "application/json",
+        "Accept-Language": "en-US,en",
+    }
+    req = urllib.request.Request(
+        ZAI_URL,
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers=headers,
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            raw = resp.read().decode("utf-8")
+        result = json.loads(raw)
+        content = result["choices"][0]["message"]["content"]
+        return {"reply": content.strip(), "_source": "zai"}
+    except urllib.error.HTTPError as exc:
+        if exc.code in (429, 401, 403):
+            return {"error": "rate_limited"}
+        return {"error": str(exc)}
+    except Exception as exc:
+        return {"error": str(exc)}
+
+def chat_from_openrouter(messages, model=None):
+    if not OPENROUTER_KEY:
+        return {"error": "OPENROUTER_KEY not set"}
+    if not model:
+        model = OPENROUTER_MODELS[0]
+    payload = {
+        "model": model,
+        "messages": messages,
+        "temperature": 0.7,
+        "max_tokens": 1000,
+    }
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_KEY}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://stock-dashboard.vercel.app",
+        "X-Title": "Stock Dashboard",
+    }
+    req = urllib.request.Request(
+        OPENROUTER_URL,
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers=headers,
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            raw = resp.read().decode("utf-8")
+        result = json.loads(raw)
+        content = result["choices"][0]["message"]["content"]
+        if not content:
+            return {"error": "empty content"}
+        return {"reply": content.strip(), "_source": "openrouter"}
+    except Exception as exc:
+        return {"error": str(exc)}
+
+def call_llm(messages):
+    result = chat_from_zai(messages)
+    if "error" not in result:
+        return result
+    if OPENROUTER_KEY:
+        for m in OPENROUTER_MODELS:
+            result = chat_from_openrouter(messages, model=m)
+            if "error" not in result:
+                return result
+    return {"reply": "죄송합니다. 현재 AI 서비스에 일시적인 문제가 있습니다. 잠시 후 다시 시도해 주세요.", "_source": "fallback"}
+
+MCP_SEARCH_URL = "https://api.z.ai/api/mcp/web_search_prime/mcp"
+
+def search_web_ddg(query):
+    try:
+        from duckduckgo_search import DDGS
+        sq = f"한국 주식 {query[:180]}"
+        with DDGS() as ddgs:
+            raw = list(ddgs.text(sq, max_results=5))
+            return [{"text": r.get("body", "")[:2000], "url": r.get("href", "")} for r in raw if r.get("body")]
+    except Exception as e:
+        print(f"[search_web] DuckDuckGo error: {e}")
+        return []
+
+def search_web(query):
+    """Z.AI MCP → DuckDuckGo fallback 순서로 웹 검색"""
+    if not query or not query.strip():
+        return []
+    headers = {
+        "Authorization": f"Bearer {ZAI_KEY}",
+        "Content-Type": "application/json",
+    }
+    batch = [
+        {
+            "jsonrpc": "2.0", "id": "1", "method": "initialize",
+            "params": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "stock-dashboard", "version": "1.0.0"},
+            },
+        },
+        {"jsonrpc": "2.0", "method": "notifications/initialized"},
+        {
+            "jsonrpc": "2.0", "id": "2", "method": "tools/call",
+            "params": {
+                "name": "webSearchPrime",
+                "arguments": {"search_query": query[:200]},
+            },
+        },
+    ]
+    try:
+        req = urllib.request.Request(
+            MCP_SEARCH_URL,
+            data=json.dumps(batch, ensure_ascii=False).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            raw = resp.read().decode("utf-8")
+        data = json.loads(raw)
+        items = data if isinstance(data, list) else [data]
+        results = []
+        for item in items:
+            content_list = None
+            if isinstance(item, dict) and "result" in item:
+                content_list = item["result"].get("content", [])
+            elif isinstance(item, dict) and "content" in item:
+                content_list = item["content"]
+            if content_list:
+                for c in content_list:
+                    if c.get("type") == "text":
+                        text = c.get("text", "")
+                        url = ""
+                        annotations = c.get("annotations")
+                        if isinstance(annotations, dict):
+                            url = annotations.get("source", "")
+                        resource = c.get("resource")
+                        if isinstance(resource, dict):
+                            url = resource.get("uri", url)
+                        results.append({"text": text[:2000], "url": url})
+        if results:
+            print(f"[search_web] Z.AI MCP: {len(results)} results")
+            return results[:5]
+        print(f"[search_web] Z.AI MCP: no results")
+    except Exception as e:
+        print(f"[search_web] Z.AI MCP error: {e}")
+    print(f"[search_web] falling back to DuckDuckGo...")
+    return search_web_ddg(query)
+
+def chat_with_ai(user_message, history, portfolio, news, search_results=None):
+    context = build_chat_context(portfolio, news)
+    if search_results is None:
+        search_results = search_web(user_message)
+    system_prompt = (
+        "당신은 전문 주식 투자 어드바이저 'Stock Manager AI'입니다. "
+        "사용자의 포트폴리오 정보와 시장 데이터를 바탕으로 투자 조언을 제공합니다.\n\n"
+        f"📅 오늘 날짜: {datetime.now().strftime('%Y년 %m월 %d일')}\n\n"
+        "【 현재 포트폴리오 상태 】\n"
+        f"{context}\n"
+        "【 응답 원칙 】\n"
+        "1. 항상 데이터에 기반한 객관적인 조언을 제공하세요.\n"
+        "2. 매수/매도/관망에 대한 명확한 의견을 제시하세요.\n"
+        "3. 리스크 관리의 중요성을 강조하세요.\n"
+        "4. 전문적이고 친근한 어조로 답변하세요.\n"
+        "5. 한국어로 답변하세요.\n"
+        "6. 답변은 800자 이내로 간결하게 작성하세요.\n"
+        "7. 필요시 포트폴리오 내 특정 종목에 대한 구체적인 분석을 제공하세요.\n"
+        "8. ⚠️ 절대 상상하여 답변하지 마세요. 아래 검색 결과 파일에서 얻은 정보만 사용하세요. "
+        "답변에는 반드시 출처 번호 [1][2]를 표시하고, 답변 하단에 📚 출처: 섹션을 추가하세요. "
+        "검색 결과에 충분한 정보가 없으면 솔직히 '검색 결과로는 알 수 없습니다'라고 답변하세요."
+    )
+    messages = [{"role": "system", "content": system_prompt}]
+    sliced = history[-CHAT_MSG_LIMIT:] if history else []
+    for h in sliced:
+        messages.append({"role": h["role"], "content": h["content"]})
+    if search_results:
+        search_text = ""
+        for i, r in enumerate(search_results, 1):
+            text = r.get("text", "")
+            url = r.get("url", "")
+            search_text += f"[{i}] {text}\n"
+            if url:
+                search_text += f"    출처: {url}\n\n"
+        sf = f"/tmp/stock_search_{int(time.time())}.txt"
+        try:
+            with open(sf, "w", encoding="utf-8") as f:
+                f.write(search_text)
+        except Exception:
+            sf = "(메모리)"
+        search_block = (
+            f"아래는 웹 검색 결과 파일({sf})의 내용입니다:\n\n{search_text}"
+        )
+        messages.append({"role": "user", "content": search_block})
+        messages.append({"role": "assistant", "content": "파일을 읽었습니다. 출처 번호 [1][2]를 표기하여 답변하겠습니다."})
+    messages.append({"role": "user", "content": user_message})
+    result = call_llm(messages)
+    reply = result["reply"]
+    if search_results:
+        urls = [(i, r.get("url", "")) for i, r in enumerate(search_results, 1) if r.get("url")]
+        if urls:
+            reply += "\n\n📚 출처:\n"
+            for i, url in urls:
+                reply += f"[{i}] {url}\n"
+    return reply
+
+@app.route("/api/chat/history")
+def api_chat_history():
+    return Response(
+        json.dumps({"history": load_chat_history()}, ensure_ascii=False),
+        mimetype="application/json",
+        headers={"Cache-Control": "no-store", "Access-Control-Allow-Origin": "*"},
+    )
+
+@app.route("/api/chat", methods=["POST", "OPTIONS"])
+def api_chat():
+    if request.method == "OPTIONS":
+        resp = Response()
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        resp.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        return resp
+    data = request.get_json(silent=True) or {}
+    message = data.get("message", "").strip()
+    if not message:
+        return Response(
+            json.dumps({"error": "message required"}),
+            status=400,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
+
+    def generate():
+        history = load_chat_history()
+        history.append({"role": "user", "content": message, "timestamp": int(time.time() * 1000)})
+        yield "event: status\ndata: " + json.dumps({"phase": "loading"}, ensure_ascii=False) + "\n\n"
+        try:
+            portfolio = build_portfolio()
+            news = build_news()
+        except Exception:
+            portfolio = {"summary": {"currentValue": 0, "cost": 0, "profit": 0, "profitRate": 0}, "holdings": [], "watchlist": []}
+            news = []
+        yield "event: status\ndata: " + json.dumps({"phase": "searching"}, ensure_ascii=False) + "\n\n"
+        search_results = search_web(message)
+        yield "event: status\ndata: " + json.dumps({"phase": "analyzing"}, ensure_ascii=False) + "\n\n"
+        reply = chat_with_ai(message, history, portfolio, news, search_results=search_results)
+        history.append({"role": "assistant", "content": reply, "timestamp": int(time.time() * 1000)})
+        save_chat_history(history)
+        yield "event: result\ndata: " + json.dumps({"reply": reply, "history": history}, ensure_ascii=False) + "\n\n"
+
+    return Response(
+        generate(),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-store",
+            "Access-Control-Allow-Origin": "*",
+            "X-Accel-Buffering": "no",
+        },
     )
