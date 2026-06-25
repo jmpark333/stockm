@@ -17,6 +17,45 @@ app = Flask(__name__, static_folder=None)
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_FILE = BASE_DIR / "data.json"
 CHAT_HISTORY_FILE = BASE_DIR / "chat_history.json"
+
+# Vercel KV (uses REST API when env vars are set)
+KV_URL = os.environ.get("KV_REST_API_URL", "")
+KV_TOKEN = os.environ.get("KV_REST_API_TOKEN", "")
+
+
+def kv_get(key):
+    if not KV_URL or not KV_TOKEN:
+        return None
+    try:
+        url = f"{KV_URL}/get?key={urllib.parse.quote(key)}"
+        req = urllib.request.Request(url, headers={
+            "Authorization": f"Bearer {KV_TOKEN}",
+        })
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            return data.get("result")
+    except Exception:
+        return None
+
+
+def kv_set(key, value):
+    if not KV_URL or not KV_TOKEN:
+        return False
+    try:
+        body = json.dumps({"key": key, "value": value}, ensure_ascii=False).encode("utf-8")
+        req = urllib.request.Request(
+            f"{KV_URL}/set",
+            data=body,
+            headers={
+                "Authorization": f"Bearer {KV_TOKEN}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return resp.status == 200
+    except Exception:
+        return False
 NAVER_REALTIME_URL = "https://polling.finance.naver.com/api/realtime?query=SERVICE_ITEM:{code}"
 
 history: dict[str, deque] = {}
@@ -685,10 +724,26 @@ def load_chat_sessions():
     global _chat_sessions_cache
     if _chat_sessions_cache is not None:
         return _chat_sessions_cache
+    # Try Vercel KV first
+    kv_data = kv_get("chat_sessions")
+    if kv_data is not None:
+        if isinstance(kv_data, list):
+            sessions = {}
+            sid = f"sess_{int(time.time() * 1000)}"
+            now_str = datetime.now().strftime("%Y-%m-%d")
+            now_t = datetime.now().strftime("%H:%M")
+            sessions[sid] = {
+                "id": sid, "createdAt": int(time.time() * 1000),
+                "date": now_str, "time": now_t, "messages": kv_data,
+            }
+            kv_data = {"sessions": sessions, "current": sid}
+            save_chat_sessions(kv_data)
+        _chat_sessions_cache = kv_data
+        return _chat_sessions_cache
+    # Fallback to filesystem
     try:
         with CHAT_HISTORY_FILE.open("r", encoding="utf-8") as f:
             data = json.load(f)
-            # Migrate flat list format → sessions
             if isinstance(data, list):
                 sessions = {}
                 sid = f"sess_{int(time.time() * 1000)}"
@@ -703,12 +758,17 @@ def load_chat_sessions():
             _chat_sessions_cache = data
             return data
     except (FileNotFoundError, json.JSONDecodeError):
-        _chat_sessions_cache = {"sessions": {}, "current": None}
-        return _chat_sessions_cache
+        pass
+    _chat_sessions_cache = {"sessions": {}, "current": None}
+    return _chat_sessions_cache
 
 def save_chat_sessions(sessions_data):
     global _chat_sessions_cache
     _chat_sessions_cache = sessions_data
+    # Try Vercel KV first
+    if KV_URL and KV_TOKEN:
+        kv_set("chat_sessions", sessions_data)
+    # Also write to filesystem (works locally, may fail on Vercel)
     try:
         with CHAT_HISTORY_FILE.open("w", encoding="utf-8") as f:
             json.dump(sessions_data, f, ensure_ascii=False, indent=2)
