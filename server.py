@@ -678,38 +678,22 @@ def call_llm(messages):
 
 MCP_SEARCH_URL = "https://api.z.ai/api/mcp/web_search_prime/mcp"
 
-def fetch_vi_news():
-    """Google News RSS에서 VI(변동성완화장치) 발동 뉴스를 가져옵니다."""
-    try:
-        import xml.etree.ElementTree as ET
-        url = "https://news.google.com/rss/search?q=VI+%EB%B0%9C%EB%8F%99+%ED%95%9C%EA%B5%AD+%EC%A3%BC%EC%8B%9D&hl=ko&gl=KR&ceid=KR:ko"
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=8) as resp:
-            raw = resp.read()
-        root = ET.fromstring(raw)
-        results = []
-        for item in root.findall(".//item")[:5]:
-            title_el = item.find("title")
-            link_el = item.find("link")
-            desc_el = item.find("description")
-            title = title_el.text.strip() if title_el is not None and title_el.text else ""
-            link = link_el.text.strip() if link_el is not None and link_el.text else ""
-            desc = desc_el.text.strip() if desc_el is not None and desc_el.text else ""
-            if title and link:
-                results.append({"text": f"[VI 뉴스] {title[:200]} {desc[:200]}", "url": link})
-        if results:
-            print(f"[fetch_vi_news] Google News RSS: {len(results)} items")
-            return results
-    except Exception as e:
-        print(f"[fetch_vi_news] error: {e}")
-    return []
+def is_irrelevant_result(url, text):
+    """Filter out obviously irrelevant results like generic Wikipedia."""
+    url_lower = url.lower()
+    if "wikipedia.org" in url_lower:
+        if not any(kw in url_lower + text.lower() for kw in ["stock", "주식", "kospi", "kosdaq", "vi", "volatility",
+                                                              "finance", "market", "invest", "trading", "배당",
+                                                              "상장", "공매도", "액면", "변동", "호재", "악재"]):
+            return True
+    return False
 
 def search_web_ddg(query):
     try:
         from duckduckgo_search import DDGS
         queries = [
-            f"한국 주식 {query[:150]}",
-            f"VI 변동성완화장치 발동 종목 {query[:100]}",
+            query[:180],
+            f"주식 {query[:150]}",
         ]
         seen_urls = set()
         results = []
@@ -720,9 +704,12 @@ def search_web_ddg(query):
                     for r in raw:
                         body = r.get("body", "")
                         url = r.get("href", "")
-                        if body and url not in seen_urls:
-                            seen_urls.add(url)
-                            results.append({"text": body[:2000], "url": url})
+                        if not body or url in seen_urls:
+                            continue
+                        if is_irrelevant_result(url, body):
+                            continue
+                        seen_urls.add(url)
+                        results.append({"text": body[:2000], "url": url})
             except Exception:
                 continue
         return results[:8]
@@ -730,8 +717,8 @@ def search_web_ddg(query):
         print(f"[search_web] DuckDuckGo error: {e}")
         return []
 
-def search_web(query, fetch_vi=True):
-    """Z.AI MCP → DuckDuckGo + 네이버 VI 뉴스 병합"""
+def search_web(query):
+    """Z.AI MCP + DuckDuckGo — topic-agnostic search merger"""
     if not query or not query.strip():
         return []
     all_results = []
@@ -740,7 +727,7 @@ def search_web(query, fetch_vi=True):
     def add_results(results):
         for r in results:
             url = r.get("url", "")
-            if url and url not in seen_urls:
+            if url and url not in seen_urls and not is_irrelevant_result(url, r.get("text", "")):
                 seen_urls.add(url)
                 all_results.append(r)
 
@@ -797,7 +784,7 @@ def search_web(query, fetch_vi=True):
                             url = resource.get("uri", url)
                         if text and url:
                             add_results([{"text": text[:2000], "url": url}])
-        print(f"[search_web] Z.AI MCP: {len(all_results)} results so far")
+        print(f"[search_web] Z.AI MCP: {len(all_results)} results")
     except Exception as e:
         print(f"[search_web] Z.AI MCP error: {e}")
 
@@ -807,14 +794,6 @@ def search_web(query, fetch_vi=True):
         add_results(ddg_results)
     except Exception as e:
         print(f"[search_web] DuckDuckGo error: {e}")
-
-    # 3) VI 뉴스
-    if fetch_vi and ("vi" in query.lower() or "변동성" in query or "발동" in query):
-        try:
-            vi_news = fetch_vi_news()
-            add_results(vi_news)
-        except Exception as e:
-            print(f"[search_web] VI news error: {e}")
 
     return all_results[:8]
 
