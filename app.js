@@ -1153,6 +1153,9 @@ function renderMessageContent(text) {
       `<a href="#" onclick="event.preventDefault();scrollToHistoryMsg(${parseInt(num) - 1});return false;" style="${H_STYLE}">[H${num}]</a>`
   );
 
+  // Step 4: **bold** → <strong>
+  result = result.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+
   return result.replace(/\n/g, '<br>');
 }
 
@@ -1248,9 +1251,11 @@ function restoreChatState() {
   } catch (e) {}
 }
 
+let chatSending = false;
 async function sendChatMessage(text) {
   if (!text.trim()) return;
-  if (chatSend.disabled) return;
+  if (chatSend.disabled || chatSending) return;
+  chatSending = true;
 
   // If viewing archived session, switch to current first
   if (chatViewingSession) {
@@ -1325,6 +1330,7 @@ async function sendChatMessage(text) {
     hideTypingIndicator();
     addChatMessage('assistant', `죄송합니다. AI 서비스와 연결할 수 없습니다. (${err.message})`);
   } finally {
+    chatSending = false;
     chatSend.disabled = false;
     chatInput.focus();
   }
@@ -1358,6 +1364,7 @@ chatSend.addEventListener('click', () => {
 
 chatInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.isComposing || e.keyCode === 229) return;
     e.preventDefault();
     const text = chatInput.value;
     if (text.trim()) sendChatMessage(text);
