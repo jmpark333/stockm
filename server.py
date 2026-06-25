@@ -679,28 +679,26 @@ def call_llm(messages):
 MCP_SEARCH_URL = "https://api.z.ai/api/mcp/web_search_prime/mcp"
 
 def fetch_vi_news():
-    """네이버 검색에서 오늘 VI(변동성완화장치) 발동 뉴스를 가져옵니다."""
+    """Google News RSS에서 VI(변동성완화장치) 발동 뉴스를 가져옵니다."""
     try:
-        from bs4 import BeautifulSoup
-        url = "https://search.naver.com/search.naver?where=news&query=VI+%EB%B3%80%EB%8F%99%EC%84%B1%EC%99%84%ED%99%94%EC%9E%A5%EC%B9%98+%EB%B0%9C%EB%8F%99&sm=tab_opt&sort=0"
+        import xml.etree.ElementTree as ET
+        url = "https://news.google.com/rss/search?q=VI+%EB%B0%9C%EB%8F%99+%ED%95%9C%EA%B5%AD+%EC%A3%BC%EC%8B%9D&hl=ko&gl=KR&ceid=KR:ko"
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         with urllib.request.urlopen(req, timeout=8) as resp:
-            html = resp.read()
-        soup = BeautifulSoup(html, "lxml")
-        news_items = soup.select("div.news_wrap.api_ani_send")
+            raw = resp.read()
+        root = ET.fromstring(raw)
         results = []
-        for item in news_items[:5]:
-            title_tag = item.select_one("a.news_tit")
-            if not title_tag:
-                continue
-            title = title_tag.get("title", "") or title_tag.text.strip()
-            link = title_tag.get("href", "")
-            desc_tag = item.select_one("div.news_dsc")
-            desc = desc_tag.text.strip() if desc_tag else ""
+        for item in root.findall(".//item")[:5]:
+            title_el = item.find("title")
+            link_el = item.find("link")
+            desc_el = item.find("description")
+            title = title_el.text.strip() if title_el is not None and title_el.text else ""
+            link = link_el.text.strip() if link_el is not None and link_el.text else ""
+            desc = desc_el.text.strip() if desc_el is not None and desc_el.text else ""
             if title and link:
-                results.append({"text": f"[VI 뉴스] {title} {desc[:300]}", "url": link})
+                results.append({"text": f"[VI 뉴스] {title[:200]} {desc[:200]}", "url": link})
         if results:
-            print(f"[fetch_vi_news] {len(results)} news items")
+            print(f"[fetch_vi_news] Google News RSS: {len(results)} items")
             return results
     except Exception as e:
         print(f"[fetch_vi_news] error: {e}")
