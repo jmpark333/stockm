@@ -951,9 +951,13 @@ const chatClose = document.querySelector('#chatClose');
 const chatMessages = document.querySelector('#chatMessages');
 const chatInput = document.querySelector('#chatInput');
 const chatSend = document.querySelector('#chatSend');
+const chatSessionsBtn = document.querySelector('#chatSessionsBtn');
+const chatSessionLabel = document.querySelector('#chatSessionLabel');
 const CHAT_STORAGE_KEY = 'stock_chat_history';
 
 let chatHistory = [];
+let chatSessions = [];
+let chatViewingSession = null; // null = current session, id = viewing archived
 
 async function loadChatHistory() {
   try {
@@ -964,6 +968,8 @@ async function loadChatHistory() {
         chatHistory = data.history;
         syncLocalStorage();
         renderChatMessages();
+        loadChatSessions();
+        restoreChatState();
         return;
       }
     }
@@ -975,6 +981,125 @@ async function loadChatHistory() {
     chatHistory = [];
   }
   renderChatMessages();
+  loadChatSessions();
+  restoreChatState();
+}
+
+async function loadChatSessions() {
+  try {
+    const res = await fetch('/api/chat/sessions', { cache: 'no-store' });
+    if (res.ok) {
+      const data = await res.json();
+      chatSessions = data.sessions || [];
+      updateSessionLabel();
+    }
+  } catch (e) {}
+}
+
+async function loadSessionMessages(sessionId) {
+  try {
+    const res = await fetch(`/api/chat/session/${sessionId}`, { cache: 'no-store' });
+    if (res.ok) {
+      const data = await res.json();
+      chatHistory = data.history || [];
+      chatViewingSession = sessionId;
+      renderChatMessages();
+    }
+  } catch (e) {}
+}
+
+function switchToCurrentSession() {
+  chatViewingSession = null;
+  loadChatHistory();
+}
+
+function updateSessionLabel() {
+  if (!chatSessionLabel) return;
+  if (chatViewingSession) {
+    const sess = chatSessions.find(s => s.id === chatViewingSession);
+    if (sess) {
+      chatSessionLabel.textContent = `${sess.date} ${sess.time}`;
+    } else {
+      chatSessionLabel.textContent = '과거 대화';
+    }
+  } else {
+    chatSessionLabel.textContent = '오늘';
+  }
+}
+
+function showChatSessions() {
+  const msgs = chatMessages;
+  msgs.querySelectorAll('.chat-msg').forEach(el => el.remove());
+  const welcome = msgs.querySelector('.chat-welcome');
+  if (welcome) welcome.remove();
+
+  const container = document.createElement('div');
+  container.className = 'chat-session-list';
+
+  const header = document.createElement('div');
+  header.className = 'chat-sessions-header';
+  header.innerHTML = '<span>📋 대화 목록</span>';
+  const backBtn = document.createElement('button');
+  backBtn.className = 'chat-sessions-back';
+  backBtn.textContent = '← 현재 대화';
+  backBtn.addEventListener('click', switchToCurrentSession);
+  header.appendChild(backBtn);
+  container.appendChild(header);
+
+  if (!chatSessions.length) {
+    const empty = document.createElement('div');
+    empty.className = 'chat-sessions-empty';
+    empty.textContent = '저장된 대화가 없습니다.';
+    container.appendChild(empty);
+  } else {
+    for (const sess of chatSessions) {
+      const item = document.createElement('div');
+      item.className = 'chat-session-item';
+      if (sess.isCurrent && !chatViewingSession) item.classList.add('active');
+      if (chatViewingSession === sess.id) item.classList.add('active');
+
+      const dateRow = document.createElement('div');
+      dateRow.style.display = 'flex';
+      dateRow.style.alignItems = 'center';
+      const dateEl = document.createElement('span');
+      dateEl.className = 'sess-date';
+      dateEl.textContent = sess.date;
+      dateRow.appendChild(dateEl);
+      const timeEl = document.createElement('span');
+      timeEl.className = 'sess-time';
+      timeEl.textContent = ` ${sess.time}`;
+      dateRow.appendChild(timeEl);
+      if (sess.isCurrent) {
+        const badge = document.createElement('span');
+        badge.className = 'sess-badge';
+        badge.textContent = '현재';
+        dateRow.appendChild(badge);
+      }
+      item.appendChild(dateRow);
+
+      const preview = document.createElement('div');
+      preview.className = 'sess-preview';
+      preview.textContent = sess.preview || '(메시지 없음)';
+      item.appendChild(preview);
+
+      const meta = document.createElement('div');
+      meta.className = 'sess-meta';
+      meta.textContent = `메시지 ${sess.messageCount}개`;
+      item.appendChild(meta);
+
+      item.addEventListener('click', () => {
+        if (sess.isCurrent) {
+          switchToCurrentSession();
+        } else {
+          loadSessionMessages(sess.id);
+        }
+      });
+      container.appendChild(item);
+    }
+  }
+
+  msgs.appendChild(container);
+  msgs.scrollTop = 0;
 }
 
 function syncLocalStorage() {
@@ -1019,25 +1144,51 @@ function renderMessageContent(text) {
     }
   );
 
+  // Step 3: [Hn] → scroll-to-history link (1-based → 0-based)
+  const H_STYLE = 'color:#ffa858;text-decoration:underline;font-weight:700;cursor:pointer';
+  result = result.replace(
+    /\[H(\d+)\]/g,
+    (_, num) =>
+      `<a href="#" onclick="event.preventDefault();scrollToHistoryMsg(${parseInt(num) - 1});return false;" style="${H_STYLE}">[H${num}]</a>`
+  );
+
   return result.replace(/\n/g, '<br>');
+}
+
+function scrollToHistoryMsg(idx) {
+  const el = document.getElementById(`chat-msg-${idx}`);
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.add('chat-highlight');
+    setTimeout(() => el.classList.remove('chat-highlight'), 2000);
+  }
 }
 
 function replaceHistory(history) {
   chatHistory = history;
+  chatViewingSession = null;
   syncLocalStorage();
   renderChatMessages();
 }
 
 function renderChatMessages() {
   const msgs = chatMessages;
+
+  // Remove session list if visible
+  msgs.querySelectorAll('.chat-session-list').forEach(el => el.remove());
+
   const welcome = msgs.querySelector('.chat-welcome');
   if (welcome) welcome.remove();
 
   msgs.querySelectorAll('.chat-msg').forEach(el => el.remove());
 
-  for (const msg of chatHistory) {
+  updateSessionLabel();
+
+  for (let i = 0; i < chatHistory.length; i++) {
+    const msg = chatHistory[i];
     const div = document.createElement('div');
     div.className = `chat-msg ${msg.role}`;
+    div.id = `chat-msg-${i}`;
     div.innerHTML = renderMessageContent(msg.content);
     msgs.appendChild(div);
   }
@@ -1078,15 +1229,32 @@ function hideTypingIndicator() {
   if (el) el.remove();
 }
 
+const CHAT_OPEN_KEY = 'stock_chat_open';
+
 function toggleChat(open) {
   chatPopup.classList.toggle('open', open);
+  try { localStorage.setItem(CHAT_OPEN_KEY, open ? '1' : '0'); } catch (e) {}
   if (open) {
     chatInput.focus();
+    if (!chatViewingSession) renderChatMessages();
   }
+}
+
+function restoreChatState() {
+  try {
+    const saved = localStorage.getItem(CHAT_OPEN_KEY);
+    if (saved === '1') toggleChat(true);
+  } catch (e) {}
 }
 
 async function sendChatMessage(text) {
   if (!text.trim()) return;
+
+  // If viewing archived session, switch to current first
+  if (chatViewingSession) {
+    chatViewingSession = null;
+    chatHistory = [];
+  }
 
   addChatMessage('user', text.trim());
   chatInput.value = '';
@@ -1129,6 +1297,7 @@ async function sendChatMessage(text) {
                 hideTypingIndicator();
                 if (data.history) {
                   replaceHistory(data.history);
+                  loadChatSessions();
                 } else if (data.reply) {
                   addChatMessage('assistant', data.reply);
                 }
@@ -1150,6 +1319,10 @@ async function sendChatMessage(text) {
 chatFab.addEventListener('click', () => toggleChat(true));
 
 chatClose.addEventListener('click', () => toggleChat(false));
+
+chatSessionsBtn.addEventListener('click', () => {
+  loadChatSessions().then(() => showChatSessions());
+});
 
 chatSend.addEventListener('click', () => {
   const text = chatInput.value;
