@@ -1098,16 +1098,21 @@ function showChatSessions() {
           if (!confirm('이 대화를 삭제하시겠습니까?')) return;
           try {
             const res = await fetch(`/api/chat/session/${sess.id}`, { method: 'DELETE' });
-            if (res.ok) {
-              chatSessions = chatSessions.filter(s => s.id !== sess.id);
-              if (chatViewingSession === sess.id) {
-                chatViewingSession = null;
-                switchToCurrentSession();
-              }
-              renderSessionList();
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({}));
+              console.error('세션 삭제 실패:', res.status, err);
+              alert('삭제에 실패했습니다.');
+              return;
             }
+            chatSessions = chatSessions.filter(s => s.id !== sess.id);
+            if (chatViewingSession === sess.id) {
+              chatViewingSession = null;
+              switchToCurrentSession();
+            }
+            renderSessionList();
           } catch (err) {
             console.error('세션 삭제 실패:', err);
+            alert('삭제 중 오류가 발생했습니다.');
           }
         });
         item.appendChild(delBtn);

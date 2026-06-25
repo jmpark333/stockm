@@ -840,6 +840,7 @@ def get_session_messages(session_id=None):
     return []
 
 def delete_session(session_id):
+    global _chat_sessions_cache
     data = load_chat_sessions()
     sessions = data.get("sessions", {})
     if session_id not in sessions:
@@ -847,6 +848,7 @@ def delete_session(session_id):
     del sessions[session_id]
     if data.get("current") == session_id:
         data["current"] = None
+    _chat_sessions_cache = None
     save_chat_sessions(data)
     return True
 
@@ -1318,8 +1320,14 @@ def api_chat_session(session_id):
         headers={"Cache-Control": "no-store", "Access-Control-Allow-Origin": "*"},
     )
 
-@app.route("/api/chat/session/<session_id>", methods=["DELETE"])
+@app.route("/api/chat/session/<session_id>", methods=["DELETE", "OPTIONS"])
 def api_delete_chat_session(session_id):
+    if request.method == "OPTIONS":
+        resp = Response()
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        resp.headers["Access-Control-Allow-Methods"] = "DELETE, OPTIONS"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        return resp
     if delete_session(session_id):
         return Response(
             json.dumps({"ok": True}, ensure_ascii=False),
