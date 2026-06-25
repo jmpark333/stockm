@@ -673,33 +673,116 @@ def api_analyze_signal():
     )
 
 # ──────────────────────────────────────────
-# Stock Manager AI Chat
+# Stock Manager AI Chat — Session-Based
 # ──────────────────────────────────────────
 
 CHAT_MSG_LIMIT = 20
+SESSION_TIMEOUT_MS = 3600000  # 60 min gap → new session
 
-_chat_history_cache = None
+_chat_sessions_cache = None
 
-def load_chat_history():
-    global _chat_history_cache
-    if _chat_history_cache is not None:
-        return _chat_history_cache
+def load_chat_sessions():
+    global _chat_sessions_cache
+    if _chat_sessions_cache is not None:
+        return _chat_sessions_cache
     try:
         with CHAT_HISTORY_FILE.open("r", encoding="utf-8") as f:
-            _chat_history_cache = json.load(f)
-            return _chat_history_cache
+            data = json.load(f)
+            # Migrate flat list format → sessions
+            if isinstance(data, list):
+                sessions = {}
+                sid = f"sess_{int(time.time() * 1000)}"
+                now_str = datetime.now().strftime("%Y-%m-%d")
+                now_t = datetime.now().strftime("%H:%M")
+                sessions[sid] = {
+                    "id": sid, "createdAt": int(time.time() * 1000),
+                    "date": now_str, "time": now_t, "messages": data,
+                }
+                data = {"sessions": sessions, "current": sid}
+                save_chat_sessions(data)
+            _chat_sessions_cache = data
+            return data
     except (FileNotFoundError, json.JSONDecodeError):
-        _chat_history_cache = []
-        return _chat_history_cache
+        _chat_sessions_cache = {"sessions": {}, "current": None}
+        return _chat_sessions_cache
 
-def save_chat_history(history):
-    global _chat_history_cache
-    _chat_history_cache = history
+def save_chat_sessions(sessions_data):
+    global _chat_sessions_cache
+    _chat_sessions_cache = sessions_data
     try:
         with CHAT_HISTORY_FILE.open("w", encoding="utf-8") as f:
-            json.dump(history, f, ensure_ascii=False, indent=2)
+            json.dump(sessions_data, f, ensure_ascii=False, indent=2)
     except Exception:
         pass
+
+def get_or_create_session(timestamp_ms=None):
+    if timestamp_ms is None:
+        timestamp_ms = int(time.time() * 1000)
+    data = load_chat_sessions()
+    current_id = data.get("current")
+    now_dt = datetime.fromtimestamp(timestamp_ms / 1000)
+    date_str = now_dt.strftime("%Y-%m-%d")
+    time_str = now_dt.strftime("%H:%M")
+
+    if current_id and current_id in data.get("sessions", {}):
+        sess = data["sessions"][current_id]
+        last_msg = sess["messages"][-1] if sess["messages"] else None
+        if last_msg:
+            last_ts = last_msg.get("timestamp", 0)
+            if timestamp_ms - last_ts < SESSION_TIMEOUT_MS:
+                return current_id, data
+    # Create new session
+    sid = f"sess_{timestamp_ms}"
+    data.setdefault("sessions", {})[sid] = {
+        "id": sid, "createdAt": timestamp_ms,
+        "date": date_str, "time": time_str, "messages": [],
+    }
+    data["current"] = sid
+    save_chat_sessions(data)
+    return sid, data
+
+def add_message_to_session(role, content, timestamp_ms=None):
+    if timestamp_ms is None:
+        timestamp_ms = int(time.time() * 1000)
+    sid, data = get_or_create_session(timestamp_ms)
+    sess = data["sessions"][sid]
+    sess["messages"].append({
+        "role": role, "content": content, "timestamp": timestamp_ms,
+    })
+    save_chat_sessions(data)
+    return sid
+
+def get_session_messages(session_id=None):
+    data = load_chat_sessions()
+    if session_id:
+        sess = data.get("sessions", {}).get(session_id)
+        return sess["messages"] if sess else []
+    current_id = data.get("current")
+    if current_id and current_id in data.get("sessions", {}):
+        return data["sessions"][current_id]["messages"]
+    return []
+
+def list_sessions():
+    data = load_chat_sessions()
+    current_id = data.get("current")
+    result = []
+    for sid, sess in data.get("sessions", {}).items():
+        msgs = sess.get("messages", [])
+        preview = ""
+        if msgs:
+            first = next((m for m in msgs if m["role"] == "user"), msgs[0])
+            preview = first["content"][:60]
+        result.append({
+            "id": sid,
+            "date": sess.get("date", ""),
+            "time": sess.get("time", ""),
+            "createdAt": sess.get("createdAt", 0),
+            "messageCount": len(msgs),
+            "preview": preview,
+            "isCurrent": sid == current_id,
+        })
+    result.sort(key=lambda s: s["createdAt"], reverse=True)
+    return result
 
 def build_chat_context(portfolio, news):
     lines = []
@@ -957,6 +1040,30 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
         f"📅 오늘 날짜: {datetime.now().strftime('%Y년 %m월 %d일')}\n\n"
         "【 현재 포트폴리오 상태 】\n"
         f"{context}\n"
+        "【 대시보드 지표 산출 방식 】\n"
+        "사용자가 대시보드 지표의 의미나 계산 방법을 물으면 아래 기준으로 설명하세요.\n"
+        "• 일중 범위 위치(rangePos): (현재가 - 저가) / (고가 - 저가) × 100. "
+        "0이면 저가권(바닥), 100이면 고가권(천장). 50 미만은 상대적 저가 구간, 50 초과는 상대적 고가 구간.\n"
+        "• 일중 변동성(volatility): (고가 - 저가) / 전일종가 × 100. "
+        "예: 3이면 전일종가 대비 고가-저가 간 폭이 3%라는 의미. 높을수록 가격 변동이 큼.\n"
+        "• 갭(gap): (시가 - 전일종가) / 전일종가 × 100. "
+        "양수면 시가가 전일종가보다 높게 시작(갭업), 음수면 낮게 시작(갭다운).\n"
+        "• 시가 대비 변동(changeFromOpen): (현재가 - 시가) / 시가 × 100. "
+        "시가 이후의 방향성을 보여줌.\n"
+        "• 단기 추세(shortTrend): 메모리에 저장된 최근 가격 히스토리(최대 30개)의 "
+        "첫 번째 대비 마지막 가격 변화율 기준. +0.1% 이상이면 'up', -0.1% 이하면 'down', 그 외 'flat'.\n"
+        "• AI 시그널 생성 흐름: ① 뉴스 수집 → ② LLM(ZAI/OpenRouter) 분석으로 원시 시그널 생성 → "
+        "③ 키워드 분석(fallback) → ④ validate_signal 검증. "
+        "LLM은 뉴스 제목+현재가 정보를 기반으로 strong_buy/buy/hold/sell/strong_sell + 신뢰도(0-100) + 사유를 JSON으로 반환.\n"
+        "• 시그널 검증(validate_signal): "
+        "뉴스 감성이 긍정+부정 혼재 시 상쇄되어 hold로 조정. "
+        "가격 변동률(%chng)과 시그널이 불일치하면(예: +5% 상승 중 buy 시그널) 변동률 기준으로 재분류: "
+        "+5% 초과→strong_sell, +3% 초과→sell, -5% 미만→strong_buy, -3% 미만→buy.\n"
+        "• 뉴스 키워드 분석(fallback): POSITIVE_KW(21개, 예: 호조/상승/증가/성장)와 "
+        "NEGATIVE_KW(20개, 예: 하락/감소/악화/부진)로 뉴스 텍스트 스캔. "
+        "긍정 키워드 수 - 부정 키워드 수 = net. net≥2→buy, net≤-2→sell, 그 외→hold.\n"
+        "• 포트폴리오 요약: 총 현재가치 = ∑(현재가 × 수량), 총 원가 = ∑(평단가 × 수량), "
+        "총 수익 = 총 현재가치 - 총 원가, 수익률(%) = 총 수익 / 총 원가 × 100.\n\n"
         "【 응답 원칙 】\n"
         "1. 항상 데이터에 기반한 객관적인 조언을 제공하세요.\n"
         "2. 매수/매도/관망에 대한 명확한 의견을 제시하세요.\n"
@@ -967,11 +1074,23 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
         "7. 필요시 포트폴리오 내 특정 종목에 대한 구체적인 분석을 제공하세요.\n"
         "8. ⚠️ 절대 상상하여 답변하지 마세요. 제공된 대화 내역과 아래 웹 검색 결과를 모두 활용하여 답변하세요. "
         "대화 내역(history)에 이전에 나눈 내용이 있다면 그 정보도 적극 활용하세요. "
-        "답변에는 반드시 출처 번호 [1][2]를 표시하고, 답변 하단에 📚 출처: 섹션을 추가하세요. "
+        "이전 대화 내용을 인용할 때는 [H숫자] 형식으로 출처를 표시하세요. "
+        "[H3]은 인덱스 3번 메시지를 의미합니다. "
+        "답변에는 반드시 출처 번호 [1][2]와 [H...]를 함께 표시하고, 답변 하단에 📚 출처: 섹션을 추가하세요. "
         "검색 결과와 대화 내역 모두에 충분한 정보가 없으면 솔직히 '알 수 없습니다'라고 답변하세요."
     )
     messages = [{"role": "system", "content": system_prompt}]
     sliced = history[-CHAT_MSG_LIMIT:] if history else []
+    previous = sliced[:-1] if len(sliced) > 1 else []
+    first_h_idx = max(0, len(history) - CHAT_MSG_LIMIT) if history else 0
+    if previous:
+        h_ref = "【 이전 대화 참조 (인용 시 [H...] 사용) 】\n"
+        for i, h in enumerate(previous, 1):
+            display_idx = first_h_idx + i
+            role_label = "사용자" if h["role"] == "user" else "어드바이저"
+            preview = h["content"][:150].replace("\n", " ")
+            h_ref += f"[H{display_idx}] ({role_label}): {preview}\n"
+        messages.append({"role": "system", "content": h_ref})
     for h in sliced:
         messages.append({"role": h["role"], "content": h["content"]})
     if search_results:
@@ -996,18 +1115,52 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
     messages.append({"role": "user", "content": user_message})
     result = call_llm(messages)
     reply = result["reply"]
-    if search_results:
-        urls = [(i, r.get("url", "")) for i, r in enumerate(search_results, 1) if r.get("url")]
-        if urls:
-            reply += "\n\n📚 출처:\n"
-            for i, url in urls:
-                reply += f"[{i}] {url}\n"
+    h_refs = re.findall(r'\[H(\d+)\]', reply) if previous else []
+    has_urls = search_results and any(r.get("url") for r in search_results)
+    if has_urls or h_refs:
+        reply += "\n\n📚 출처:\n"
+        if search_results:
+            for i, r in enumerate(search_results, 1):
+                if r.get("url"):
+                    reply += f"[{i}] {r['url']}\n"
+        if h_refs:
+            for hn in sorted(set(h_refs), key=int):
+                display_idx = int(hn)
+                zero_idx = display_idx - 1
+                if first_h_idx <= zero_idx < first_h_idx + len(previous):
+                    h = previous[zero_idx - first_h_idx]
+                    role_label = "사용자" if h["role"] == "user" else "어드바이저"
+                    preview = h["content"][:60].replace("\n", " ")
+                    reply += f"[H{hn}] {role_label}: \"{preview}\"\n"
     return reply
 
 @app.route("/api/chat/history")
 def api_chat_history():
+    messages = get_session_messages()
     return Response(
-        json.dumps({"history": load_chat_history()}, ensure_ascii=False),
+        json.dumps({"history": messages}, ensure_ascii=False),
+        mimetype="application/json",
+        headers={"Cache-Control": "no-store", "Access-Control-Allow-Origin": "*"},
+    )
+
+@app.route("/api/chat/sessions")
+def api_chat_sessions():
+    return Response(
+        json.dumps({"sessions": list_sessions()}, ensure_ascii=False),
+        mimetype="application/json",
+        headers={"Cache-Control": "no-store", "Access-Control-Allow-Origin": "*"},
+    )
+
+@app.route("/api/chat/session/<session_id>")
+def api_chat_session(session_id):
+    messages = get_session_messages(session_id)
+    if not messages:
+        return Response(
+            json.dumps({"error": "session not found"}, ensure_ascii=False),
+            status=404, mimetype="application/json",
+        )
+    return Response(
+        json.dumps({"history": messages, "sessionId": session_id}, ensure_ascii=False),
         mimetype="application/json",
         headers={"Cache-Control": "no-store", "Access-Control-Allow-Origin": "*"},
     )
@@ -1031,8 +1184,10 @@ def api_chat():
         )
 
     def generate():
-        history = load_chat_history()
-        history.append({"role": "user", "content": message, "timestamp": int(time.time() * 1000)})
+        now_ms = int(time.time() * 1000)
+        history = get_session_messages()
+        history.append({"role": "user", "content": message, "timestamp": now_ms})
+        add_message_to_session("user", message)
         yield "event: status\ndata: " + json.dumps({"phase": "loading"}, ensure_ascii=False) + "\n\n"
         try:
             portfolio = build_portfolio()
@@ -1044,9 +1199,10 @@ def api_chat():
         search_results = search_web(message)
         yield "event: status\ndata: " + json.dumps({"phase": "analyzing"}, ensure_ascii=False) + "\n\n"
         reply = chat_with_ai(message, history, portfolio, news, search_results=search_results)
-        history.append({"role": "assistant", "content": reply, "timestamp": int(time.time() * 1000)})
-        save_chat_history(history)
-        yield "event: result\ndata: " + json.dumps({"reply": reply, "history": history}, ensure_ascii=False) + "\n\n"
+        history.append({"role": "assistant", "content": reply, "timestamp": now_ms})
+        add_message_to_session("assistant", reply)
+        updated_history = get_session_messages()
+        yield "event: result\ndata: " + json.dumps({"reply": reply, "history": updated_history}, ensure_ascii=False) + "\n\n"
 
     return Response(
         generate(),

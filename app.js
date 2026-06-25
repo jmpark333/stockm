@@ -1000,9 +1000,16 @@ function renderMessageContent(text) {
     citationMap[m[1]] = m[2];
   }
 
-  // Replace [N] markers with clickable citation links
   const LINK_STYLE = 'color:#58a6ff;text-decoration:underline;font-weight:700';
+
+  // Step 1: raw URLs → <a> (FIRST, prevents href="" double-wrapping)
   let result = escaped.replace(
+    /(https?:\/\/[^\s<>)"']+)/g,
+    '<a href="$1" target="_blank" rel="noopener noreferrer" style="color:#58a6ff;text-decoration:underline">$1</a>'
+  );
+
+  // Step 2: [N] markers → citation links (AFTER URLs are already linked)
+  result = result.replace(
     /\[(\d+)\]/g,
     (_, num) => {
       const url = citationMap[num];
@@ -1010,12 +1017,6 @@ function renderMessageContent(text) {
         ? `<a href="${url}" target="_blank" rel="noopener noreferrer" style="${LINK_STYLE}" class="chat-citation-link">[${num}]</a>`
         : `[${num}]`;
     }
-  );
-
-  // Convert remaining raw URLs (excludes URLs already inside href="")
-  result = result.replace(
-    /(https?:\/\/[^\s<>)"']+)/g,
-    '<a href="$1" target="_blank" rel="noopener noreferrer" style="color:#58a6ff;text-decoration:underline">$1</a>'
   );
 
   return result.replace(/\n/g, '<br>');
