@@ -1088,6 +1088,31 @@ function showChatSessions() {
       meta.textContent = `메시지 ${sess.messageCount}개`;
       item.appendChild(meta);
 
+      if (!sess.isCurrent) {
+        const delBtn = document.createElement('button');
+        delBtn.className = 'sess-delete-btn';
+        delBtn.textContent = '✕';
+        delBtn.title = '삭제';
+        delBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          if (!confirm('이 대화를 삭제하시겠습니까?')) return;
+          try {
+            const res = await fetch(`/api/chat/session/${sess.id}`, { method: 'DELETE' });
+            if (res.ok) {
+              chatSessions = chatSessions.filter(s => s.id !== sess.id);
+              if (chatViewingSession === sess.id) {
+                chatViewingSession = null;
+                switchToCurrentSession();
+              }
+              renderSessionList();
+            }
+          } catch (err) {
+            console.error('세션 삭제 실패:', err);
+          }
+        });
+        item.appendChild(delBtn);
+      }
+
       item.addEventListener('click', () => {
         if (sess.isCurrent) {
           switchToCurrentSession();

@@ -2,7 +2,7 @@ import json
 import os
 import re
 import time
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -93,13 +93,23 @@ def fetch_previous_close(code):
         pass
     return None
 
+def _decode_naver_response(raw: bytes) -> str:
+    """네이버 API 응답을 안전하게 디코딩. UTF-8 우선, EUC-KR/CP949 fallback."""
+    for enc in ("utf-8", "euc-kr", "cp949"):
+        try:
+            return raw.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    return raw.decode("utf-8", errors="replace")
+
+
 def fetch_quote(code):
     url = NAVER_REALTIME_URL.format(code=code)
     request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
     try:
         with urllib.request.urlopen(request, timeout=8) as response:
             raw = response.read()
-        text = raw.decode("euc-kr", errors="replace")
+        text = _decode_naver_response(raw)
         payload = json.loads(text)
         if payload.get("resultCode") != "success":
             return {"code": code, "error": "네이버 금융 응답 실패"}
@@ -783,7 +793,8 @@ def get_or_create_session(timestamp_ms=None):
         timestamp_ms = int(time.time() * 1000)
     data = load_chat_sessions()
     current_id = data.get("current")
-    now_dt = datetime.fromtimestamp(timestamp_ms / 1000)
+    kst = timezone(timedelta(hours=9))
+    now_dt = datetime.fromtimestamp(timestamp_ms / 1000, tz=kst)
     date_str = now_dt.strftime("%Y-%m-%d")
     time_str = now_dt.strftime("%H:%M")
 
@@ -809,6 +820,9 @@ def add_message_to_session(role, content, timestamp_ms=None):
         timestamp_ms = int(time.time() * 1000)
     sid, data = get_or_create_session(timestamp_ms)
     sess = data["sessions"][sid]
+    last_msg = sess["messages"][-1] if sess["messages"] else None
+    if last_msg and last_msg.get("role") == role and last_msg.get("content") == content:
+        return sid
     sess["messages"].append({
         "role": role, "content": content, "timestamp": timestamp_ms,
     })
@@ -824,6 +838,17 @@ def get_session_messages(session_id=None):
     if current_id and current_id in data.get("sessions", {}):
         return data["sessions"][current_id]["messages"]
     return []
+
+def delete_session(session_id):
+    data = load_chat_sessions()
+    sessions = data.get("sessions", {})
+    if session_id not in sessions:
+        return False
+    del sessions[session_id]
+    if data.get("current") == session_id:
+        data["current"] = None
+    save_chat_sessions(data)
+    return True
 
 def list_sessions():
     data = load_chat_sessions()
@@ -1093,33 +1118,53 @@ def search_web(query):
 
     return all_results[:8]
 
+def get_market_status() -> tuple[str, str, datetime]:
+    """현재 KST 시각과 토스증권 국내주식 장 상태를 반환.
+
+    Returns:
+        (phase_label, trade_status, now_kst)
+    """
+    kst = timezone(timedelta(hours=9))
+    now_kst = datetime.now(kst)
+    if now_kst.weekday() >= 5:
+        return ("클로즈(주말)", "거래 불가 — 다음 거래일 프리마켓 08:00부터 주문 가능", now_kst)
+    hhmm = now_kst.strftime("%H:%M")
+    if "08:00" <= hhmm < "08:50":
+        return ("프리마켓(장전)", "실시간 거래 가능 (토스증권)", now_kst)
+    if "08:50" <= hhmm < "09:00":
+        return ("프리마켓 마감~정규장 개시 전", "거래 불가 — 09:00 정규장 개시 대기", now_kst)
+    if "09:00" <= hhmm < "15:20":
+        return ("메인마켓(정규장)", "실시간 거래 가능 (가장 유동성 높음)", now_kst)
+    if "15:20" <= hhmm < "15:30":
+        return ("정규장 마감~시가단일가 준비", "거래 불가 — 15:30 시가단일가 대기", now_kst)
+    if "15:30" <= hhmm < "15:40":
+        return ("시가단일가 마감임박", "단일가 주문만 가능 (토스증권)", now_kst)
+    if "15:40" <= hhmm < "20:00":
+        return ("애프터마켓(장후)", "실시간 거래 가능 (유동성 낮음, 슬리피지 주의)", now_kst)
+    return ("클로즈(장 마감)", "거래 불가 — 다음 거래일 프리마켓 08:00부터 주문 가능", now_kst)
+
+
 def chat_with_ai(user_message, history, portfolio, news, search_results=None):
     context = build_chat_context(portfolio, news)
     if search_results is None:
         search_results = search_web(user_message)
-    now = datetime.now()
-    hour = now.hour
-    minute = now.minute
-    weekday = now.weekday()  # 0=Mon, 6=Sun
-    is_weekday = weekday < 5
-    is_market_hours = is_weekday and ((9 <= hour < 15) or (hour == 15 and minute == 0))
-    is_lunch = is_weekday and hour == 12
-    market_status = (
-        "장 운영 중 (09:00~15:30, 점심시간 12:00~13:00 포함)" if is_market_hours
-        else "장 마감" if is_weekday and hour >= 16
-        else "장 시작 전" if is_weekday and hour < 9
-        else "주말/공휴일"
-    )
-
+    phase_label, trade_status, now_kst = get_market_status()
+    weekday = now_kst.weekday()
     system_prompt = (
         "당신은 전문 주식 투자 어드바이저 'Stock Manager AI'입니다. "
         "사용자의 포트폴리오 정보와 시장 데이터를 바탕으로 투자 조언을 제공합니다.\n\n"
-        f"📅 오늘 날짜: {now.strftime('%Y년 %m월 %d일')} ({['월','화','수','목','금','토','일'][weekday]}요일)\n"
-        f"⏰ 현재 시간: {now.strftime('%H:%M')} | 장 상태: {market_status}\n\n"
-        "⚠️ 중요: 장 운영시간과 현재 시간을 반드시 확인하고 답변하세요. "
-        "점심시간(12:00~13:00)에는 실시간 거래가 일시 정지될 수 있습니다. "
-        "장 마감 후에는 당일 종가 기준으로 답변하세요. "
-        "현재가가 변동 없으면 '보합' 또는 '장 마감으로 현재가 고정'이라고 명시하세요.\n\n"
+        f"📅 오늘 날짜: {now_kst.strftime('%Y년 %m월 %d일')} ({['월','화','수','목','금','토','일'][weekday]}요일)\n"
+        f"🕒 현재 시각 (KST): {now_kst.strftime('%H시 %M분')}\n"
+        f"📈 현재 장 상태: **{phase_label}** — {trade_status}\n\n"
+        "【 토스증권 국내주식 장 운영 시간 】\n"
+        "- 프리마켓(장전): 08:00~08:50 — 실시간 거래 가능\n"
+        "- 메인마켓(정규장): 09:00~15:20 — 실시간 거래 가능\n"
+        "- 시가단일가 마감임박: 15:30~15:40 — 단일가 주문만 가능\n"
+        "- 애프터마켓(장후): 15:40~20:00 — 실시간 거래 가능\n"
+        "- 클로즈(장 마감): 20:00~익일 08:00 — 거래 불가\n\n"
+        "⚠️ 중요: 매매 추천 시 반드시 위 '현재 장 상태'를 기준으로 안내하세요. "
+        "거래 불가 상태면 '다음 거래일 프리마켓 08:00 시작 후 주문' 형태로 안내하고, "
+        "애프터마켓/프리마켓은 유동성이 낮아 슬리피지 위험이 크다는 점을 반드시 명시하세요.\n\n"
         "【 현재 포트폴리오 상태 】\n"
         f"{context}\n"
         "【 대시보드 지표 산출 방식 】\n"
@@ -1159,7 +1204,10 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
         "이전 대화 내용을 인용할 때는 [H숫자] 형식으로 출처를 표시하세요. "
         "[H3]은 인덱스 3번 메시지를 의미합니다. "
         "답변에는 반드시 출처 번호 [1][2]와 [H...]를 함께 표시하고, 답변 하단에 📚 출처: 섹션을 추가하세요. "
-        "검색 결과와 대화 내역 모두에 충분한 정보가 없으면 솔직히 '알 수 없습니다'라고 답변하세요."
+        "검색 결과와 대화 내역 모두에 충분한 정보가 없으면 솔직히 '알 수 없습니다'라고 답변하세요.\n"
+        "9. 🚫 출처 할루네이션 금지: 검색 결과(search_results)가 0건이거나 비어 있으면, "
+        "답변에 절대 [1][2] 같은 출처 번호를 만들지 마세요. "
+        "반드시 실제로 제공된 search_results 안의 URL만 인용하고, 없으면 '최신 실시간 데이터 확인이 필요합니다'라고 솔직히 답변하세요."
     )
     messages = [{"role": "system", "content": system_prompt}]
     sliced = history[-CHAT_MSG_LIMIT:] if history else []
@@ -1231,7 +1279,8 @@ def api_new_session():
     _chat_sessions_cache = None
     now_ms = int(time.time() * 1000)
     sid = f"sess_{now_ms}"
-    now_dt = datetime.fromtimestamp(now_ms / 1000)
+    kst = timezone(timedelta(hours=9))
+    now_dt = datetime.fromtimestamp(now_ms / 1000, tz=kst)
     data = load_chat_sessions()
     data["sessions"][sid] = {
         "id": sid, "createdAt": now_ms,
@@ -1267,6 +1316,19 @@ def api_chat_session(session_id):
         json.dumps({"history": messages, "sessionId": session_id}, ensure_ascii=False),
         mimetype="application/json",
         headers={"Cache-Control": "no-store", "Access-Control-Allow-Origin": "*"},
+    )
+
+@app.route("/api/chat/session/<session_id>", methods=["DELETE"])
+def api_delete_chat_session(session_id):
+    if delete_session(session_id):
+        return Response(
+            json.dumps({"ok": True}, ensure_ascii=False),
+            mimetype="application/json",
+            headers={"Cache-Control": "no-store", "Access-Control-Allow-Origin": "*"},
+        )
+    return Response(
+        json.dumps({"error": "session not found"}, ensure_ascii=False),
+        status=404, mimetype="application/json",
     )
 
 @app.route("/api/chat", methods=["POST", "OPTIONS"])
