@@ -1104,6 +1104,13 @@ td {
   cursor: default;
 }
 
+.chat-citation-link {
+  transition: opacity 0.15s;
+}
+.chat-citation-link:hover {
+  opacity: 0.8;
+}
+
 @media (max-width: 480px) {
   .chat-fab {
     bottom: 16px;

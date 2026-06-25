@@ -991,12 +991,34 @@ function addChatMessage(role, content) {
 
 function renderMessageContent(text) {
   const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const withLinks = escaped.replace(
-    /(https?:\/\/[^\s<>)]+)/g,
+
+  // Build citation map: [N] → URL from 출처 section
+  const citationMap = {};
+  const citeRe = /\[(\d+)\][\s\S]*?(https?:\/\/[^\s<>)"']+)/g;
+  let m;
+  while ((m = citeRe.exec(escaped)) !== null) {
+    citationMap[m[1]] = m[2];
+  }
+
+  // Replace [N] markers with clickable citation links
+  const LINK_STYLE = 'color:#58a6ff;text-decoration:underline;font-weight:700';
+  let result = escaped.replace(
+    /\[(\d+)\]/g,
+    (_, num) => {
+      const url = citationMap[num];
+      return url
+        ? `<a href="${url}" target="_blank" rel="noopener noreferrer" style="${LINK_STYLE}" class="chat-citation-link">[${num}]</a>`
+        : `[${num}]`;
+    }
+  );
+
+  // Convert remaining raw URLs (excludes URLs already inside href="")
+  result = result.replace(
+    /(https?:\/\/[^\s<>)"']+)/g,
     '<a href="$1" target="_blank" rel="noopener noreferrer" style="color:#58a6ff;text-decoration:underline">$1</a>'
   );
-  const withBreaks = withLinks.replace(/\n/g, '<br>');
-  return withBreaks;
+
+  return result.replace(/\n/g, '<br>');
 }
 
 function replaceHistory(history) {
