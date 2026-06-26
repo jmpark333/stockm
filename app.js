@@ -1203,18 +1203,31 @@ function addChatMessage(role, content) {
 function renderMessageContent(text) {
   const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+  // Extract markdown tables first and replace with placeholders so that
+  // URL/citation/bold/newline conversions do not corrupt table HTML.
+  const tables = [];
+  let working = escaped.replace(
+    /(?:^|\n)((?:\|[^\n]*\|[ \t]*\n)+\|[\s:|-]+\|[^\n]*)/g,
+    (full, tableBlock) => {
+      const html = markdownTableToHtml(tableBlock);
+      const placeholder = `__CHAT_TABLE_${tables.length}__`;
+      tables.push(html);
+      return `\n${placeholder}\n`;
+    }
+  );
+
   // Build citation map: [N] → URL from 출처 section
   const citationMap = {};
   const citeRe = /\[(\d+)\][\s\S]*?(https?:\/\/[^\s<>)"']+)/g;
   let m;
-  while ((m = citeRe.exec(escaped)) !== null) {
+  while ((m = citeRe.exec(working)) !== null) {
     citationMap[m[1]] = m[2];
   }
 
   const LINK_STYLE = 'color:#58a6ff;text-decoration:underline;font-weight:700';
 
   // Step 1: raw URLs → <a> (FIRST, prevents href="" double-wrapping)
-  let result = escaped.replace(
+  let result = working.replace(
     /(https?:\/\/[^\s<>)"']+)/g,
     '<a href="$1" target="_blank" rel="noopener noreferrer" style="color:#58a6ff;text-decoration:underline">$1</a>'
   );
@@ -1241,7 +1254,57 @@ function renderMessageContent(text) {
   // Step 4: **bold** → <strong>
   result = result.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
 
-  return result.replace(/\n/g, '<br>');
+  // Step 5: newlines → <br>
+  result = result.replace(/\n/g, '<br>');
+
+  // Step 6: restore table HTML (after all other conversions)
+  tables.forEach((html, i) => {
+    result = result.replace(`__CHAT_TABLE_${i}__`, html);
+  });
+  return result;
+}
+
+function markdownTableToHtml(tableText) {
+  const rawLines = tableText.trim().split('\n').map(l => l.trim()).filter(l => l.startsWith('|'));
+  if (rawLines.length < 2) return tableText;
+
+  const splitRow = (line) =>
+    line.replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim());
+
+  // Second line must be a separator like |---|:---:|---:|
+  const sep = rawLines[1];
+  if (!/^\|?[\s:|-]+\|?$/.test(sep) || !sep.includes('-')) return tableText;
+
+  const headers = splitRow(rawLines[0]);
+  const rows = rawLines.slice(2).map(splitRow);
+
+  const LINK_STYLE = 'color:#58a6ff;text-decoration:underline';
+  const numClass = (cell) => {
+    const m = cell.match(/([+\-])?\s*[\d.,]+\s*%/);
+    if (!m) return '';
+    return m[1] === '-' ? 'num-down' : m[1] === '+' ? 'num-up' : 'num-flat';
+  };
+  const renderCell = (cell) => {
+    let s = cell;
+    s = s.replace(/(https?:\/\/[^\s<>)"']+)/g, `<a href="$1" target="_blank" rel="noopener noreferrer" style="${LINK_STYLE}">$1</a>`);
+    s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    return s;
+  };
+
+  let html = '<div class="chat-table-wrap"><table class="chat-table">';
+  html += '<thead><tr>' + headers.map(h => `<th>${renderCell(h)}</th>`).join('') + '</tr></thead>';
+  html += '<tbody>';
+  rows.forEach(row => {
+    const maxLen = Math.max(headers.length, row.length);
+    const cells = Array.from({length: maxLen}, (_, i) => {
+      const raw = row[i] || '';
+      const cls = numClass(raw);
+      return `<td${cls ? ` class="${cls}"` : ''}>${renderCell(raw)}</td>`;
+    }).join('');
+    html += `<tr>${cells}</tr>`;
+  });
+  html += '</tbody></table></div>';
+  return html;
 }
 
 function scrollToHistoryMsg(idx) {
