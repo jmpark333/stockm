@@ -539,9 +539,38 @@ def handle_analyze_signal(code):
 # Stock Manager AI Chat
 # ──────────────────────────────────────────
 
+US_MARKET_FILE = BASE_DIR / "us_market.json"
+
 CHAT_MSG_LIMIT = 20
 
 _chat_history_cache = None
+
+def load_us_market():
+    try:
+        with US_MARKET_FILE.open("r", encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+def build_us_market_context():
+    data = load_us_market()
+    if not data:
+        return ""
+    lines = []
+    lines.append("🇺🇸 미국증시 (전일 마감)")
+    if data.get("date"):
+        lines.append(f"• 날짜: {data['date']}")
+    if data.get("indices"):
+        for idx in data["indices"]:
+            sign = "+" if idx["change"] > 0 else ""
+            lines.append(f"• {idx['name']}: {idx['value']:,.2f} ({sign}{idx['change']:.2f}%)")
+    if data.get("summary"):
+        lines.append(f"• 요약: {data['summary']}")
+    if data.get("highlights"):
+        lines.append("• 주요 특징:")
+        for h in data["highlights"]:
+            lines.append(f"  - {h}")
+    return "\n".join(lines)
 
 def load_chat_history():
     global _chat_history_cache
@@ -595,12 +624,24 @@ def build_chat_context(portfolio, news):
                 lines.append(f"• {emoji} {w['name']}({w['code']}): 현재 {w['currentPrice']:,.0f}원 ({w['changeRate']:+.2f}%) | 추세: {w['trend']['shortTrend']}")
         lines.append("")
     if portfolio.get("trades"):
-        lines.append("📋 오늘의 거래내역")
-        for t in portfolio["trades"]:
-            emoji = "🟢" if t["type"] == "buy" else "🔴"
-            action = "매도" if t["type"] == "sell" else "매수"
-            lines.append(f"  {emoji} {t['name']} {t['quantity']}주 {action} @ {t['price']:,.0f}원 ({t.get('note','')})")
-        lines.append("")
+        kst = timezone(timedelta(hours=9))
+        today_str = datetime.now(kst).strftime('%Y-%m-%d')
+        today_trades = [t for t in portfolio["trades"] if t.get("date") == today_str]
+        past_trades = [t for t in portfolio["trades"] if t.get("date") != today_str]
+        if today_trades:
+            lines.append("📋 오늘의 거래내역")
+            for t in today_trades:
+                emoji = "🟢" if t["type"] == "buy" else "🔴"
+                action = "매도" if t["type"] == "sell" else "매수"
+                lines.append(f"  {emoji} {t['name']} {t['quantity']}주 {action} @ {t['price']:,.0f}원 ({t.get('note','')})")
+            lines.append("")
+        if past_trades:
+            lines.append("📋 과거 거래내역")
+            for t in past_trades:
+                emoji = "🟢" if t["type"] == "buy" else "🔴"
+                action = "매도" if t["type"] == "sell" else "매수"
+                lines.append(f"  {emoji} [{t.get('date','')}] {t['name']} {t['quantity']}주 {action} @ {t['price']:,.0f}원 ({t.get('note','')})")
+            lines.append("")
     if news:
         lines.append("📰 최근 뉴스")
         for n in news:
@@ -838,46 +879,101 @@ def get_market_status() -> tuple[str, str, datetime]:
     return ("클로즈(장 마감)", "거래 불가 — 다음 거래일 프리마켓 08:00부터 주문 가능", now_kst)
 
 
+def get_next_trading_day(now_kst):
+    """현재 시각 기준 다음 거래일(주말 제외)과 요일을 반환."""
+    kst = timezone(timedelta(hours=9))
+    next_day = now_kst + timedelta(days=1)
+    while next_day.weekday() >= 5:
+        next_day += timedelta(days=1)
+    weekday_kr = ["월", "화", "수", "목", "금", "토", "일"][next_day.weekday()]
+    return next_day.strftime('%Y년 %m월 %d일'), weekday_kr
+
+
 def chat_with_ai(user_message, history, portfolio, news, search_results=None):
     context = build_chat_context(portfolio, news)
+    us_market_ctx = build_us_market_context()
     if search_results is None:
         search_results = search_web(user_message)
     phase_label, trade_status, now_kst = get_market_status()
     weekday_kr = ["월", "화", "수", "목", "금", "토", "일"][now_kst.weekday()]
+    next_trade_date, next_trade_weekday = get_next_trading_day(now_kst)
+    today_str = now_kst.strftime('%Y년 %m월 %d일')
+    today_iso = now_kst.strftime('%Y-%m-%d')
+
+    # 오늘 날짜(YYYY-MM-DD)를 기준으로 검색 결과 필터링
+    filtered_search = []
+    if search_results:
+        for r in search_results:
+            url = r.get("url", "")
+            text = r.get("text", "")
+            # 주식/경제 관련 키워드가 하나 이상 있는지 확인
+            stock_kw = ["주식", "증시", "코스피", "코스닥", "종목", "투자", "매매",
+                        "호실적", "실적", "전망", "목표가", "상승", "하락", "급락",
+                        "반도체", "메모리", "HBM", "전자", "차", "자동차",
+                        "로봇", "AI", "인공지능", "배당", "수익", "손실",
+                        "분석", "리포트", "애널리스트", "순매수", "기관", "외국인"]
+            if any(kw in text for kw in stock_kw):
+                filtered_search.append(r)
+    if not filtered_search:
+        filtered_search = search_results[:5] if search_results else []
+
     system_prompt = (
         "당신은 전문 주식 투자 어드바이저 'Stock Manager AI'입니다. "
         "사용자의 포트폴리오 정보와 시장 데이터를 바탕으로 투자 조언을 제공합니다.\n\n"
-        f"📅 오늘 날짜: {now_kst.strftime('%Y년 %m월 %d일')} ({weekday_kr}요일)\n"
+        f"📅 오늘 날짜: {today_str} ({weekday_kr}요일)\n"
         f"🕒 현재 시각 (KST): {now_kst.strftime('%H시 %M분')}\n"
-        f"📈 현재 장 상태: **{phase_label}** — {trade_status}\n\n"
+        f"📈 현재 장 상태: **{phase_label}** — {trade_status}\n"
+        f"📅 다음 거래일: {next_trade_date} ({next_trade_weekday}요일) — 프리마켓 08:00 개시\n\n"
+        "【 절대 규칙 — 위반 금지 】\n"
+        f"1. 오늘은 {today_iso}({weekday_kr}요일)입니다. 토요일/일요일은 장이 열리지 않습니다. "
+        f"따라서 다음 거래일은 {next_trade_date}({next_trade_weekday})입니다. "
+        "절대 토요일이나 일요일에 프리마켓/메인마켓이 있다고 말하지 마세요.\n"
+        "2. ⚠️ 할루네이션(실제 없는 사실 만들어내기) 엄격히 금지: "
+        "실적 발표일, 목표가, 기업 전망 등 정보가 검색 결과에 없으면 절대 만들지 마세요. "
+        "예: '마이크론 실적 발표일'이 검색 결과에 없으면 '실적 발표일은 확인이 필요합니다'라고 답변하세요.\n"
+        "3. ⚠️ 출처 인용 규칙: 아래 검색 결과에서 실제로 관련 있는 것만 인용하세요. "
+        "검색 결과와 무관한 URL을 출처로 만들지 마세요. "
+        "검색 결과가 없으면 출처 섹션을 생략하고 '최신 실시간 데이터 확인이 필요합니다'라고 답변하세요.\n"
+        "4. 답변에 사용하는 모든 수치(주가, 수익률, 비율 등)는 반드시 위 포트폴리오 데이터에서 가져오세요. "
+        "절대 상상으로 수치를 만들지 마세요.\n\n"
         "【 토스증권 국내주식 장 운영 시간 】\n"
         "- 프리마켓(장전): 08:00~08:50 — 실시간 거래 가능\n"
         "- 메인마켓(정규장): 09:00~15:20 — 실시간 거래 가능\n"
         "- 시가단일가 마감임박: 15:30~15:40 — 단일가 주문만 가능\n"
         "- 애프터마켓(장후): 15:40~20:00 — 실시간 거래 가능\n"
         "- 클로즈(장 마감): 20:00~익일 08:00 — 거래 불가\n\n"
-        "⚠️ 중요: 매매 추천 시 반드시 위 '현재 장 상태'를 기준으로 안내하세요. "
-        "거래 불가 상태면 '다음 거래일 프리마켓 08:00 시작 후 주문' 형태로 안내하고, "
-        "애프터마켓/프리마켓은 유동성이 낮아 슬리피지 위험이 크다는 점을 반드시 명시하세요.\n\n"
+        "⚠️ 중요: 매매 추천 시 반드시 위 '현재 장 상태'와 '다음 거래일'을 기준으로 안내하세요. "
+        "거래 불가 상태면 다음 거래일({next_trade_date}) 프리마켓 08:00 형태로 안내하세요.\n\n"
         "【 현재 포트폴리오 상태 】\n"
         f"{context}\n"
+    ).format(next_trade_date=next_trade_date)
+
+    if us_market_ctx:
+        system_prompt += (
+            "【 미국증시 동향 (전일 마감) 】\n"
+            f"{us_market_ctx}\n\n"
+            "⚠️ 미국증시 데이터 활용 지침: "
+            "사용자가 미국증시, 미국 시장, 뉴욕 증시 관련 질문을 하거나, "
+            "보유종목과 미국 시장의 연관성을 분석할 때 반드시 위 미국증시 데이터를 참고하세요. "
+            "예: 애플 하락 → 삼성전자/반도체 영향, 마이크론 HBM 수요 → SK하이닉스 연관성 등\n\n"
+        )
+
+    system_prompt += (
         "【 응답 원칙 】\n"
         "1. 항상 데이터에 기반한 객관적인 조언을 제공하세요.\n"
         "2. 매수/매도/관망에 대한 명확한 의견을 제시하세요.\n"
         "3. 리스크 관리의 중요성을 강조하세요.\n"
         "4. 전문적이고 친근한 어조로 답변하세요.\n"
         "5. 한국어로 답변하세요.\n"
-        "6. 답변은 완전하게 작성하세요. 절대 중략하거나 생략하지 마세요. 테이블이나 목록도 모든 항목을 빠짐없이 포함하세요.\n"
+        "6. 답변은 완전하게 작성하세요.\n"
         "7. 필요시 포트폴리오 내 특정 종목에 대한 구체적인 분석을 제공하세요.\n"
-        "8. ⚠️ 절대 상상하여 답변하지 마세요. 제공된 대화 내역과 아래 웹 검색 결과를 모두 활용하여 답변하세요. "
-        "대화 내역(history)에 이전에 나눈 내용이 있다면 그 정보도 적극 활용하세요. "
-        "이전 대화 내용을 인용할 때는 [H숫자] 형식으로 출처를 표시하세요. "
-        "[H3]은 인덱스 3번 메시지를 의미합니다. "
-        "답변에는 반드시 출처 번호 [1][2]와 [H...]를 함께 표시하고, 답변 하단에 📚 출처: 섹션을 추가하세요. "
-        "검색 결과와 대화 내역 모두에 충분한 정보가 없으면 솔직히 '알 수 없습니다'라고 답변하세요.\n"
-        "9. 🚫 출처 할루네이션 금지: 검색 결과(search_results)가 0건이거나 비어 있으면, "
-        "답변에 절대 [1][2] 같은 출처 번호를 만들지 마세요. "
-        "반드시 실제로 제공된 search_results 안의 URL만 인용하고, 없으면 '최신 실시간 데이터 확인이 필요합니다'라고 솔직히 답변하세요."
+        "8. ⚠️ 절대 상상하여 답변하지 마세요. 위 포트폴리오 데이터와 미국증시 데이터, "
+        "그리고 아래 검색 결과를 모두 활용하여 답변하세요. "
+        "검색 결과에 없는 정보는 '확인이 필요합니다'라고 답변하세요.\n"
+        "9. 대화 내역(history)에 이전에 나눈 내용이 있다면 그 정보도 적극 활용하세요. "
+        "이전 대화 내용을 인용할 때는 [H숫자] 형식으로 출처를 표시하세요.\n"
+        "10. 🚫 출처 할루네이션 금지: 반드시 아래 검색 결과 안의 URL만 인용하세요. "
+        "검색 결과가 없으면 출처 섹션을 생략하세요."
     )
     messages = [{"role": "system", "content": system_prompt}]
     sliced = history[-CHAT_MSG_LIMIT:] if history else []
@@ -893,9 +989,9 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
         messages.append({"role": "system", "content": h_ref})
     for h in sliced:
         messages.append({"role": h["role"], "content": h["content"]})
-    if search_results:
+    if filtered_search:
         search_text = ""
-        for i, r in enumerate(search_results, 1):
+        for i, r in enumerate(filtered_search, 1):
             text = r.get("text", "")
             url = r.get("url", "")
             search_text += f"[{i}] {text}\n"
@@ -917,11 +1013,11 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
     reply = result["reply"]
     reply = re.sub(r'\n*📚\s*출처[:：][\s\S]*$', '', reply).rstrip()
     h_refs = re.findall(r'\[H(\d+)\]', reply) if previous else []
-    has_urls = search_results and any(r.get("url") for r in search_results)
+    has_urls = filtered_search and any(r.get("url") for r in filtered_search)
     if has_urls or h_refs:
         reply += "\n\n📚 출처:\n"
-        if search_results:
-            for i, r in enumerate(search_results, 1):
+        if filtered_search:
+            for i, r in enumerate(filtered_search, 1):
                 if r.get("url"):
                     reply += f"[{i}] {r['url']}\n"
         if h_refs:
@@ -964,6 +1060,9 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_json({"error": "code parameter required"})
                 return
             self.send_json(handle_analyze_signal(code))
+            return
+        if p == "/api/us-market":
+            self.send_json(load_us_market())
             return
         if p == "/api/chat/history":
             self.send_json({"history": load_chat_history()})

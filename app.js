@@ -769,6 +769,60 @@ function renderSummary(summary) {
   }
 }
 
+/* US Market Section */
+const usMarketBody = document.querySelector('#usMarketBody');
+const usMarketDate = document.querySelector('#usMarketDate');
+
+async function loadUSMarket() {
+  try {
+    const res = await fetch('/api/us-market', { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    renderUSMarket(data);
+  } catch (e) {
+    if (usMarketBody) usMarketBody.innerHTML = '<p class="muted">미국증시 데이터를 불러올 수 없습니다.</p>';
+  }
+}
+
+function renderUSMarket(data) {
+  if (!usMarketBody || !data) return;
+
+  let html = '';
+  if (data.date) {
+    if (usMarketDate) usMarketDate.textContent = `${data.date} 마감`;
+  }
+
+  if (data.indices && data.indices.length) {
+    data.indices.forEach(idx => {
+      const isUp = idx.change > 0;
+      const isDown = idx.change < 0;
+      const sign = isUp ? '+' : '';
+      const cls = isUp ? 'up' : isDown ? 'down' : 'neutral';
+      html += `<div class="us-index-row">
+        <span class="us-index-name">${idx.name}</span>
+        <span>
+          <span class="us-index-value">${idx.value.toLocaleString('ko-KR')}</span>
+          <span class="us-index-change ${cls}">${sign}${idx.change.toFixed(2)}%</span>
+        </span>
+      </div>`;
+    });
+  }
+
+  if (data.summary) {
+    html += `<div class="us-summary-box">${data.summary}</div>`;
+  }
+
+  if (data.highlights && data.highlights.length) {
+    html += '<div class="us-highlights">';
+    data.highlights.forEach(h => {
+      html += `<div class="us-highlight-item">• ${h}</div>`;
+    });
+    html += '</div>';
+  }
+
+  usMarketBody.innerHTML = html;
+}
+
 function renderNews(newsItems) {
   newsContainer.innerHTML = '';
   if (!newsItems || !newsItems.length) {
@@ -939,6 +993,7 @@ autoBtn.addEventListener('click', () => setAutoRefresh(!autoEnabled));
 initResize();
 loadPortfolio();
 loadNews();
+loadUSMarket();
 setAutoRefresh(true);
 setupNewsRefresh();
 
