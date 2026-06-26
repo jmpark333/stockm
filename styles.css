@@ -1495,11 +1495,26 @@ td {
 }
 
 /* 컬럼이 4개 이하: 줄바꿈 허용, 가로 스크롤 없이 부모 폭에 맞춤 */
+.chat-table-wrap.chat-table-compact {
+  overflow-x: hidden;
+}
+
 .chat-table-compact .chat-table {
-  width: 100%;
-  table-layout: auto;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  table-layout: fixed;
   white-space: normal;
   word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.chat-table-compact .chat-table thead th,
+.chat-table-compact .chat-table tbody td {
+  white-space: normal !important;
+  word-break: break-word !important;
+  overflow-wrap: anywhere !important;
+  max-width: 100%;
 }
 
 .chat-table-compact .chat-table thead th,
