@@ -1494,6 +1494,26 @@ td {
   background: rgba(15, 23, 42, 0.95);
 }
 
+/* 컬럼이 4개 이하: 줄바꿈 허용, 가로 스크롤 없이 부모 폭에 맞춤 */
+.chat-table-compact .chat-table {
+  width: 100%;
+  table-layout: auto;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.chat-table-compact .chat-table thead th,
+.chat-table-compact .chat-table tbody td {
+  white-space: normal;
+  word-break: break-word;
+}
+
+/* compact 모드에서는 sticky 비활성화 (줄바꿈되므로 첫 열 고정 의미 없음) */
+.chat-table-compact.chat-table-transposed thead th:first-child,
+.chat-table-compact.chat-table-transposed tbody td:first-child {
+  position: static;
+}
+
 /* 모바일 대응 */
 @media (max-width: 768px) {
   .chat-table-wrap {
