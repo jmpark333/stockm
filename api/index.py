@@ -17,6 +17,7 @@ app = Flask(__name__, static_folder=None)
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_FILE = BASE_DIR / "data.json"
 CHAT_HISTORY_FILE = BASE_DIR / "chat_history.json"
+US_MARKET_FILE = BASE_DIR / "us_market.json"
 
 # Upstash Redis (REST API)
 REDIS_URL = os.environ.get("UPSTASH_REDIS_REST_URL", "")
@@ -32,11 +33,14 @@ def kv_get(key):
             "Authorization": f"Bearer {REDIS_TOKEN}",
         })
         with urllib.request.urlopen(req, timeout=5) as resp:
-            result = json.loads(resp.read().decode("utf-8")).get("result")
+            payload = json.loads(resp.read().decode("utf-8"))
+            result = payload.get("result")
             if result is None:
                 return None
             return json.loads(result)
-    except Exception:
+    except Exception as exc:
+        import sys
+        print(f"[kv_get] key={key} error={exc}", file=sys.stderr, flush=True)
         return None
 
 
@@ -56,8 +60,15 @@ def kv_set(key, value):
             method="POST",
         )
         with urllib.request.urlopen(req, timeout=5) as resp:
-            return resp.status == 200
-    except Exception:
+            payload = json.loads(resp.read().decode("utf-8"))
+            ok = payload.get("result") == "OK" and resp.status == 200
+            if not ok:
+                import sys
+                print(f"[kv_set] key={key} unexpected payload={payload}", file=sys.stderr, flush=True)
+            return ok
+    except Exception as exc:
+        import sys
+        print(f"[kv_set] key={key} error={exc}", file=sys.stderr, flush=True)
         return False
 NAVER_REALTIME_URL = "https://polling.finance.naver.com/api/realtime?query=SERVICE_ITEM:{code}"
 
@@ -694,6 +705,14 @@ def api_config():
         mimetype="application/json",
     )
 
+@app.route("/api/us-market")
+def api_us_market():
+    return Response(
+        json.dumps(load_us_market(), ensure_ascii=False),
+        mimetype="application/json",
+        headers={"Cache-Control": "no-store", "Access-Control-Allow-Origin": "*"},
+    )
+
 @app.route("/api/news")
 def api_news():
     return Response(
@@ -731,64 +750,59 @@ def api_analyze_signal():
 CHAT_MSG_LIMIT = 20
 SESSION_TIMEOUT_MS = 3600000  # 60 min gap → new session
 
-_chat_sessions_cache = None
+
+def _normalize_sessions_data(data):
+    """Migrate legacy formats (raw list) into the {sessions, current} envelope."""
+    if isinstance(data, list):
+        sid = f"sess_{int(time.time() * 1000)}"
+        now_str = datetime.now().strftime("%Y-%m-%d")
+        now_t = datetime.now().strftime("%H:%M")
+        sessions = {
+            sid: {
+                "id": sid,
+                "createdAt": int(time.time() * 1000),
+                "date": now_str,
+                "time": now_t,
+                "messages": data,
+            }
+        }
+        return {"sessions": sessions, "current": sid}
+    if isinstance(data, dict) and "sessions" in data:
+        return data
+    return {"sessions": {}, "current": None}
+
 
 def load_chat_sessions():
-    global _chat_sessions_cache
-    if _chat_sessions_cache is not None:
-        return _chat_sessions_cache
-    # Try Vercel KV first
+    """Always read fresh from Redis. No in-memory cache (serverless-safe)."""
     kv_data = kv_get("chat_sessions")
     if kv_data is not None:
-        if isinstance(kv_data, list):
-            sessions = {}
-            sid = f"sess_{int(time.time() * 1000)}"
-            now_str = datetime.now().strftime("%Y-%m-%d")
-            now_t = datetime.now().strftime("%H:%M")
-            sessions[sid] = {
-                "id": sid, "createdAt": int(time.time() * 1000),
-                "date": now_str, "time": now_t, "messages": kv_data,
-            }
-            kv_data = {"sessions": sessions, "current": sid}
-            save_chat_sessions(kv_data)
-        _chat_sessions_cache = kv_data
-        return _chat_sessions_cache
-    # Fallback to filesystem
+        normalized = _normalize_sessions_data(kv_data)
+        if normalized is not kv_data and normalized.get("sessions"):
+            save_chat_sessions(normalized)
+        return normalized
+    # Fallback to filesystem (local dev / Redis unavailable)
     try:
         with CHAT_HISTORY_FILE.open("r", encoding="utf-8") as f:
             data = json.load(f)
-            if isinstance(data, list):
-                sessions = {}
-                sid = f"sess_{int(time.time() * 1000)}"
-                now_str = datetime.now().strftime("%Y-%m-%d")
-                now_t = datetime.now().strftime("%H:%M")
-                sessions[sid] = {
-                    "id": sid, "createdAt": int(time.time() * 1000),
-                    "date": now_str, "time": now_t, "messages": data,
-                }
-                data = {"sessions": sessions, "current": sid}
-                save_chat_sessions(data)
-            _chat_sessions_cache = data
-            return data
+        return _normalize_sessions_data(data)
     except (FileNotFoundError, json.JSONDecodeError):
         pass
-    _chat_sessions_cache = {"sessions": {}, "current": None}
-    return _chat_sessions_cache
+    return {"sessions": {}, "current": None}
 
 def save_chat_sessions(sessions_data):
-    global _chat_sessions_cache
-    _chat_sessions_cache = sessions_data
+    """Persist to Redis (primary) and filesystem (local fallback). Returns Redis ok."""
     if not isinstance(sessions_data, dict) or "sessions" not in sessions_data:
-        return
-    # Try Upstash Redis first
-    if REDIS_URL and REDIS_TOKEN:
-        kv_set("chat_sessions", sessions_data)
+        return False
     # Also write to filesystem (works locally, may fail on Vercel)
     try:
         with CHAT_HISTORY_FILE.open("w", encoding="utf-8") as f:
             json.dump(sessions_data, f, ensure_ascii=False, indent=2)
     except Exception:
         pass
+    # Primary: Upstash Redis
+    if REDIS_URL and REDIS_TOKEN:
+        return kv_set("chat_sessions", sessions_data)
+    return True  # local-only mode (no Redis configured)
 
 def get_or_create_session(timestamp_ms=None):
     if timestamp_ms is None:
@@ -844,7 +858,6 @@ def get_session_messages(session_id=None):
     return []
 
 def delete_session(session_id):
-    global _chat_sessions_cache
     data = load_chat_sessions()
     sessions = data.get("sessions", {})
     if session_id not in sessions:
@@ -852,16 +865,21 @@ def delete_session(session_id):
     del sessions[session_id]
     if data.get("current") == session_id:
         data["current"] = None
-    _chat_sessions_cache = None
     save_chat_sessions(data)
     return True
 
 def list_sessions():
+    """Return sessions for the sidebar. Empty (no-message) sessions are hidden
+    unless they are the current session (so the UI can still show 'New chat' state)."""
     data = load_chat_sessions()
     current_id = data.get("current")
     result = []
     for sid, sess in data.get("sessions", {}).items():
         msgs = sess.get("messages", [])
+        is_current = sid == current_id
+        # Hide empty sessions that are NOT the current one (fresh "new chat" placeholder).
+        if not msgs and not is_current:
+            continue
         preview = ""
         if msgs:
             first = next((m for m in msgs if m["role"] == "user"), msgs[0])
@@ -873,10 +891,37 @@ def list_sessions():
             "createdAt": sess.get("createdAt", 0),
             "messageCount": len(msgs),
             "preview": preview,
-            "isCurrent": sid == current_id,
+            "isCurrent": is_current,
         })
     result.sort(key=lambda s: s["createdAt"], reverse=True)
     return result
+
+def load_us_market():
+    try:
+        with US_MARKET_FILE.open("r", encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+def build_us_market_context():
+    data = load_us_market()
+    if not data:
+        return ""
+    lines = []
+    lines.append("🇺🇸 미국증시 (전일 마감)")
+    if data.get("date"):
+        lines.append(f"• 날짜: {data['date']}")
+    if data.get("indices"):
+        for idx in data["indices"]:
+            sign = "+" if idx["change"] > 0 else ""
+            lines.append(f"• {idx['name']}: {idx['value']:,.2f} ({sign}{idx['change']:.2f}%)")
+    if data.get("summary"):
+        lines.append(f"• 요약: {data['summary']}")
+    if data.get("highlights"):
+        lines.append("• 주요 특징:")
+        for h in data["highlights"]:
+            lines.append(f"  - {h}")
+    return "\n".join(lines)
 
 def build_chat_context(portfolio, news):
     lines = []
@@ -909,12 +954,24 @@ def build_chat_context(portfolio, news):
                 lines.append(f"• {emoji} {w['name']}({w['code']}): 현재 {w['currentPrice']:,.0f}원 ({w['changeRate']:+.2f}%) | 추세: {w['trend']['shortTrend']}")
         lines.append("")
     if portfolio.get("trades"):
-        lines.append("📋 오늘의 거래내역")
-        for t in portfolio["trades"]:
-            emoji = "🟢" if t["type"] == "buy" else "🔴"
-            action = "매도" if t["type"] == "sell" else "매수"
-            lines.append(f"  {emoji} {t['name']} {t['quantity']}주 {action} @ {t['price']:,.0f}원 ({t.get('note','')})")
-        lines.append("")
+        kst = timezone(timedelta(hours=9))
+        today_str = datetime.now(kst).strftime('%Y-%m-%d')
+        today_trades = [t for t in portfolio["trades"] if t.get("date") == today_str]
+        past_trades = [t for t in portfolio["trades"] if t.get("date") != today_str]
+        if today_trades:
+            lines.append("📋 오늘의 거래내역")
+            for t in today_trades:
+                emoji = "🟢" if t["type"] == "buy" else "🔴"
+                action = "매도" if t["type"] == "sell" else "매수"
+                lines.append(f"  {emoji} {t['name']} {t['quantity']}주 {action} @ {t['price']:,.0f}원 ({t.get('note','')})")
+            lines.append("")
+        if past_trades:
+            lines.append("📋 과거 거래내역")
+            for t in past_trades:
+                emoji = "🟢" if t["type"] == "buy" else "🔴"
+                action = "매도" if t["type"] == "sell" else "매수"
+                lines.append(f"  {emoji} [{t.get('date','')}] {t['name']} {t['quantity']}주 {action} @ {t['price']:,.0f}원 ({t.get('note','')})")
+            lines.append("")
     if news:
         lines.append("📰 최근 뉴스")
         for n in news:
@@ -1161,29 +1218,109 @@ def get_market_status() -> tuple[str, str, datetime]:
     return ("클로즈(장 마감)", "거래 불가 — 다음 거래일 프리마켓 08:00부터 주문 가능", now_kst)
 
 
+def get_next_trading_day(now_kst):
+    """현재 시각 기준 다음 거래일(주말 제외)과 요일을 반환."""
+    next_day = now_kst + timedelta(days=1)
+    while next_day.weekday() >= 5:
+        next_day += timedelta(days=1)
+    weekday_kr = ["월", "화", "수", "목", "금", "토", "일"][next_day.weekday()]
+    return next_day.strftime('%Y년 %m월 %d일'), weekday_kr
+
+
 def chat_with_ai(user_message, history, portfolio, news, search_results=None):
     context = build_chat_context(portfolio, news)
+    us_market_ctx = build_us_market_context()
     if search_results is None:
         search_results = search_web(user_message)
     phase_label, trade_status, now_kst = get_market_status()
-    weekday = now_kst.weekday()
+    weekday_kr = ["월", "화", "수", "목", "금", "토", "일"][now_kst.weekday()]
+    next_trade_date, next_trade_weekday = get_next_trading_day(now_kst)
+    today_str = now_kst.strftime('%Y년 %m월 %d일')
+    today_iso = now_kst.strftime('%Y-%m-%d')
+
+    # 주식/경제 관련 검색 결과만 필터링
+    filtered_search = []
+    if search_results:
+        for r in search_results:
+            text = r.get("text", "")
+            stock_kw = ["주식", "증시", "코스피", "코스닥", "종목", "투자", "매매",
+                        "호실적", "실적", "전망", "목표가", "상승", "하락", "급락",
+                        "반도체", "메모리", "HBM", "전자", "차", "자동차",
+                        "로봇", "AI", "인공지능", "배당", "수익", "손실",
+                        "분석", "리포트", "애널리스트", "순매수", "기관", "외국인"]
+            if any(kw in text for kw in stock_kw):
+                filtered_search.append(r)
+    if not filtered_search:
+        filtered_search = search_results[:5] if search_results else []
+
     system_prompt = (
         "당신은 전문 주식 투자 어드바이저 'Stock Manager AI'입니다. "
         "사용자의 포트폴리오 정보와 시장 데이터를 바탕으로 투자 조언을 제공합니다.\n\n"
-        f"📅 오늘 날짜: {now_kst.strftime('%Y년 %m월 %d일')} ({['월','화','수','목','금','토','일'][weekday]}요일)\n"
+        f"📅 오늘 날짜: {today_str} ({weekday_kr}요일)\n"
         f"🕒 현재 시각 (KST): {now_kst.strftime('%H시 %M분')}\n"
-        f"📈 현재 장 상태: **{phase_label}** — {trade_status}\n\n"
+        f"📈 현재 장 상태: **{phase_label}** — {trade_status}\n"
+        f"📅 다음 거래일: {next_trade_date} ({next_trade_weekday}요일) — 프리마켓 08:00 개시\n\n"
+        "【 절대 규칙 — 위반 금지 】\n"
+        f"1. 오늘은 {today_iso}({weekday_kr}요일)입니다. 토요일/일요일은 장이 열리지 않습니다. "
+        f"따라서 다음 거래일은 {next_trade_date}({next_trade_weekday})입니다. "
+        "절대 토요일이나 일요일에 프리마켓/메인마켓이 있다고 말하지 마세요.\n"
+        "2. ⚠️ 할루네이션(실제 없는 사실 만들어내기) 엄격히 금지: "
+        "실적 발표일, 목표가, 기업 전망 등 정보가 검색 결과에 없으면 절대 만들지 마세요. "
+        "예: '마이크론 실적 발표일'이 검색 결과에 없으면 '실적 발표일은 확인이 필요합니다'라고 답변하세요.\n"
+        "3. ⚠️ 출처 인용 규칙: 아래 검색 결과에서 실제로 관련 있는 것만 인용하세요. "
+        "검색 결과와 무관한 URL을 출처로 만들지 마세요. "
+        "검색 결과가 없으면 출처 섹션을 생략하고 '최신 실시간 데이터 확인이 필요합니다'라고 답변하세요.\n"
+        "4. 답변에 사용하는 모든 수치(주가, 수익률, 비율 등)는 반드시 위 포트폴리오 데이터에서 가져오세요. "
+        "절대 상상으로 수치를 만들지 마세요.\n\n"
         "【 토스증권 국내주식 장 운영 시간 】\n"
         "- 프리마켓(장전): 08:00~08:50 — 실시간 거래 가능\n"
         "- 메인마켓(정규장): 09:00~15:20 — 실시간 거래 가능\n"
         "- 시가단일가 마감임박: 15:30~15:40 — 단일가 주문만 가능\n"
         "- 애프터마켓(장후): 15:40~20:00 — 실시간 거래 가능\n"
         "- 클로즈(장 마감): 20:00~익일 08:00 — 거래 불가\n\n"
-        "⚠️ 중요: 매매 추천 시 반드시 위 '현재 장 상태'를 기준으로 안내하세요. "
-        "거래 불가 상태면 '다음 거래일 프리마켓 08:00 시작 후 주문' 형태로 안내하고, "
-        "애프터마켓/프리마켓은 유동성이 낮아 슬리피지 위험이 크다는 점을 반드시 명시하세요.\n\n"
+        "⚠️ 중요: 매매 추천 시 반드시 위 '현재 장 상태'와 '다음 거래일'을 기준으로 안내하세요. "
+        f"거래 불가 상태면 {next_trade_date} 프리마켓 08:00 형태로 안내하세요.\n\n"
         "【 현재 포트폴리오 상태 】\n"
         f"{context}\n"
+    )
+
+    if us_market_ctx:
+        system_prompt += (
+            "【 미국증시 동향 (전일 마감) 】\n"
+            f"{us_market_ctx}\n\n"
+            "⚠️ 미국증시 데이터 활용 지침: "
+            "사용자가 미국증시, 미국 시장, 뉴욕 증시 관련 질문을 하거나, "
+            "보유종목과 미국 시장의 연관성을 분석할 때 반드시 위 미국증시 데이터를 참고하세요. "
+            "예: 애플 하락 → 삼성전자/반도체 영향, 마이크론 HBM 수요 → SK하이닉스 연관성 등\n\n"
+        )
+
+    system_prompt += (
+        "【 응답 원칙 】\n"
+        "1. 항상 데이터에 기반한 객관적인 조언을 제공하세요.\n"
+        "2. 매수/매도/관망에 대한 명확한 의견을 제시하세요.\n"
+        "3. 리스크 관리의 중요성을 강조하세요.\n"
+        "4. 전문적이고 친근한 어조로 답변하세요.\n"
+        "5. 한국어로 답변하세요.\n"
+        "6. 답변은 완전하게 작성하세요.\n"
+        "7. 필요시 포트폴리오 내 특정 종목에 대한 구체적인 분석을 제공하세요.\n"
+        "8. ⚠️ 절대 상상하여 답변하지 마세요. 위 포트폴리오 데이터와 미국증시 데이터, "
+        "그리고 아래 검색 결과를 모두 활용하여 답변하세요. "
+        "검색 결과에 없는 정보는 '확인이 필요합니다'라고 답변하세요.\n"
+        "9. 대화 내역(history)에 이전에 나눈 내용이 있다면 그 정보도 적극 활용하세요. "
+        "이전 대화 내용을 인용할 때는 [H숫자] 형식으로 출처를 표시하세요.\n"
+        "10. 🚫 출처 할루네이션 금지: 반드시 아래 검색 결과 안의 URL만 인용하세요. "
+        "검색 결과가 없으면 출처 섹션을 생략하세요."
+    )
+    if us_market_ctx:
+        system_prompt += (
+            "【 미국증시 동향 (전일 마감) 】\n"
+            f"{us_market_ctx}\n\n"
+            "⚠️ 미국증시 데이터 활용 지침: "
+            "사용자가 미국증시, 미국 시장, 뉴욕 증시 관련 질문을 하거나, "
+            "보유종목과 미국 시장의 연관성을 분석할 때 반드시 위 미국증시 데이터를 참고하세요. "
+            "예: 애플 하락 → 삼성전자/반도체 영향, 마이크론 HBM 수요 → SK하이닉스 연관성 등\n\n"
+        )
+    system_prompt += (
         "【 대시보드 지표 산출 방식 】\n"
         "사용자가 대시보드 지표의 의미나 계산 방법을 물으면 아래 기준으로 설명하세요.\n"
         "• 일중 범위 위치(rangePos): (현재가 - 저가) / (고가 - 저가) × 100. "
@@ -1240,9 +1377,9 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
         messages.append({"role": "system", "content": h_ref})
     for h in sliced:
         messages.append({"role": h["role"], "content": h["content"]})
-    if search_results:
+    if filtered_search:
         search_text = ""
-        for i, r in enumerate(search_results, 1):
+        for i, r in enumerate(filtered_search, 1):
             text = r.get("text", "")
             url = r.get("url", "")
             search_text += f"[{i}] {text}\n"
@@ -1265,11 +1402,11 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
     # LLM이 자체 생성한 출처 섹션 제거 (코드에서 정확한 출처 추가)
     reply = re.sub(r'\n*📚\s*출처[:：][\s\S]*$', '', reply).rstrip()
     h_refs = re.findall(r'\[H(\d+)\]', reply) if previous else []
-    has_urls = search_results and any(r.get("url") for r in search_results)
+    has_urls = filtered_search and any(r.get("url") for r in filtered_search)
     if has_urls or h_refs:
         reply += "\n\n📚 출처:\n"
-        if search_results:
-            for i, r in enumerate(search_results, 1):
+        if filtered_search:
+            for i, r in enumerate(filtered_search, 1):
                 if r.get("url"):
                     reply += f"[{i}] {r['url']}\n"
         if h_refs:
@@ -1294,23 +1431,21 @@ def api_chat_history():
 
 @app.route("/api/chat/new-session", methods=["POST"])
 def api_new_session():
-    global _chat_sessions_cache
-    _chat_sessions_cache = None
     now_ms = int(time.time() * 1000)
     sid = f"sess_{now_ms}"
     kst = timezone(timedelta(hours=9))
     now_dt = datetime.fromtimestamp(now_ms / 1000, tz=kst)
     data = load_chat_sessions()
-    data["sessions"][sid] = {
+    data.setdefault("sessions", {})[sid] = {
         "id": sid, "createdAt": now_ms,
         "date": now_dt.strftime("%Y-%m-%d"),
         "time": now_dt.strftime("%H:%M"),
         "messages": [],
     }
     data["current"] = sid
-    save_chat_sessions(data)
+    ok = save_chat_sessions(data)
     return Response(
-        json.dumps({"sessionId": sid}, ensure_ascii=False),
+        json.dumps({"sessionId": sid, "saved": ok}, ensure_ascii=False),
         mimetype="application/json",
         headers={"Cache-Control": "no-store", "Access-Control-Allow-Origin": "*"},
     )
@@ -1376,9 +1511,11 @@ def api_chat():
 
     def generate():
         now_ms = int(time.time() * 1000)
-        history = get_session_messages()
+        # Resolve the target session ONCE so user msg + assistant msg land in the same session.
+        sid, _ = get_or_create_session(now_ms)
+        history = get_session_messages(sid)
         history.append({"role": "user", "content": message, "timestamp": now_ms})
-        add_message_to_session("user", message)
+        add_message_to_session("user", message, timestamp_ms=now_ms)
         yield "event: status\ndata: " + json.dumps({"phase": "loading"}, ensure_ascii=False) + "\n\n"
         try:
             portfolio = build_portfolio()
@@ -1391,9 +1528,9 @@ def api_chat():
         yield "event: status\ndata: " + json.dumps({"phase": "analyzing"}, ensure_ascii=False) + "\n\n"
         reply = chat_with_ai(message, history, portfolio, news, search_results=search_results)
         history.append({"role": "assistant", "content": reply, "timestamp": now_ms})
-        add_message_to_session("assistant", reply)
-        updated_history = get_session_messages()
-        yield "event: result\ndata: " + json.dumps({"reply": reply, "history": updated_history}, ensure_ascii=False) + "\n\n"
+        add_message_to_session("assistant", reply, timestamp_ms=now_ms)
+        updated_history = get_session_messages(sid)
+        yield "event: result\ndata: " + json.dumps({"reply": reply, "history": updated_history, "sessionId": sid}, ensure_ascii=False) + "\n\n"
 
     return Response(
         generate(),
