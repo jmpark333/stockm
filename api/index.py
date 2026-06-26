@@ -8,6 +8,7 @@ import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from flask import Flask, Response, request, send_from_directory
@@ -254,10 +255,23 @@ def build_item(quote):
     }
 
 def build_portfolio():
+    global _PORTFOLIO_CACHE, _PORTFOLIO_CACHE_TS
+    now = time.time()
+    if _PORTFOLIO_CACHE is not None and (now - _PORTFOLIO_CACHE_TS) < _PORTFOLIO_CACHE_TTL:
+        return _PORTFOLIO_CACHE
+
     config = load_config()
     all_codes = [h["code"] for h in config["holdings"]]
     all_codes += [w["code"] for w in config.get("watchlist", [])]
-    quotes = {item["code"]: item for item in (fetch_quote(c) for c in all_codes)}
+
+    # Parallel fetch_quote: previously N sequential HTTP calls (~200ms each).
+    # With ~10 codes this cuts the "포트폴리오 로딩" phase from ~2s to ~0.3s.
+    seen: set[str] = set()
+    unique_codes = [c for c in all_codes if not (c in seen or seen.add(c))]
+    with ThreadPoolExecutor(max_workers=min(8, max(2, len(unique_codes)))) as ex:
+        quote_results = list(ex.map(fetch_quote, unique_codes))
+    quotes = {item["code"]: item for item in quote_results if item and item.get("code")}
+
     holdings_rows = []
     for holding in config["holdings"]:
         quote = quotes.get(holding["code"], {"code": holding["code"], "error": "호가 데이터 없음"})
@@ -287,7 +301,7 @@ def build_portfolio():
     total_current = sum(row["currentValue"] for row in holdings_rows)
     total_profit = total_current - total_cost
     total_profit_rate = (total_profit / total_cost * 100) if total_cost else 0
-    return {
+    result = {
         "currency": config.get("currency", "KRW"),
         "refreshSeconds": config.get("refreshSeconds", 10),
         "generatedAt": int(time.time() * 1000),
@@ -301,6 +315,9 @@ def build_portfolio():
         "watchlist": watchlist_rows,
         "trades": config.get("trades", []),
     }
+    _PORTFOLIO_CACHE = result
+    _PORTFOLIO_CACHE_TS = now
+    return result
 
 def fetch_news(name, code, limit=4):
     try:
@@ -1071,6 +1088,13 @@ _last_brave_call_ts = 0.0
 # Reduces Brave calls for repeated queries within a session.
 _search_cache: dict[str, dict] = {}
 _SEARCH_CACHE_TTL = 60  # seconds
+
+# Portfolio cache: avoids repeated fetch_quote() calls during chat + polling overlap.
+# Background /api/portfolio polling runs every 10s; chat also calls build_portfolio(),
+# so we cache for 3s to dedupe without serving stale data.
+_PORTFOLIO_CACHE: dict | None = None
+_PORTFOLIO_CACHE_TS: float = 0.0
+_PORTFOLIO_CACHE_TTL: float = 3.0
 
 
 def _enforce_brave_rate_limit():

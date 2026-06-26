@@ -1291,11 +1291,28 @@ function markdownTableToHtml(tableText) {
     return s;
   };
 
-  let html = '<div class="chat-table-wrap"><table class="chat-table">';
-  html += '<thead><tr>' + headers.map(h => `<th>${renderCell(h)}</th>`).join('') + '</tr></thead>';
+  // Transpose when table has many entity rows and few attribute columns:
+  // e.g. 5 stocks (rows) x 4 attributes (cols) -> 4 rows x 5 cols.
+  // Vertical scroll becomes short; horizontal scroll for many entities.
+  let renderHeaders = headers;
+  let renderRows = rows;
+  const shouldTranspose = rows.length >= 3
+    && headers.length >= 2
+    && rows.length > headers.length;
+  if (shouldTranspose) {
+    renderHeaders = [headers[0] || '항목', ...rows.map(r => r[0] || '')];
+    renderRows = headers.slice(1).map((attrName, i) => {
+      const values = rows.map(r => r[i + 1] || '');
+      return [attrName, ...values];
+    });
+  }
+
+  const ncols = renderHeaders.length;
+  let html = '<div class="chat-table-wrap' + (shouldTranspose ? ' chat-table-transposed' : '') + '"><table class="chat-table">';
+  html += '<thead><tr>' + renderHeaders.map(h => `<th>${renderCell(h)}</th>`).join('') + '</tr></thead>';
   html += '<tbody>';
-  rows.forEach(row => {
-    const maxLen = Math.max(headers.length, row.length);
+  renderRows.forEach(row => {
+    const maxLen = Math.max(ncols, row.length);
     const cells = Array.from({length: maxLen}, (_, i) => {
       const raw = row[i] || '';
       const cls = numClass(raw);
