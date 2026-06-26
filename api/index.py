@@ -1062,6 +1062,45 @@ def call_llm(messages):
 MCP_SEARCH_URL = "https://api.z.ai/api/mcp/web_search_prime/mcp"
 BRAVE_API_KEY = os.environ.get("BRAVE_API_KEY", "").strip()
 
+# Brave Search rate limit: 1 request per second (Free plan)
+# Track last call timestamp globally to enforce >=1.1s gap between requests.
+_BRAVE_MIN_INTERVAL = 1.1
+_last_brave_call_ts = 0.0
+
+# Short-lived in-memory search cache (per-instance, Fluid Compute reuse)
+# Reduces Brave calls for repeated queries within a session.
+_search_cache: dict[str, dict] = {}
+_SEARCH_CACHE_TTL = 60  # seconds
+
+
+def _enforce_brave_rate_limit():
+    """Block until at least _BRAVE_MIN_INTERVAL seconds passed since the last Brave call."""
+    global _last_brave_call_ts
+    now = time.time()
+    wait = _BRAVE_MIN_INTERVAL - (now - _last_brave_call_ts)
+    if wait > 0:
+        time.sleep(wait)
+    _last_brave_call_ts = time.time()
+
+
+def _cache_get(key):
+    entry = _search_cache.get(key)
+    if not entry:
+        return None
+    if time.time() - entry.get("_ts", 0) > _SEARCH_CACHE_TTL:
+        _search_cache.pop(key, None)
+        return None
+    return entry.get("results")
+
+
+def _cache_put(key, results):
+    _search_cache[key] = {"results": results, "_ts": time.time()}
+    # Bound cache size to avoid memory growth on long-lived instances
+    if len(_search_cache) > 50:
+        oldest = sorted(_search_cache.items(), key=lambda kv: kv[1].get("_ts", 0))
+        for k, _ in oldest[:10]:
+            _search_cache.pop(k, None)
+
 def is_irrelevant_result(url, text):
     """Filter out obviously irrelevant results."""
     url_lower = url.lower()
@@ -1120,7 +1159,12 @@ def search_web_ddg(query):
         return []
 
 def search_web_brave(query):
-    """Brave Search API — news + web 검색"""
+    """Brave Search API — news + web 검색.
+
+    Brave Free plan allows only 1 request per second. We enforce a global
+    ≥1.1s gap before each Brave HTTP call (rate limiter) and sleep 1.1s
+    between the news and web calls so they never collide.
+    """
     results = []
     seen_urls = set()
     headers = {
@@ -1129,6 +1173,7 @@ def search_web_brave(query):
     }
     # 1) News search (최근 7일)
     try:
+        _enforce_brave_rate_limit()
         encoded = urllib.parse.quote(query[:200])
         url = f"https://api.search.brave.com/res/v1/news/search?q={encoded}&freshness=pw&count=5"
         req = urllib.request.Request(url, headers=headers)
@@ -1141,10 +1186,13 @@ def search_web_brave(query):
                 desc = r.get("description", "") or r.get("title", "")
                 results.append({"text": desc[:2000], "url": r_url})
         print(f"[search_web] Brave news: {len(results)} results")
+    except urllib.error.HTTPError as e:
+        print(f"[search_web] Brave news HTTP error: {e.code} {e.reason}")
     except Exception as e:
         print(f"[search_web] Brave news error: {e}")
-    # 2) Web search (최근 7일)
+    # 2) Web search (최근 7일) — always wait ≥1.1s after the news call
     try:
+        _enforce_brave_rate_limit()
         encoded = urllib.parse.quote(query[:200])
         url = f"https://api.search.brave.com/res/v1/web/search?q={encoded}&freshness=pw&count=5"
         req = urllib.request.Request(url, headers=headers)
@@ -1157,14 +1205,21 @@ def search_web_brave(query):
                 desc = r.get("description", "") or r.get("title", "")
                 results.append({"text": desc[:2000], "url": r_url})
         print(f"[search_web] Brave web: {len(results)} results (total)")
+    except urllib.error.HTTPError as e:
+        print(f"[search_web] Brave web HTTP error: {e.code} {e.reason}")
     except Exception as e:
         print(f"[search_web] Brave web error: {e}")
     return results[:8]
 
 def search_web(query):
-    """Brave Search + DuckDuckGo 폴백"""
+    """Brave Search + DuckDuckGo 폴백. 결과는 60초간 메모리 캐싱."""
     if not query or not query.strip():
         return []
+    cache_key = query.strip().lower()[:200]
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        print(f"[search_web] cache hit ({len(cached)} results)")
+        return cached
     all_results = []
     seen_urls = set()
 
@@ -1175,7 +1230,7 @@ def search_web(query):
                 seen_urls.add(url)
                 all_results.append(r)
 
-    # 1) Brave Search (news + web)
+    # 1) Brave Search (news + web) — internally enforces 1.1s gap
     try:
         brave_results = search_web_brave(query)
         add_results(brave_results)
@@ -1190,7 +1245,9 @@ def search_web(query):
         except Exception as e:
             print(f"[search_web] DuckDuckGo error: {e}")
 
-    return all_results[:8]
+    final = all_results[:8]
+    _cache_put(cache_key, final)
+    return final
 
 def get_market_status() -> tuple[str, str, datetime]:
     """현재 KST 시각과 토스증권 국내주식 장 상태를 반환.
@@ -1399,8 +1456,12 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
     messages.append({"role": "user", "content": user_message})
     result = call_llm(messages)
     reply = result["reply"]
+    is_fallback = result.get("_source") == "fallback"
     # LLM이 자체 생성한 출처 섹션 제거 (코드에서 정확한 출처 추가)
     reply = re.sub(r'\n*📚\s*출처[:：][\s\S]*$', '', reply).rstrip()
+    # AI 응답이 fallback(장애 메시지)이면 출처를 붙이지 않는다.
+    if is_fallback:
+        return reply
     h_refs = re.findall(r'\[H(\d+)\]', reply) if previous else []
     has_urls = filtered_search and any(r.get("url") for r in filtered_search)
     if has_urls or h_refs:
