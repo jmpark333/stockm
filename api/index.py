@@ -1113,8 +1113,34 @@ def is_irrelevant_result(url, text):
         "apple.com", "microsoft.com", "google.com/support",
         "amazon.com", "ebay.com",
     ]
-    for domain in irrelevant_domains:
+    # Korean / global community forums and UGC sites — personal opinions,
+    # rumors, and unsourced discussion. Excluded for factual reliability.
+    community_domains = [
+        # 한국 커뮤니티
+        "ruliweb.com", "dcinside.com", "fmkorea.com", "ilbe.com",
+        "theqoo.net", "inven.co.kr", "natepan.com", "pan.nate.com",
+        "82cook.com", "todayhumor.co.kr", "dogdrip.net", "ygosu.com",
+        "slrclub.com", "instiz.net", "bobaedream.co.kr", "clien.net",
+        "hithub.kr", "hwayon.kr", "mmovo.com", "tokbbang.com",
+        "babotemps.com", "eaty.com", "teamblind.co.kr", "teamblind.com",
+        "qoou.net", "msholic.net", "wigo.kr", "sosg.net", "item.co.kr",
+        # 글로벌 UGC / 포럼
+        "reddit.com", "quora.com", "4chan.org", "discord.com",
+        "medium.com", "substack.com", " disq.us", "tumblr.com",
+        "pinterest.com", "vk.com", "weibo.com", "xiaohongshu.com",
+        "douban.com", "zhihu.com", "threads.net",
+    ]
+    for domain in irrelevant_domains + community_domains:
         if domain in url_lower:
+            return True
+    # URL path patterns typical of community/bbs/forum software
+    community_patterns = [
+        "/community/", "/bbs/", "/board/", "/forum/",
+        "/view.php?id=", "/zboard.php", "/read.php?board=",
+        "/r/",  # reddit subreddit paths
+    ]
+    for pat in community_patterns:
+        if pat in url_lower:
             return True
     # Skip generic encyclopedia/dictionary pages unrelated to stocks
     if "wikipedia.org" in url_lower:
