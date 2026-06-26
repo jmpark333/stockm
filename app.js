@@ -1308,9 +1308,10 @@ function markdownTableToHtml(tableText) {
   }
 
   const ncols = renderHeaders.length;
+  const origNcols = headers.length;
   const wrapClasses = ['chat-table-wrap'];
   if (shouldTranspose) wrapClasses.push('chat-table-transposed');
-  if (ncols <= 4) wrapClasses.push('chat-table-compact');
+  if (origNcols < 5) wrapClasses.push('chat-table-compact');
   let html = '<div class="' + wrapClasses.join(' ') + '"><table class="chat-table">';
   html += '<thead><tr>' + renderHeaders.map(h => `<th>${renderCell(h)}</th>`).join('') + '</tr></thead>';
   html += '<tbody>';
