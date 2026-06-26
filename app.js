@@ -396,9 +396,9 @@ function updateCalcResult() {
     calcNewProfit.textContent = formatSignedMoney(newProfit);
     calcNewProfit.className = newProfit >= 0 ? 'up' : 'down';
     calcAvgDiff.textContent = formatSignedMoney(avgDiff);
-    calcAvgDiff.className = '';
+    calcAvgDiff.className = 'neutral';
     calcAvgDiffRate.textContent = formatPercent(avgDiffRate);
-    calcAvgDiffRate.className = '';
+    calcAvgDiffRate.className = 'neutral';
 
     diffRow.hidden = false;
     diffEl.textContent = formatSignedMoney(sellProfit);
@@ -410,7 +410,7 @@ function updateCalcResult() {
     const newAvg = newQty > 0 ? newTotalCost / newQty : 0;
     const newValue = calcState.currentPrice * newQty;
     const newProfit = (calcState.currentPrice - newAvg) * newQty;
-    const avgDiff = calcState.avgPrice - newAvg;
+    const avgDiff = newAvg - calcState.avgPrice;
     const avgDiffRate = calcState.avgPrice > 0 ? (avgDiff / calcState.avgPrice) * 100 : 0;
 
     calcAddCost.textContent = formatMoney(addCost);
@@ -421,9 +421,9 @@ function updateCalcResult() {
     calcNewProfit.textContent = formatSignedMoney(newProfit);
     calcNewProfit.className = newProfit >= 0 ? 'up' : 'down';
     calcAvgDiff.textContent = formatSignedMoney(avgDiff);
-    calcAvgDiff.className = avgDiff >= 0 ? 'up' : 'down';
+    calcAvgDiff.className = avgDiff >= 0 ? 'down' : 'up';
     calcAvgDiffRate.textContent = formatPercent(avgDiffRate);
-    calcAvgDiffRate.className = avgDiff >= 0 ? 'up' : 'down';
+    calcAvgDiffRate.className = avgDiff >= 0 ? 'down' : 'up';
 
     diffRow.hidden = false;
     const profitDiff = newProfit - calcState.profit;
