@@ -1031,7 +1031,7 @@ def load_us_market():
         if "date" not in data:
             data["date"] = us_now.strftime("%Y-%m-%d")
         return data
-    except (FileNotFoundError, json.JSONDecodeError):
+    except Exception:
         return {"marketStatus": "closed"}
 
 KOSPI_INDEX_URL = "https://finance.naver.com/sise/sise_index.naver?code=KOSPI"
