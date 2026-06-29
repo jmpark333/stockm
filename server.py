@@ -1004,18 +1004,18 @@ def chat_from_nous(messages, model=None):
         return {"error": str(exc)}
 
 def call_llm(messages):
-    result = chat_from_zai(messages)
-    if "error" not in result:
-        return result
-    for m in NOUS_MODELS:
-        result = chat_from_nous(messages, model=m)
-        if "error" not in result:
-            return result
     if OPENROUTER_KEY:
         for m in OPENROUTER_MODELS:
             result = chat_from_openrouter(messages, model=m)
             if "error" not in result:
                 return result
+    for m in NOUS_MODELS:
+        result = chat_from_nous(messages, model=m)
+        if "error" not in result:
+            return result
+    result = chat_from_zai(messages)
+    if "error" not in result:
+        return result
     return {"reply": "죄송합니다. 현재 AI 서비스에 일시적인 문제가 있습니다. 잠시 후 다시 시도해 주세요.", "_source": "fallback"}
 
 MCP_SEARCH_URL = "https://api.z.ai/api/mcp/web_search_prime/mcp"
