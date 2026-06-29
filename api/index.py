@@ -1131,9 +1131,9 @@ def load_us_market():
         return {"marketStatus": "closed"}
 
 def fetch_us_market_news(limit=5):
-    """미국증시 관련 최신 뉴스를 가져온다."""
+    """미국증시 관련 최신 뉴스를 가져온다 (24시간 이내만)."""
     try:
-        query = "미국증시 뉴욕증시 when:1d"
+        query = "미국증시 뉴욕증시"
         encoded = urllib.parse.quote(query)
         url = f"https://news.google.com/rss/search?q={encoded}&hl=ko&gl=KR&ceid=KR:ko"
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
@@ -1142,7 +1142,8 @@ def fetch_us_market_news(limit=5):
         root = ET.fromstring(raw)
         items = root.findall(".//item")
         articles = []
-        for item in items[:limit * 3]:
+        cutoff = time.time() - 86400  # 24시간 전
+        for item in items[:limit * 5]:
             title_el = item.find("title")
             link_el = item.find("link")
             source_el = item.find("source")
@@ -1156,6 +1157,8 @@ def fetch_us_market_news(limit=5):
                         pub_ts = parsedate_to_datetime(pub_str).timestamp()
                     except Exception:
                         pass
+                if pub_ts < cutoff:
+                    continue
                 articles.append({
                     "title": re.sub(r"\s+", " ", title_el.text).strip(),
                     "url": link_el.text.strip() if link_el is not None and link_el.text else "#",
@@ -1256,8 +1259,8 @@ def build_us_market_context():
         lines.append(f"• 날짜: {data['date']}")
     if data.get("indices"):
         for idx in data["indices"]:
-            sign = "+" if idx["rate"] > 0 else ""
-            lines.append(f"• {idx['name']}: {idx['value']:,.2f} ({sign}{idx['rate']:.2f}%)")
+            sign = "▲" if idx["rate"] > 0 else "▼" if idx["rate"] < 0 else ""
+            lines.append(f"• {idx['name']}: {idx['value']:,.2f} {sign}{abs(idx['rate']):.2f}%")
     if data.get("summary"):
         lines.append(f"• 요약: {data['summary']}")
     if data.get("highlights"):
@@ -1278,8 +1281,8 @@ def build_kospi_kosdaq_context():
         lines.append(f"• 날짜: {data['date']} ({status_text})")
     if data.get("indices"):
         for idx in data["indices"]:
-            sign = "+" if idx["rate"] > 0 else ""
-            lines.append(f"• {idx['name']}: {idx['value']:,.2f} ({sign}{idx['rate']:.2f}%)")
+            sign = "▲" if idx["rate"] > 0 else "▼" if idx["rate"] < 0 else ""
+            lines.append(f"• {idx['name']}: {idx['value']:,.2f} {sign}{abs(idx['rate']):.2f}%")
     return "\n".join(lines)
 
 def build_chat_context(portfolio, news):
