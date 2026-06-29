@@ -789,7 +789,11 @@ function renderKospiKosdaq(data) {
 
   let html = '';
   if (data.date) {
-    if (kospiKosdaqDate) kospiKosdaqDate.textContent = `${data.date} 마감`;
+    if (kospiKosdaqDate) {
+      const statusText = data.marketStatus === 'open' ? '장 운영 중' :
+                         data.marketStatus === 'pre_open' ? '장 시작 전' : '마감';
+      kospiKosdaqDate.textContent = `${data.date} ${statusText}`;
+    }
   }
 
   if (data.indices && data.indices.length) {
