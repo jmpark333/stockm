@@ -554,10 +554,9 @@ def load_us_market():
         data = {}
         with US_MARKET_FILE.open("r", encoding="utf-8") as f:
             data = json.load(f)
-        now = datetime.now(timezone(timedelta(hours=9)))
         utc_now = datetime.now(timezone.utc)
-        us_offset = timedelta(hours=-4)
-        us_now = utc_now.astimezone(us_offset)
+        us_tz = timezone(timedelta(hours=-4))
+        us_now = utc_now.astimezone(us_tz)
         us_hour = us_now.hour
         us_min = us_now.minute
         us_time = us_hour * 60 + us_min
