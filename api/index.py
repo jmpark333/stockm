@@ -1360,7 +1360,7 @@ def chat_from_nous(messages, model=None):
         "model": model,
         "messages": messages,
         "temperature": 0.7,
-        "max_tokens": 4000,
+        "max_tokens": 1500,
     }
     headers = {
         "Authorization": f"Bearer {NOUS_KEY}",
@@ -1373,11 +1373,13 @@ def chat_from_nous(messages, model=None):
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        with urllib.request.urlopen(req, timeout=30) as resp:
             raw = resp.read().decode("utf-8")
         result = json.loads(raw)
         msg = result["choices"][0]["message"]
         content = msg.get("content") or ""
+        if not content:
+            content = msg.get("reasoning") or ""
         if not content:
             return {"error": "empty content"}
         return {"reply": content.strip(), "_source": "nous"}
@@ -1751,7 +1753,7 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
         for i, url in enumerate(sources[:8], 1):
             reply += f"[{i}] {url}\n"
     reply = reply.rstrip()
-    return {"reply": reply}
+    return reply
 
 @app.route("/api/chat/history")
 def api_chat_history():
