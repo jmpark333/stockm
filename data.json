@@ -17,8 +17,14 @@
     {
       "code": "402340",
       "name": "SK스퀘어",
-      "quantity": 2,
-      "avgPrice": 1712500
+      "quantity": 3,
+      "avgPrice": 1691666
+    },
+    {
+      "code": "005930",
+      "name": "삼성전자",
+      "quantity": 10,
+      "avgPrice": 320750
     }
   ],
   "watchlist": [
