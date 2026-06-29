@@ -549,27 +549,96 @@ CHAT_MSG_LIMIT = 20
 
 _chat_history_cache = None
 
+US_INDICES = [
+    ("다우존스", "DJI@DJI"),
+    ("S&P 500", "SPI@SPX"),
+    ("나스닥", "NAS@IXIC"),
+]
+
+def fetch_us_market_realtime():
+    """네이버 금융에서 미국 증시 실시간 데이터를 가져온다."""
+    result = {"date": "", "indices": [], "marketStatus": "closed", "highlights": [], "summary": ""}
+    
+    for name, symbol in US_INDICES:
+        try:
+            url = f"https://finance.naver.com/world/sise.naver?symbol={symbol}"
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                html = resp.read().decode("euc-kr", errors="replace")
+            
+            # Extract current value from no_today section
+            today_match = re.search(r'<p class="no_today">(.*?)</p>', html, re.DOTALL)
+            if today_match:
+                content = today_match.group(1)
+                parts = re.findall(r'class="(no\d+|shim|jum)">([^<]*)</span>', content)
+                value_str = ""
+                for cls, val in parts:
+                    if cls.startswith("no"):
+                        value_str += val
+                    elif cls == "shim":
+                        value_str += val
+                    elif cls == "jum":
+                        value_str += val
+                value = float(value_str.replace(",", ""))
+                
+                # Extract change and rate from no_exday section
+                exday_match = re.search(r'class="no_exday"[^>]*>(.*?)</p>', html, re.DOTALL)
+                change = 0
+                rate = 0
+                if exday_match:
+                    exday_content = exday_match.group(1)
+                    clean = re.sub(r'<[^>]+>', '', exday_content)
+                    clean = re.sub(r'\s+', ' ', clean).strip()
+                    nums = re.findall(r'[\d,]+\.?\d*', clean)
+                    if len(nums) >= 2:
+                        change = float(nums[0].replace(",", ""))
+                        rate = float(nums[1])
+                        # Check if it's negative (minus sign)
+                        if "-" in clean and "+" not in clean:
+                            rate = -rate
+                
+                result["indices"].append({
+                    "name": name,
+                    "value": value,
+                    "change": change,
+                    "rate": rate
+                })
+        except Exception as e:
+            print(f"[fetch_us_market_realtime] {name} error: {e}", flush=True)
+    
+    # Determine market status based on US time
+    utc_now = datetime.now(timezone.utc)
+    us_tz = timezone(timedelta(hours=-4))
+    us_now = utc_now.astimezone(us_tz)
+    us_hour = us_now.hour
+    us_min = us_now.minute
+    us_time = us_hour * 60 + us_min
+    market_open = 9 * 60 + 30
+    market_close = 16 * 60
+    
+    if market_open <= us_time <= market_close:
+        result["marketStatus"] = "open"
+    elif us_time < market_open:
+        result["marketStatus"] = "pre_open"
+    else:
+        result["marketStatus"] = "closed"
+    
+    result["date"] = us_now.strftime("%Y-%m-%d")
+    
+    # Try to load highlights and summary from local file as fallback
+    try:
+        with US_MARKET_FILE.open("r", encoding="utf-8") as f:
+            file_data = json.load(f)
+            result["highlights"] = file_data.get("highlights", [])
+            result["summary"] = file_data.get("summary", "")
+    except Exception:
+        pass
+    
+    return result
+
 def load_us_market():
     try:
-        data = {}
-        with US_MARKET_FILE.open("r", encoding="utf-8") as f:
-            data = json.load(f)
-        utc_now = datetime.now(timezone.utc)
-        us_tz = timezone(timedelta(hours=-4))
-        us_now = utc_now.astimezone(us_tz)
-        us_hour = us_now.hour
-        us_min = us_now.minute
-        us_time = us_hour * 60 + us_min
-        market_open = 9 * 60 + 30
-        market_close = 16 * 60
-        if market_open <= us_time <= market_close:
-            data["marketStatus"] = "open"
-        elif us_time < market_open:
-            data["marketStatus"] = "pre_open"
-        else:
-            data["marketStatus"] = "closed"
-        if "date" not in data:
-            data["date"] = us_now.strftime("%Y-%m-%d")
+        data = fetch_us_market_realtime()
         return data
     except Exception:
         return {"marketStatus": "closed"}
