@@ -790,10 +790,14 @@ function renderKospiKosdaq(data) {
   let html = '';
   if (data.date) {
     if (kospiKosdaqDate) {
-      const statusText = data.marketStatus === 'open' ? '장 운영 중' :
+      const statusText = data.marketStatus === 'open' ? '장 운영 중 · 실시간' :
                          data.marketStatus === 'pre_open' ? '장 시작 전' : '마감';
       kospiKosdaqDate.textContent = `${data.date} ${statusText}`;
     }
+  }
+
+  if (data.marketStatus === 'open') {
+    html += '<div class="market-open-indicator">🔴 실시간 시황</div>';
   }
 
   if (data.indices && data.indices.length) {
@@ -810,6 +814,8 @@ function renderKospiKosdaq(data) {
         </span>
       </div>`;
     });
+  } else {
+    html += '<p class="muted">지수 데이터를 불러올 수 없습니다.</p>';
   }
 
   kospiKosdaqBody.innerHTML = html;
@@ -830,12 +836,46 @@ async function loadUSMarket() {
   }
 }
 
+function getUSMarketStatus() {
+  const now = new Date();
+  const utcHours = now.getUTCHours();
+  const utcMinutes = now.getUTCMinutes();
+  const utcTime = utcHours * 60 + utcMinutes;
+  
+  // 한국시간 UTC+9에서 미국 동부시간 UTC-4(EDT) 또는 UTC-5(EST)로 변환
+  // 현재 6월이면 EDT(UTC-4) 사용
+  const kstOffset = 9 * 60;
+  const edtOffset = -4 * 60;
+  const usTime = (utcTime + kstOffset + edtOffset + 24 * 60) % (24 * 60);
+  
+  // 미국 주식시장 시간: 09:30 ~ 16:00 (EDT)
+  const marketOpen = 9 * 60 + 30;
+  const marketClose = 16 * 60;
+  
+  if (usTime >= marketOpen && usTime <= marketClose) {
+    return 'open';
+  } else if (usTime < marketOpen) {
+    return 'pre_open';
+  } else {
+    return 'closed';
+  }
+}
+
 function renderUSMarket(data) {
   if (!usMarketBody || !data) return;
 
   let html = '';
+  const marketStatus = data.marketStatus || getUSMarketStatus();
   if (data.date) {
-    if (usMarketDate) usMarketDate.textContent = `${data.date} 마감`;
+    if (usMarketDate) {
+      const statusText = marketStatus === 'open' ? '장 운영 중 · 실시간' :
+                         marketStatus === 'pre_open' ? '장 시작 전' : '마감';
+      usMarketDate.textContent = `${data.date} ${statusText}`;
+    }
+  }
+
+  if (marketStatus === 'open') {
+    html += '<div class="market-open-indicator">🔴 실시간 시황</div>';
   }
 
   if (data.indices && data.indices.length) {
@@ -852,6 +892,8 @@ function renderUSMarket(data) {
         </span>
       </div>`;
     });
+  } else {
+    html += '<p class="muted">지수 데이터를 불러올 수 없습니다.</p>';
   }
 
   if (data.summary) {

@@ -551,10 +551,29 @@ _chat_history_cache = None
 
 def load_us_market():
     try:
+        data = {}
         with US_MARKET_FILE.open("r", encoding="utf-8") as f:
-            return json.load(f)
+            data = json.load(f)
+        now = datetime.now(timezone(timedelta(hours=9)))
+        utc_now = datetime.now(timezone.utc)
+        us_offset = timedelta(hours=-4)
+        us_now = utc_now.astimezone(us_offset)
+        us_hour = us_now.hour
+        us_min = us_now.minute
+        us_time = us_hour * 60 + us_min
+        market_open = 9 * 60 + 30
+        market_close = 16 * 60
+        if market_open <= us_time <= market_close:
+            data["marketStatus"] = "open"
+        elif us_time < market_open:
+            data["marketStatus"] = "pre_open"
+        else:
+            data["marketStatus"] = "closed"
+        if "date" not in data:
+            data["date"] = us_now.strftime("%Y-%m-%d")
+        return data
     except (FileNotFoundError, json.JSONDecodeError):
-        return {}
+        return {"marketStatus": "closed"}
 
 KOSPI_INDEX_URL = "https://finance.naver.com/sise/sise_index.naver?code=KOSPI"
 KOSDAQ_INDEX_URL = "https://finance.naver.com/sise/sise_index.naver?code=KOSDAQ"
