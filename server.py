@@ -1133,90 +1133,40 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
     weekday_kr = ["월", "화", "수", "목", "금", "토", "일"][now_kst.weekday()]
     next_trade_date, next_trade_weekday = get_next_trading_day(now_kst)
     today_str = now_kst.strftime('%Y년 %m월 %d일')
-    today_iso = now_kst.strftime('%Y-%m-%d')
 
-    # 시장 관련 키워드로 검색 결과 필터링
-    filtered_search = []
-    if search_results:
-        for r in search_results:
-            text = r.get("text", "")
-            stock_kw = ["주식", "증시", "코스피", "코스닥", "종목", "투자", "매매",
-                        "호실적", "실적", "전망", "목표가", "상승", "하락", "급락",
-                        "반도체", "메모리", "HBM", "전자", "차", "자동차",
-                        "로봇", "AI", "인공지능", "배당", "수익", "손실"]
-            if any(kw in text for kw in stock_kw):
-                filtered_search.append(r)
-    if not filtered_search:
-        filtered_search = search_results[:3] if search_results else []
+    # 간소화된 시스템 프롬프트
+    system_prompt = f"""Stock Manager AI입니다.
+오늘: {today_str} ({weekday_kr}) {now_kst.strftime('%H:%M')}
+장: {phase_label} | 다음 거래일: {next_trade_date}
 
-    # 시스템 프롬프트 간소화
-    system_prompt = f"""당신은 Stock Manager AI 투자 어드바이저입니다.
+규칙:
+1. 위 뉴스 데이터를 사용하세요. 검색 결과의 오래된 뉴스를 사용하지 마세요.
+2. 모든 수치는 위 데이터에서만 가져오세요.
+3. 간결하게 답변하세요.
 
-📅 오늘: {today_str} ({weekday_kr}요일) {now_kst.strftime('%H:%M')}
-📈 장 상태: {phase_label} — {trade_status}
-📅 다음 거래일: {next_trade_date} ({next_trade_weekday}요일)
-
-【 핵심 규칙 】
-1. 반드시 위 '최근 뉴스' 데이터를 사용하세요. 검색 결과의 오래된 뉴스를 사용하지 마세요.
-2. 모든 수치는 위 포트폴리오/시장 데이터에서만 가져오세요. 절대 만들지 마세요.
-3. 검색 결과와 위 데이터가 다르면 위 데이터를 신뢰하세요.
-4. 간결하고 명확하게 답변하세요. 너무 길게 쓰지 마세요.
-5. 할루네이션 금지: 모르는 것은 '확인 필요'라고 하세요.
-
-【 포트폴리오 】
 {context}
 """
     if us_market_ctx:
-        system_prompt += f"【 미국증시 】\n{us_market_ctx}\n"
+        system_prompt += f"\n{us_market_ctx}\n"
     if kospi_kosdaq_ctx:
-        system_prompt += f"【 코스피/코스닥 】\n{kospi_kosdaq_ctx}\n"
+        system_prompt += f"\n{kospi_kosdaq_ctx}\n"
 
     messages = [{"role": "system", "content": system_prompt}]
-    sliced = history[-CHAT_MSG_LIMIT:] if history else []
-    previous = sliced[:-1] if len(sliced) > 1 else []
-    first_h_idx = max(0, len(history) - CHAT_MSG_LIMIT) if history else 0
-    if previous:
-        h_ref = "【 이전 대화 】\n"
-        for i, h in enumerate(previous, 1):
-            display_idx = first_h_idx + i
-            role_label = "사용자" if h["role"] == "user" else "어드바이저"
-            preview = h["content"][:100].replace("\n", " ")
-            h_ref += f"[H{display_idx}] {role_label}: {preview}\n"
-        messages.append({"role": "system", "content": h_ref})
+    sliced = history[-10:] if history else []
     for h in sliced:
-        messages.append({"role": h["role"], "content": h["content"]})
-    if filtered_search:
-        search_text = ""
-        for i, r in enumerate(filtered_search, 1):
-            text = r.get("text", "")
-            url = r.get("url", "")
-            search_text += f"[{i}] {text}\n"
-            if url:
-                search_text += f"    출처: {url}\n\n"
-        search_block = f"【 검색 결과 (참고용) 】\n{search_text}"
-        messages.append({"role": "user", "content": search_block})
-        messages.append({"role": "assistant", "content": "검색 결과를 확인했습니다."})
+        messages.append({"role": h["role"], "content": h["content"][:200]})
     messages.append({"role": "user", "content": user_message})
     result = call_llm(messages)
     reply = result["reply"]
     reply = re.sub(r'\n*📚\s*출처[:：][\s\S]*$', '', reply).rstrip()
-    h_refs = re.findall(r'\[H(\d+)\]', reply) if previous else []
-    has_urls = filtered_search and any(r.get("url") for r in filtered_search)
+    h_refs = re.findall(r'\[H(\d+)\]', reply) if sliced else []
+    has_urls = search_results and any(r.get("url") for r in search_results[:3])
     if has_urls or h_refs:
         reply += "\n\n📚 출처:\n"
-        if filtered_search:
-            for i, r in enumerate(filtered_search, 1):
+        if has_urls:
+            for i, r in enumerate(search_results[:3], 1):
                 if r.get("url"):
                     reply += f"[{i}] {r['url']}\n"
-        if h_refs:
-            for hn in sorted(set(h_refs), key=int):
-                display_idx = int(hn)
-                zero_idx = display_idx - 1
-                if first_h_idx <= zero_idx < first_h_idx + len(previous):
-                    h = previous[zero_idx - first_h_idx]
-                    role_label = "사용자" if h["role"] == "user" else "어드바이저"
-                    preview = h["content"][:60].replace("\n", " ")
-                    reply += f"[H{hn}] {role_label}: \"{preview}\"\n"
     return reply
 
 
