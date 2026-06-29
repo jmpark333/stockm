@@ -941,19 +941,20 @@ def fetch_kospi_kosdaq():
             with urllib.request.urlopen(req, timeout=8) as resp:
                 html = resp.read().decode("utf-8", errors="replace")
             
-            # 지수 추출
-            value_match = re.search(r'<span class="no_01"[^>]*>([\d,]+\.\d+)', html)
-            change_match = re.search(r'<span class="no_02"[^>]*>([\d,]+\.\d+)', html)
-            rate_match = re.search(r'<span class="no_03"[^>]*>\s*\(?([+-]?[\d.]+)%\)?', html)
+            # 지수 추출: <em id="now_value">8,394.65</em>
+            value_match = re.search(r'id="now_value"[^>]*>([\d,]+\.\d+)', html)
             
-            if not value_match:
-                # 대체 패턴
-                value_match = re.search(r'(\d{1,2},\d{3}\.\d{2})', html)
+            # 변동값/변동률 추출: <span class="fluc" id="change_value_and_rate"><span>16.56</span> -0.20%
+            fluc_match = re.search(r'class="fluc"[^>]*><span>([\d,]+\.\d+)</span>\s*([+-]?[\d.]+)%', html)
             
             if value_match:
                 value = float(value_match.group(1).replace(",", ""))
-                change = float(change_match.group(1).replace(",", "")) if change_match else 0
-                rate = float(rate_match.group(1)) if rate_match else 0
+                change = 0
+                rate = 0
+                
+                if fluc_match:
+                    change = float(fluc_match.group(1).replace(",", ""))
+                    rate = float(fluc_match.group(2))
                 
                 result["indices"].append({
                     "name": name,
