@@ -1020,7 +1020,7 @@ KOSDAQ_INDEX_URL = "https://finance.naver.com/sise/sise_index.naver?code=KOSDAQ"
 
 def fetch_kospi_kosdaq():
     """네이버 금융에서 코스피/코스닥 실시간 지수를 가져온다."""
-    result = {"date": "", "indices": []}
+    result = {"date": "", "indices": [], "marketStatus": "closed"}
     
     for name, url in [("코스피", KOSPI_INDEX_URL), ("코스닥", KOSDAQ_INDEX_URL)]:
         try:
@@ -1052,9 +1052,28 @@ def fetch_kospi_kosdaq():
         except Exception as e:
             print(f"[fetch_kospi_kosdaq] {name} error: {e}", flush=True)
     
-    # 날짜 설정
+    # 장 상태 및 날짜 설정
     now = datetime.now(timezone(timedelta(hours=9)))
-    result["date"] = now.strftime("%Y-%m-%d")
+    current_hour = now.hour
+    current_minute = now.minute
+    current_time = current_hour * 60 + current_minute
+    
+    # 한국 주식시장 시간: 09:00 ~ 15:30
+    market_open = 9 * 60  # 09:00
+    market_close = 15 * 60 + 30  # 15:30
+    
+    if current_time < market_open:
+        # 장 시작 전
+        result["marketStatus"] = "pre_open"
+        result["date"] = now.strftime("%Y-%m-%d")
+    elif current_time >= market_open and current_time <= market_close:
+        # 장 운영 중
+        result["marketStatus"] = "open"
+        result["date"] = now.strftime("%Y-%m-%d")
+    else:
+        # 장 마감 후
+        result["marketStatus"] = "closed"
+        result["date"] = now.strftime("%Y-%m-%d")
     
     return result
 
