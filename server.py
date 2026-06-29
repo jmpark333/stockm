@@ -24,6 +24,10 @@ MAX_HISTORY = 12
 ZAI_URL = "https://api.z.ai/api/coding/paas/v4"
 ZAI_KEY = "136d90754ebd999f4a4cc4547b638.LUXSKaxDozJgFHLQ"
 
+NOUS_URL = "https://inference-api.nousresearch.com/v1/chat/completions"
+NOUS_KEY = os.environ.get("NOUS_KEY", "sk-nous-dueimEQDyVHzxeKCOolvFyx7e0DKZzBR").strip()
+NOUS_MODELS = ["stepfun/step-3.7-flash:free", "nex-agi/nex-n2-pro:free", "openai/gpt-oss-120b:free"]
+
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 OPENROUTER_KEY = os.environ.get("OPENROUTER_KEY", "").strip()
 OPENROUTER_MODELS = ["nex-agi/nex-n2-pro:free", "openai/gpt-oss-120b:free"]
@@ -759,10 +763,46 @@ def chat_from_openrouter(messages, model=None):
     except Exception as exc:
         return {"error": str(exc)}
 
+def chat_from_nous(messages, model=None):
+    if not NOUS_KEY:
+        return {"error": "NOUS_KEY not set"}
+    if not model:
+        model = NOUS_MODELS[0]
+    payload = {
+        "model": model,
+        "messages": messages,
+        "temperature": 0.7,
+        "max_tokens": 2000,
+    }
+    headers = {
+        "Authorization": f"Bearer {NOUS_KEY}",
+        "Content-Type": "application/json",
+    }
+    req = urllib.request.Request(
+        NOUS_URL,
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers=headers,
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            raw = resp.read().decode("utf-8")
+        result = json.loads(raw)
+        content = result["choices"][0]["message"]["content"]
+        if not content:
+            return {"error": "empty content"}
+        return {"reply": content.strip(), "_source": "nous"}
+    except Exception as exc:
+        return {"error": str(exc)}
+
 def call_llm(messages):
     result = chat_from_zai(messages)
     if "error" not in result:
         return result
+    for m in NOUS_MODELS:
+        result = chat_from_nous(messages, model=m)
+        if "error" not in result:
+            return result
     if OPENROUTER_KEY:
         for m in OPENROUTER_MODELS:
             result = chat_from_openrouter(messages, model=m)
