@@ -1577,32 +1577,8 @@ def search_web_brave(query):
     return results[:8]
 
 def search_web(query):
-    """Brave Search만 사용 (빠른 응답). 결과는 60초간 메모리 캐싱."""
-    if not query or not query.strip():
-        return []
-    cache_key = query.strip().lower()[:200]
-    cached = _cache_get(cache_key)
-    if cached is not None:
-        print(f"[search_web] cache hit ({len(cached)} results)")
-        return cached
-    all_results = []
-    seen_urls = set()
-
-    def add_results(results):
-        for r in results:
-            url = r.get("url", "")
-            if url and url not in seen_urls and not is_irrelevant_result(url, r.get("text", "")):
-                seen_urls.add(url)
-                all_results.append(r)
-
-    try:
-        brave_results = search_web_brave(query)
-        add_results(brave_results)
-    except Exception as e:
-        print(f"[search_web] Brave search error: {e}")
-
-    _cache_set(cache_key, all_results[:5])
-    return all_results[:5]
+    """검색 비활성화 (빠른 응답)"""
+    return []
 
 def get_market_status() -> tuple[str, str, datetime]:
     """현재 KST 시각과 토스증권 국내주식 장 상태를 반환.
