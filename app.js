@@ -798,12 +798,11 @@ function renderKospiKosdaq(data) {
       const isDown = idx.rate < 0;
       const sign = isUp ? '+' : '';
       const cls = isUp ? 'up' : isDown ? 'down' : 'neutral';
-      const changeStr = idx.change > 0 ? `+${idx.change.toLocaleString('ko-KR')}` : idx.change.toLocaleString('ko-KR');
       html += `<div class="us-index-row">
         <span class="us-index-name">${idx.name}</span>
         <span>
           <span class="us-index-value">${idx.value.toLocaleString('ko-KR')}</span>
-          <span class="us-index-change ${cls}">${changeStr} (${sign}${idx.rate.toFixed(2)}%)</span>
+          <span class="us-index-change ${cls}">${sign}${idx.rate.toFixed(2)}%</span>
         </span>
       </div>`;
     });
