@@ -769,6 +769,48 @@ function renderSummary(summary) {
   }
 }
 
+/* KOSPI/KOSDAQ Section */
+const kospiKosdaqBody = document.querySelector('#kospiKosdaqBody');
+const kospiKosdaqDate = document.querySelector('#kospiKosdaqDate');
+
+async function loadKospiKosdaq() {
+  try {
+    const res = await fetch('/api/kospi-kosdaq', { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    renderKospiKosdaq(data);
+  } catch (e) {
+    if (kospiKosdaqBody) kospiKosdaqBody.innerHTML = '<p class="muted">코스피/코스닥 데이터를 불러올 수 없습니다.</p>';
+  }
+}
+
+function renderKospiKosdaq(data) {
+  if (!kospiKosdaqBody || !data) return;
+
+  let html = '';
+  if (data.date) {
+    if (kospiKosdaqDate) kospiKosdaqDate.textContent = `${data.date} 마감`;
+  }
+
+  if (data.indices && data.indices.length) {
+    data.indices.forEach(idx => {
+      const isUp = idx.rate > 0;
+      const isDown = idx.rate < 0;
+      const sign = isUp ? '+' : '';
+      const cls = isUp ? 'up' : isDown ? 'down' : 'neutral';
+      html += `<div class="us-index-row">
+        <span class="us-index-name">${idx.name}</span>
+        <span>
+          <span class="us-index-value">${idx.value.toLocaleString('ko-KR')}</span>
+          <span class="us-index-change ${cls}">${sign}${idx.rate.toFixed(2)}%</span>
+        </span>
+      </div>`;
+    });
+  }
+
+  kospiKosdaqBody.innerHTML = html;
+}
+
 /* US Market Section */
 const usMarketBody = document.querySelector('#usMarketBody');
 const usMarketDate = document.querySelector('#usMarketDate');
@@ -993,6 +1035,7 @@ autoBtn.addEventListener('click', () => setAutoRefresh(!autoEnabled));
 initResize();
 loadPortfolio();
 loadNews();
+loadKospiKosdaq();
 loadUSMarket();
 setAutoRefresh(true);
 setupNewsRefresh();

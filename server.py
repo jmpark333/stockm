@@ -552,6 +552,48 @@ def load_us_market():
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
 
+KOSPI_INDEX_URL = "https://finance.naver.com/sise/sise_index.naver?code=KOSPI"
+KOSDAQ_INDEX_URL = "https://finance.naver.com/sise/sise_index.naver?code=KOSDAQ"
+
+def fetch_kospi_kosdaq():
+    """네이버 금융에서 코스피/코스닥 실시간 지수를 가져온다."""
+    result = {"date": "", "indices": []}
+    
+    for name, url in [("코스피", KOSPI_INDEX_URL), ("코스닥", KOSDAQ_INDEX_URL)]:
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                html = resp.read().decode("utf-8", errors="replace")
+            
+            # 지수 추출
+            value_match = re.search(r'<span class="no_01"[^>]*>([\d,]+\.\d+)', html)
+            change_match = re.search(r'<span class="no_02"[^>]*>([\d,]+\.\d+)', html)
+            rate_match = re.search(r'<span class="no_03"[^>]*>\s*\(?([+-]?[\d.]+)%\)?', html)
+            
+            if not value_match:
+                # 대체 패턴
+                value_match = re.search(r'(\d{1,2},\d{3}\.\d{2})', html)
+            
+            if value_match:
+                value = float(value_match.group(1).replace(",", ""))
+                change = float(change_match.group(1).replace(",", "")) if change_match else 0
+                rate = float(rate_match.group(1)) if rate_match else 0
+                
+                result["indices"].append({
+                    "name": name,
+                    "value": value,
+                    "change": change,
+                    "rate": rate
+                })
+        except Exception as e:
+            print(f"[fetch_kospi_kosdaq] {name} error: {e}", flush=True)
+    
+    # 날짜 설정
+    now = datetime.now(timezone(timedelta(hours=9)))
+    result["date"] = now.strftime("%Y-%m-%d")
+    
+    return result
+
 def build_us_market_context():
     data = load_us_market()
     if not data:
@@ -1063,6 +1105,9 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if p == "/api/us-market":
             self.send_json(load_us_market())
+            return
+        if p == "/api/kospi-kosdaq":
+            self.send_json(fetch_kospi_kosdaq())
             return
         if p == "/api/chat/history":
             self.send_json({"history": load_chat_history()})
