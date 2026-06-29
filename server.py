@@ -1028,11 +1028,13 @@ def search_web_brave(query):
         "X-Subscription-Token": BRAVE_API_KEY,
         "Accept": "application/json",
     }
+    if not BRAVE_API_KEY:
+        return results
     try:
         encoded = urllib.parse.quote(query[:200])
         url = f"https://api.search.brave.com/res/v1/news/search?q={encoded}&freshness=pw&count=5"
         req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read().decode("utf-8"))
         for r in data.get("results", []):
             r_url = r.get("url", "")
@@ -1040,14 +1042,13 @@ def search_web_brave(query):
                 seen_urls.add(r_url)
                 desc = r.get("description", "") or r.get("title", "")
                 results.append({"text": desc[:2000], "url": r_url})
-        print(f"[search_web] Brave news: {len(results)} results")
     except Exception as e:
         print(f"[search_web] Brave news error: {e}")
     try:
         encoded = urllib.parse.quote(query[:200])
         url = f"https://api.search.brave.com/res/v1/web/search?q={encoded}&freshness=pw&count=5"
         req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read().decode("utf-8"))
         for r in data.get("web", {}).get("results", []):
             r_url = r.get("url", "")
@@ -1055,7 +1056,6 @@ def search_web_brave(query):
                 seen_urls.add(r_url)
                 desc = r.get("description", "") or r.get("title", "")
                 results.append({"text": desc[:2000], "url": r_url})
-        print(f"[search_web] Brave web: {len(results)} results (total)")
     except Exception as e:
         print(f"[search_web] Brave web error: {e}")
     return results[:8]

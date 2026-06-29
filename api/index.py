@@ -1534,25 +1534,20 @@ def search_web_ddg(query):
         return []
 
 def search_web_brave(query):
-    """Brave Search API — news + web 검색.
-
-    Brave Free plan allows only 1 request per second. We enforce a global
-    ≥1.1s gap before each Brave HTTP call (rate limiter) and sleep 1.1s
-    between the news and web calls so they never collide.
-    """
+    """Brave Search API — news + web 검색"""
     results = []
     seen_urls = set()
     headers = {
         "X-Subscription-Token": BRAVE_API_KEY,
         "Accept": "application/json",
     }
-    # 1) News search (최근 7일)
+    if not BRAVE_API_KEY:
+        return results
     try:
-        _enforce_brave_rate_limit()
         encoded = urllib.parse.quote(query[:200])
         url = f"https://api.search.brave.com/res/v1/news/search?q={encoded}&freshness=pw&count=5"
         req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read().decode("utf-8"))
         for r in data.get("results", []):
             r_url = r.get("url", "")
@@ -1560,18 +1555,13 @@ def search_web_brave(query):
                 seen_urls.add(r_url)
                 desc = r.get("description", "") or r.get("title", "")
                 results.append({"text": desc[:2000], "url": r_url})
-        print(f"[search_web] Brave news: {len(results)} results")
-    except urllib.error.HTTPError as e:
-        print(f"[search_web] Brave news HTTP error: {e.code} {e.reason}")
     except Exception as e:
         print(f"[search_web] Brave news error: {e}")
-    # 2) Web search (최근 7일) — always wait ≥1.1s after the news call
     try:
-        _enforce_brave_rate_limit()
         encoded = urllib.parse.quote(query[:200])
         url = f"https://api.search.brave.com/res/v1/web/search?q={encoded}&freshness=pw&count=5"
         req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read().decode("utf-8"))
         for r in data.get("web", {}).get("results", []):
             r_url = r.get("url", "")
