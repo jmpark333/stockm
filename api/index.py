@@ -1194,14 +1194,30 @@ def build_us_market_context():
         lines.append(f"• 날짜: {data['date']}")
     if data.get("indices"):
         for idx in data["indices"]:
-            sign = "+" if idx["change"] > 0 else ""
-            lines.append(f"• {idx['name']}: {idx['value']:,.2f} ({sign}{idx['change']:.2f}%)")
+            sign = "+" if idx["rate"] > 0 else ""
+            lines.append(f"• {idx['name']}: {idx['value']:,.2f} ({sign}{idx['rate']:.2f}%)")
     if data.get("summary"):
         lines.append(f"• 요약: {data['summary']}")
     if data.get("highlights"):
         lines.append("• 주요 특징:")
         for h in data["highlights"]:
             lines.append(f"  - {h}")
+    return "\n".join(lines)
+
+def build_kospi_kosdaq_context():
+    data = fetch_kospi_kosdaq()
+    if not data or not data.get("indices"):
+        return ""
+    lines = []
+    lines.append("📈 코스피/코스닥")
+    if data.get("date"):
+        status = data.get("marketStatus", "closed")
+        status_text = "장 운영 중" if status == "open" else ("장 시작 전" if status == "pre_open" else "마감")
+        lines.append(f"• 날짜: {data['date']} ({status_text})")
+    if data.get("indices"):
+        for idx in data["indices"]:
+            sign = "+" if idx["rate"] > 0 else ""
+            lines.append(f"• {idx['name']}: {idx['value']:,.2f} ({sign}{idx['rate']:.2f}%)")
     return "\n".join(lines)
 
 def build_chat_context(portfolio, news):
@@ -1638,6 +1654,7 @@ def get_next_trading_day(now_kst):
 def chat_with_ai(user_message, history, portfolio, news, search_results=None):
     context = build_chat_context(portfolio, news)
     us_market_ctx = build_us_market_context()
+    kospi_kosdaq_ctx = build_kospi_kosdaq_context()
     if search_results is None:
         search_results = search_web(user_message)
     phase_label, trade_status, now_kst = get_market_status()
@@ -1702,6 +1719,15 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
             "예: 애플 하락 → 삼성전자/반도체 영향, 마이크론 HBM 수요 → SK하이닉스 연관성 등\n\n"
         )
 
+    if kospi_kosdaq_ctx:
+        system_prompt += (
+            "【 코스피/코스닥 동향 】\n"
+            f"{kospi_kosdaq_ctx}\n\n"
+            "⚠️ 코스피/코스닥 데이터 활용 지침: "
+            "사용자가 국내 시장, 코스피, 코스닥 관련 질문을 하거나, "
+            "국내 시장 전체 흐름을 분석할 때 반드시 위 데이터를 참고하세요.\n\n"
+        )
+
     system_prompt += (
         "【 응답 원칙 】\n"
         "1. 항상 데이터에 기반한 객관적인 조언을 제공하세요.\n"
@@ -1711,12 +1737,14 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
         "5. 한국어로 답변하세요.\n"
         "6. 답변은 완전하게 작성하세요.\n"
         "7. 필요시 포트폴리오 내 특정 종목에 대한 구체적인 분석을 제공하세요.\n"
-        "8. ⚠️ 절대 상상하여 답변하지 마세요. 위 포트폴리오 데이터와 미국증시 데이터, "
+        "8. ⚠️ 데이터 우선순위: 위에 제공된 포트폴리오 데이터, 미국증시 데이터, 코스피/코스닥 데이터가 "
+        "검색 결과보다 우선합니다. 위 데이터와 검색 결과가 불일치하면 위 데이터를 신뢰하세요.\n"
+        "9. ⚠️ 절대 상상하여 답변하지 마세요. 위 포트폴리오 데이터와 미국증시 데이터, "
         "그리고 아래 검색 결과를 모두 활용하여 답변하세요. "
         "검색 결과에 없는 정보는 '확인이 필요합니다'라고 답변하세요.\n"
-        "9. 대화 내역(history)에 이전에 나눈 내용이 있다면 그 정보도 적극 활용하세요. "
+        "10. 대화 내역(history)에 이전에 나눈 내용이 있다면 그 정보도 적극 활용하세요. "
         "이전 대화 내용을 인용할 때는 [H숫자] 형식으로 출처를 표시하세요.\n"
-        "10. 🚫 출처 할루네이션 금지: 반드시 아래 검색 결과 안의 URL만 인용하세요. "
+        "11. 🚫 출처 할루네이션 금지: 반드시 아래 검색 결과 안의 URL만 인용하세요. "
         "검색 결과가 없으면 출처 섹션을 생략하세요."
     )
     if us_market_ctx:
