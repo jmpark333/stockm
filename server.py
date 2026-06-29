@@ -941,6 +941,8 @@ def chat_from_nous(messages, model=None):
         msg = result["choices"][0]["message"]
         content = msg.get("content") or ""
         if not content:
+            content = msg.get("reasoning") or ""
+        if not content:
             return {"error": "empty content"}
         return {"reply": content.strip(), "_source": "nous"}
     except Exception as exc:
