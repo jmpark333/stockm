@@ -796,12 +796,6 @@ def build_us_market_context():
         for idx in data["indices"]:
             sign = "▲" if idx["rate"] > 0 else "▼" if idx["rate"] < 0 else ""
             lines.append(f"• {idx['name']}: {idx['value']:,.2f} {sign}{abs(idx['rate']):.2f}%")
-    if data.get("summary"):
-        lines.append(f"• 요약: {data['summary']}")
-    if data.get("highlights"):
-        lines.append("• 주요 특징:")
-        for h in data["highlights"]:
-            lines.append(f"  - {h}")
     return "\n".join(lines)
 
 def build_kospi_kosdaq_context():
