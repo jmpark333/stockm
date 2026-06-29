@@ -841,67 +841,11 @@ def save_chat_history(history):
 def build_chat_context(portfolio, news):
     lines = []
     summary = portfolio["summary"]
-    lines.append("📊 포트폴리오 현황")
-    lines.append(f"• 총 평가금: {summary['currentValue']:,.0f}원")
-    lines.append(f"• 총 투자원금: {summary['cost']:,.0f}원")
-    lines.append(f"• 총 손익: {summary['profit']:+,.0f}원 ({summary['profitRate']:+.2f}%)")
-    lines.append("")
+    lines.append(f"총평가 {summary['currentValue']:,.0f}원 수익 {summary['profit']:+,.0f}원({summary['profitRate']:+.1f}%)")
     if portfolio.get("holdings"):
-        lines.append("📦 보유종목")
         for h in portfolio["holdings"]:
-            err = h.get("error")
-            if err:
-                lines.append(f"• {h['name']}({h['code']}): 데이터 없음")
-            else:
-                profit_emoji = "🔴" if h["profitRate"] > 0 else ("🔵" if h["profitRate"] < 0 else "⚪")
-                lines.append(f"• {h['name']}({h['code']}): {h['quantity']}주")
-                lines.append(f"  평균 {h['avgPrice']:,.0f}원 → 현재 {h['currentPrice']:,.0f}원")
-                lines.append(f"  {profit_emoji} 수익 {h['profit']:+,.0f}원 ({h['profitRate']:+.2f}%) | 시그널: {h['trend']['signal']}")
-        lines.append("")
-    if portfolio.get("watchlist"):
-        lines.append("👀 관심종목")
-        for w in portfolio["watchlist"]:
-            err = w.get("error")
-            if err:
-                lines.append(f"• {w['name']}({w['code']}): 데이터 없음")
-            else:
-                emoji = "📈" if w["changeRate"] > 0 else ("📉" if w["changeRate"] < 0 else "📊")
-                lines.append(f"• {emoji} {w['name']}({w['code']}): 현재 {w['currentPrice']:,.0f}원 ({w['changeRate']:+.2f}%) | 추세: {w['trend']['shortTrend']}")
-        lines.append("")
-    if portfolio.get("trades"):
-        kst = timezone(timedelta(hours=9))
-        today_str = datetime.now(kst).strftime('%Y-%m-%d')
-        today_trades = [t for t in portfolio["trades"] if t.get("date") == today_str]
-        past_trades = [t for t in portfolio["trades"] if t.get("date") != today_str]
-        if today_trades:
-            lines.append("📋 오늘의 거래내역")
-            for t in today_trades:
-                emoji = "🟢" if t["type"] == "buy" else "🔴"
-                action = "매도" if t["type"] == "sell" else "매수"
-                lines.append(f"  {emoji} {t['name']} {t['quantity']}주 {action} @ {t['price']:,.0f}원 ({t.get('note','')})")
-            lines.append("")
-        if past_trades:
-            lines.append("📋 과거 거래내역")
-            for t in past_trades:
-                emoji = "🟢" if t["type"] == "buy" else "🔴"
-                action = "매도" if t["type"] == "sell" else "매수"
-                lines.append(f"  {emoji} [{t.get('date','')}] {t['name']} {t['quantity']}주 {action} @ {t['price']:,.0f}원 ({t.get('note','')})")
-            lines.append("")
-    if news:
-        lines.append("📰 최근 뉴스 (최신순)")
-        for n in news:
-            if n.get("articles"):
-                for article in n["articles"][:3]:
-                    title = article["title"][:80]
-                    url = article.get("url", "")
-                    source = article.get("source", "")
-                    pub_date = article.get("pubDate", "")
-                    lines.append(f"• [{n['name']}] {title}")
-                    if url:
-                        lines.append(f"  URL: {url}")
-                    if source:
-                        lines.append(f"  출처: {source}")
-        lines.append("")
+            if not h.get("error"):
+                lines.append(f"• {h['name']}: {h['quantity']}주 {h['currentPrice']:,.0f}원 ({h['profitRate']:+.1f}%)")
     return "\n".join(lines)
 
 def chat_from_zai(messages):
@@ -1167,35 +1111,25 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
     # 미국증시 뉴스 컨텍스트
     us_news_ctx = ""
     if us_market_news:
-        us_news_ctx = "📰 미국증시 최신 뉴스:\n"
-        for i, article in enumerate(us_market_news[:5], 1):
+        us_news_ctx = "미국증시 뉴스:\n"
+        for i, article in enumerate(us_market_news[:3], 1):
             us_news_ctx += f"{i}. {article['title']}\n"
-            if article.get('source'):
-                us_news_ctx += f"   출처: {article['source']}\n"
 
-    # 간소화된 시스템 프롬프트
-    system_prompt = f"""Stock Manager AI입니다.
-오늘: {today_str} ({weekday_kr}) {now_kst.strftime('%H:%M')}
-장: {phase_label} | 다음 거래일: {next_trade_date}
-
-규칙:
-1. 반드시 위 '미국증시 최신 뉴스'를 사용하세요. 다른 검색 결과를 사용하지 마세요.
-2. 모든 수치는 위 데이터에서만 가져오세요.
-3. 간결하게 답변하세요.
-
-{context}
-"""
+    # 프롬프트: 최소한으로
+    system_prompt = f"Stock Manager AI. 오늘 {today_str} {now_kst.strftime('%H:%M')}.\n"
     if us_market_ctx:
-        system_prompt += f"\n{us_market_ctx}\n"
+        system_prompt += f"{us_market_ctx}\n"
     if kospi_kosdaq_ctx:
-        system_prompt += f"\n{kospi_kosdaq_ctx}\n"
+        system_prompt += f"{kospi_kosdaq_ctx}\n"
     if us_news_ctx:
-        system_prompt += f"\n{us_news_ctx}\n"
+        system_prompt += f"{us_news_ctx}\n"
+    system_prompt += f"{context}\n"
+    system_prompt += "규칙: 위 데이터만 사용, 간결 답변, 할루네이션 금지.\n"
 
     messages = [{"role": "system", "content": system_prompt}]
-    sliced = history[-10:] if history else []
+    sliced = history[-5:] if history else []
     for h in sliced:
-        messages.append({"role": h["role"], "content": h["content"][:200]})
+        messages.append({"role": h["role"], "content": h["content"][:150]})
     messages.append({"role": "user", "content": user_message})
     result = call_llm(messages)
     reply = result["reply"]
