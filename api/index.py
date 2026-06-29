@@ -1587,7 +1587,7 @@ def search_web_brave(query):
     return results[:8]
 
 def search_web(query):
-    """Brave Search + DuckDuckGo 폴백. 결과는 60초간 메모리 캐싱."""
+    """Brave Search만 사용 (빠른 응답). 결과는 60초간 메모리 캐싱."""
     if not query or not query.strip():
         return []
     cache_key = query.strip().lower()[:200]
@@ -1605,24 +1605,14 @@ def search_web(query):
                 seen_urls.add(url)
                 all_results.append(r)
 
-    # 1) Brave Search (news + web) — internally enforces 1.1s gap
     try:
         brave_results = search_web_brave(query)
         add_results(brave_results)
     except Exception as e:
         print(f"[search_web] Brave search error: {e}")
 
-    # 2) DuckDuckGo 폴백 (Brave 결과가 부족할 때)
-    if len(all_results) < 3:
-        try:
-            ddg_results = search_web_ddg(query)
-            add_results(ddg_results)
-        except Exception as e:
-            print(f"[search_web] DuckDuckGo error: {e}")
-
-    final = all_results[:8]
-    _cache_put(cache_key, final)
-    return final
+    _cache_set(cache_key, all_results[:5])
+    return all_results[:5]
 
 def get_market_status() -> tuple[str, str, datetime]:
     """현재 KST 시각과 토스증권 국내주식 장 상태를 반환.

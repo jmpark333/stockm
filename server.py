@@ -1061,7 +1061,7 @@ def search_web_brave(query):
     return results[:8]
 
 def search_web(query):
-    """Brave Search + DuckDuckGo 폴백"""
+    """Brave Search만 사용 (빠른 응답)"""
     if not query or not query.strip():
         return []
     all_results = []
@@ -1080,14 +1080,7 @@ def search_web(query):
     except Exception as e:
         print(f"[search_web] Brave search error: {e}")
 
-    if len(all_results) < 3:
-        try:
-            ddg_results = search_web_ddg(query)
-            add_results(ddg_results)
-        except Exception as e:
-            print(f"[search_web] DuckDuckGo error: {e}")
-
-    return all_results[:8]
+    return all_results[:5]
 
 def get_market_status() -> tuple[str, str, datetime]:
     """현재 KST 시각과 토스증권 국내주식 장 상태를 반환.
