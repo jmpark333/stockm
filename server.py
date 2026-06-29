@@ -788,7 +788,8 @@ def chat_from_nous(messages, model=None):
         with urllib.request.urlopen(req, timeout=30) as resp:
             raw = resp.read().decode("utf-8")
         result = json.loads(raw)
-        content = result["choices"][0]["message"]["content"]
+        msg = result["choices"][0]["message"]
+        content = msg.get("content") or msg.get("reasoning") or ""
         if not content:
             return {"error": "empty content"}
         return {"reply": content.strip(), "_source": "nous"}
