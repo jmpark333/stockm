@@ -525,6 +525,7 @@ td {
   font-size: 12px;
   font-weight: 600;
   color: var(--muted);
+  white-space: nowrap;
 }
 
 .us-index-value {
