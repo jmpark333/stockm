@@ -1046,13 +1046,35 @@ def fetch_us_market_realtime():
                 rate = 0
                 if exday_match:
                     exday_content = exday_match.group(1)
-                    clean = re.sub(r'<[^>]+>', '', exday_content)
-                    clean = re.sub(r'\s+', ' ', clean).strip()
-                    nums = re.findall(r'[\d,]+\.?\d*', clean)
-                    if len(nums) >= 2:
-                        change = float(nums[0].replace(",", ""))
-                        rate = float(nums[1])
-                        if "-" in clean and "+" not in clean:
+                    # Extract all no_up/no_down em sections
+                    em_sections = re.findall(r'<em class="(no_up|no_down)"[^>]*>(.*?)</em>', exday_content, re.DOTALL)
+                    if len(em_sections) >= 2:
+                        # First section: change value
+                        _, change_section = em_sections[0]
+                        change_parts = re.findall(r'class="(no\d+|jum)">([^<]*)</span>', change_section)
+                        change_str = ''
+                        for tag, val in change_parts:
+                            if tag.startswith('no'):
+                                change_str += val
+                            elif tag == 'jum':
+                                change_str += val
+                        change = float(change_str.replace(",", ""))
+                        # Check direction from class name
+                        if em_sections[0][0] == "no_down":
+                            change = -change
+                        
+                        # Second section: rate
+                        _, rate_section = em_sections[1]
+                        rate_parts = re.findall(r'class="(no\d+|jum)">([^<]*)</span>', rate_section)
+                        rate_str = ''
+                        for tag, val in rate_parts:
+                            if tag.startswith('no'):
+                                rate_str += val
+                            elif tag == 'jum':
+                                rate_str += val
+                        rate = float(rate_str.replace(",", ""))
+                        # Check direction from class name
+                        if em_sections[1][0] == "no_down":
                             rate = -rate
                 
                 result["indices"].append({
