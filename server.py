@@ -772,7 +772,7 @@ def chat_from_nous(messages, model=None):
         "model": model,
         "messages": messages,
         "temperature": 0.7,
-        "max_tokens": 2000,
+        "max_tokens": 4000,
     }
     headers = {
         "Authorization": f"Bearer {NOUS_KEY}",
@@ -785,11 +785,11 @@ def chat_from_nous(messages, model=None):
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=60) as resp:
             raw = resp.read().decode("utf-8")
         result = json.loads(raw)
         msg = result["choices"][0]["message"]
-        content = msg.get("content") or msg.get("reasoning") or ""
+        content = msg.get("content") or ""
         if not content:
             return {"error": "empty content"}
         return {"reply": content.strip(), "_source": "nous"}
