@@ -1135,105 +1135,53 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
     today_str = now_kst.strftime('%Y년 %m월 %d일')
     today_iso = now_kst.strftime('%Y-%m-%d')
 
-    # 오늘 날짜(YYYY-MM-DD)를 기준으로 검색 결과 필터링
+    # 시장 관련 키워드로 검색 결과 필터링
     filtered_search = []
     if search_results:
         for r in search_results:
-            url = r.get("url", "")
             text = r.get("text", "")
-            # 주식/경제 관련 키워드가 하나 이상 있는지 확인
             stock_kw = ["주식", "증시", "코스피", "코스닥", "종목", "투자", "매매",
                         "호실적", "실적", "전망", "목표가", "상승", "하락", "급락",
                         "반도체", "메모리", "HBM", "전자", "차", "자동차",
-                        "로봇", "AI", "인공지능", "배당", "수익", "손실",
-                        "분석", "리포트", "애널리스트", "순매수", "기관", "외국인"]
+                        "로봇", "AI", "인공지능", "배당", "수익", "손실"]
             if any(kw in text for kw in stock_kw):
                 filtered_search.append(r)
     if not filtered_search:
-        filtered_search = search_results[:5] if search_results else []
+        filtered_search = search_results[:3] if search_results else []
 
-    system_prompt = (
-        "당신은 전문 주식 투자 어드바이저 'Stock Manager AI'입니다. "
-        "사용자의 포트폴리오 정보와 시장 데이터를 바탕으로 투자 조언을 제공합니다.\n\n"
-        f"📅 오늘 날짜: {today_str} ({weekday_kr}요일)\n"
-        f"🕒 현재 시각 (KST): {now_kst.strftime('%H시 %M분')}\n"
-        f"📈 현재 장 상태: **{phase_label}** — {trade_status}\n"
-        f"📅 다음 거래일: {next_trade_date} ({next_trade_weekday}요일) — 프리마켓 08:00 개시\n\n"
-        "【 절대 규칙 — 위반 금지 】\n"
-        f"1. 오늘은 {today_iso}({weekday_kr}요일)입니다. 토요일/일요일은 장이 열리지 않습니다. "
-        f"따라서 다음 거래일은 {next_trade_date}({next_trade_weekday})입니다. "
-        "절대 토요일이나 일요일에 프리마켓/메인마켓이 있다고 말하지 마세요.\n"
-        "2. ⚠️ 할루네이션(실제 없는 사실 만들어내기) 엄격히 금지: "
-        "실적 발표일, 목표가, 기업 전망 등 정보가 검색 결과에 없으면 절대 만들지 마세요. "
-        "예: '마이크론 실적 발표일'이 검색 결과에 없으면 '실적 발표일은 확인이 필요합니다'라고 답변하세요.\n"
-        "3. ⚠️ 출처 인용 규칙: 아래 검색 결과에서 실제로 관련 있는 것만 인용하세요. "
-        "검색 결과와 무관한 URL을 출처로 만들지 마세요. "
-        "검색 결과가 없으면 출처 섹션을 생략하고 '최신 실시간 데이터 확인이 필요합니다'라고 답변하세요.\n"
-        "4. 답변에 사용하는 모든 수치(주가, 수익률, 비율 등)는 반드시 위 포트폴리오 데이터에서 가져오세요. "
-        "절대 상상으로 수치를 만들지 마세요.\n\n"
-        "【 토스증권 국내주식 장 운영 시간 】\n"
-        "- 프리마켓(장전): 08:00~08:50 — 실시간 거래 가능\n"
-        "- 메인마켓(정규장): 09:00~15:20 — 실시간 거래 가능\n"
-        "- 시가단일가 마감임박: 15:30~15:40 — 단일가 주문만 가능\n"
-        "- 애프터마켓(장후): 15:40~20:00 — 실시간 거래 가능\n"
-        "- 클로즈(장 마감): 20:00~익일 08:00 — 거래 불가\n\n"
-        "⚠️ 중요: 매매 추천 시 반드시 위 '현재 장 상태'와 '다음 거래일'을 기준으로 안내하세요. "
-        "거래 불가 상태면 다음 거래일({next_trade_date}) 프리마켓 08:00 형태로 안내하세요.\n\n"
-        "【 현재 포트폴리오 상태 】\n"
-        f"{context}\n"
-    ).format(next_trade_date=next_trade_date)
+    # 시스템 프롬프트 간소화
+    system_prompt = f"""당신은 Stock Manager AI 투자 어드바이저입니다.
 
+📅 오늘: {today_str} ({weekday_kr}요일) {now_kst.strftime('%H:%M')}
+📈 장 상태: {phase_label} — {trade_status}
+📅 다음 거래일: {next_trade_date} ({next_trade_weekday}요일)
+
+【 핵심 규칙 】
+1. 반드시 위 '최근 뉴스' 데이터를 사용하세요. 검색 결과의 오래된 뉴스를 사용하지 마세요.
+2. 모든 수치는 위 포트폴리오/시장 데이터에서만 가져오세요. 절대 만들지 마세요.
+3. 검색 결과와 위 데이터가 다르면 위 데이터를 신뢰하세요.
+4. 간결하고 명확하게 답변하세요. 너무 길게 쓰지 마세요.
+5. 할루네이션 금지: 모르는 것은 '확인 필요'라고 하세요.
+
+【 포트폴리오 】
+{context}
+"""
     if us_market_ctx:
-        system_prompt += (
-            "【 미국증시 동향 (전일 마감) 】\n"
-            f"{us_market_ctx}\n\n"
-            "⚠️ 미국증시 데이터 활용 지침: "
-            "사용자가 미국증시, 미국 시장, 뉴욕 증시 관련 질문을 하거나, "
-            "보유종목과 미국 시장의 연관성을 분석할 때 반드시 위 미국증시 데이터를 참고하세요. "
-            "예: 애플 하락 → 삼성전자/반도체 영향, 마이크론 HBM 수요 → SK하이닉스 연관성 등\n\n"
-        )
-
+        system_prompt += f"【 미국증시 】\n{us_market_ctx}\n"
     if kospi_kosdaq_ctx:
-        system_prompt += (
-            "【 코스피/코스닥 동향 】\n"
-            f"{kospi_kosdaq_ctx}\n\n"
-            "⚠️ 코스피/코스닥 데이터 활용 지침: "
-            "사용자가 국내 시장, 코스피, 코스닥 관련 질문을 하거나, "
-            "국내 시장 전체 흐름을 분석할 때 반드시 위 데이터를 참고하세요.\n\n"
-        )
+        system_prompt += f"【 코스피/코스닥 】\n{kospi_kosdaq_ctx}\n"
 
-    system_prompt += (
-        "【 응답 원칙 】\n"
-        "1. 항상 데이터에 기반한 객관적인 조언을 제공하세요.\n"
-        "2. 매수/매도/관망에 대한 명확한 의견을 제시하세요.\n"
-        "3. 리스크 관리의 중요성을 강조하세요.\n"
-        "4. 전문적이고 친근한 어조로 답변하세요.\n"
-        "5. 한국어로 답변하세요.\n"
-        "6. 답변은 완전하게 작성하세요.\n"
-        "7. 필요시 포트폴리오 내 특정 종목에 대한 구체적인 분석을 제공하세요.\n"
-        "8. ⚠️ 데이터 우선순위: 위에 제공된 포트폴리오 데이터, 미국증시 데이터, 코스피/코스닥 데이터, "
-        "그리고 뉴스 데이터가 검색 결과보다 우선합니다. 위 데이터와 검색 결과가 불일치하면 위 데이터를 신뢰하세요.\n"
-        "9. ⚠️ 뉴스 데이터 활용: 위에 제공된 '최근 뉴스' 섹션의 뉴스를 우선적으로 활용하세요. "
-        "검색 결과의 오래된 뉴스보다 위 뉴스 데이터를 신뢰하세요.\n"
-        "10. ⚠️ 절대 상상하여 답변하지 마세요. 위 포트폴리오 데이터와 미국증시 데이터, "
-        "그리고 아래 검색 결과를 모두 활용하여 답변하세요. "
-        "검색 결과에 없는 정보는 '확인이 필요합니다'라고 답변하세요.\n"
-        "11. 대화 내역(history)에 이전에 나눈 내용이 있다면 그 정보도 적극 활용하세요. "
-        "이전 대화 내용을 인용할 때는 [H숫자] 형식으로 출처를 표시하세요.\n"
-        "12. 🚫 출처 할루네이션 금지: 반드시 위 뉴스 데이터와 아래 검색 결과 안의 URL만 인용하세요. "
-        "검색 결과가 없으면 출처 섹션을 생략하세요."
-    )
     messages = [{"role": "system", "content": system_prompt}]
     sliced = history[-CHAT_MSG_LIMIT:] if history else []
     previous = sliced[:-1] if len(sliced) > 1 else []
     first_h_idx = max(0, len(history) - CHAT_MSG_LIMIT) if history else 0
     if previous:
-        h_ref = "【 이전 대화 참조 (인용 시 [H...] 사용) 】\n"
+        h_ref = "【 이전 대화 】\n"
         for i, h in enumerate(previous, 1):
             display_idx = first_h_idx + i
             role_label = "사용자" if h["role"] == "user" else "어드바이저"
-            preview = h["content"][:150].replace("\n", " ")
-            h_ref += f"[H{display_idx}] ({role_label}): {preview}\n"
+            preview = h["content"][:100].replace("\n", " ")
+            h_ref += f"[H{display_idx}] {role_label}: {preview}\n"
         messages.append({"role": "system", "content": h_ref})
     for h in sliced:
         messages.append({"role": h["role"], "content": h["content"]})
@@ -1245,17 +1193,9 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
             search_text += f"[{i}] {text}\n"
             if url:
                 search_text += f"    출처: {url}\n\n"
-        sf = f"/tmp/stock_search_{int(time.time())}.txt"
-        try:
-            with open(sf, "w", encoding="utf-8") as f:
-                f.write(search_text)
-        except Exception:
-            sf = "(메모리)"
-        search_block = (
-            f"아래는 웹 검색 결과 파일({sf})의 내용입니다:\n\n{search_text}"
-        )
+        search_block = f"【 검색 결과 (참고용) 】\n{search_text}"
         messages.append({"role": "user", "content": search_block})
-        messages.append({"role": "assistant", "content": "파일을 읽었습니다. 출처 번호 [1][2]를 표기하여 답변하겠습니다."})
+        messages.append({"role": "assistant", "content": "검색 결과를 확인했습니다."})
     messages.append({"role": "user", "content": user_message})
     result = call_llm(messages)
     reply = result["reply"]
