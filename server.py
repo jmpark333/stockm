@@ -281,7 +281,7 @@ def fetch_news(name, code, limit=4):
         root = ET.fromstring(raw)
         items = root.findall(".//item")
         articles = []
-        for item in items[:limit * 3]:
+        for item in items[:limit * 5]:
             title_el = item.find("title")
             link_el = item.find("link")
             source_el = item.find("source")
@@ -833,12 +833,19 @@ def build_chat_context(portfolio, news):
                 lines.append(f"  {emoji} [{t.get('date','')}] {t['name']} {t['quantity']}주 {action} @ {t['price']:,.0f}원 ({t.get('note','')})")
             lines.append("")
     if news:
-        lines.append("📰 최근 뉴스")
+        lines.append("📰 최근 뉴스 (최신순)")
         for n in news:
             if n.get("articles"):
-                for article in n["articles"][:2]:
+                for article in n["articles"][:3]:
                     title = article["title"][:80]
+                    url = article.get("url", "")
+                    source = article.get("source", "")
+                    pub_date = article.get("pubDate", "")
                     lines.append(f"• [{n['name']}] {title}")
+                    if url:
+                        lines.append(f"  URL: {url}")
+                    if source:
+                        lines.append(f"  출처: {source}")
         lines.append("")
     return "\n".join(lines)
 
@@ -1204,14 +1211,16 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
         "5. 한국어로 답변하세요.\n"
         "6. 답변은 완전하게 작성하세요.\n"
         "7. 필요시 포트폴리오 내 특정 종목에 대한 구체적인 분석을 제공하세요.\n"
-        "8. ⚠️ 데이터 우선순위: 위에 제공된 포트폴리오 데이터, 미국증시 데이터, 코스피/코스닥 데이터가 "
-        "검색 결과보다 우선합니다. 위 데이터와 검색 결과가 불일치하면 위 데이터를 신뢰하세요.\n"
-        "9. ⚠️ 절대 상상하여 답변하지 마세요. 위 포트폴리오 데이터와 미국증시 데이터, "
+        "8. ⚠️ 데이터 우선순위: 위에 제공된 포트폴리오 데이터, 미국증시 데이터, 코스피/코스닥 데이터, "
+        "그리고 뉴스 데이터가 검색 결과보다 우선합니다. 위 데이터와 검색 결과가 불일치하면 위 데이터를 신뢰하세요.\n"
+        "9. ⚠️ 뉴스 데이터 활용: 위에 제공된 '최근 뉴스' 섹션의 뉴스를 우선적으로 활용하세요. "
+        "검색 결과의 오래된 뉴스보다 위 뉴스 데이터를 신뢰하세요.\n"
+        "10. ⚠️ 절대 상상하여 답변하지 마세요. 위 포트폴리오 데이터와 미국증시 데이터, "
         "그리고 아래 검색 결과를 모두 활용하여 답변하세요. "
         "검색 결과에 없는 정보는 '확인이 필요합니다'라고 답변하세요.\n"
-        "10. 대화 내역(history)에 이전에 나눈 내용이 있다면 그 정보도 적극 활용하세요. "
+        "11. 대화 내역(history)에 이전에 나눈 내용이 있다면 그 정보도 적극 활용하세요. "
         "이전 대화 내용을 인용할 때는 [H숫자] 형식으로 출처를 표시하세요.\n"
-        "11. 🚫 출처 할루네이션 금지: 반드시 아래 검색 결과 안의 URL만 인용하세요. "
+        "12. 🚫 출처 할루네이션 금지: 반드시 위 뉴스 데이터와 아래 검색 결과 안의 URL만 인용하세요. "
         "검색 결과가 없으면 출처 섹션을 생략하세요."
     )
     messages = [{"role": "system", "content": system_prompt}]
