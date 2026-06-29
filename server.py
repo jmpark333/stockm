@@ -311,6 +311,61 @@ def fetch_news(name, code, limit=4):
     except Exception as exc:
         return {"code": code, "name": name, "articles": [], "error": str(exc)}
 
+def fetch_us_market_news(limit=5):
+    """미국증시 관련 최신 뉴스를 가져온다."""
+    try:
+        query = "미국증시 뉴욕증시 when:1d"
+        encoded = urllib.parse.quote(query)
+        url = f"https://news.google.com/rss/search?q={encoded}&hl=ko&gl=KR&ceid=KR:ko"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            raw = resp.read()
+        root = ET.fromstring(raw)
+        items = root.findall(".//item")
+        articles = []
+        for item in items[:limit * 3]:
+            title_el = item.find("title")
+            link_el = item.find("link")
+            source_el = item.find("source")
+            pub_el = item.find("pubDate")
+            if title_el is not None and title_el.text:
+                pub_str = pub_el.text.strip() if pub_el is not None and pub_el.text else ""
+                pub_ts = 0
+                if pub_str:
+                    try:
+                        from email.utils import parsedate_to_datetime
+                        pub_ts = parsedate_to_datetime(pub_str).timestamp()
+                    except Exception:
+                        pass
+                articles.append({
+                    "title": re.sub(r"\s+", " ", title_el.text).strip(),
+                    "url": link_el.text.strip() if link_el is not None and link_el.text else "#",
+                    "source": source_el.text.strip() if source_el is not None and source_el.text else "",
+                    "pubDate": pub_str,
+                    "_ts": pub_ts,
+                })
+        articles.sort(key=lambda x: x.get("_ts", 0), reverse=True)
+        for a in articles:
+            a.pop("_ts", None)
+        return articles[:limit]
+    except Exception as exc:
+        print(f"[fetch_us_market_news] error: {exc}", flush=True)
+        return []
+
+# 전역 변수: 미국증시 뉴스 캐시
+_us_market_news_cache = []
+_us_market_news_cache_time = 0
+
+def get_us_market_news():
+    """캐시된 미국증시 뉴스를 가져온다 (5분 캐시)."""
+    global _us_market_news_cache, _us_market_news_cache_time
+    now = time.time()
+    if _us_market_news_cache and now - _us_market_news_cache_time < 300:
+        return _us_market_news_cache
+    _us_market_news_cache = fetch_us_market_news(limit=5)
+    _us_market_news_cache_time = now
+    return _us_market_news_cache
+
 def build_news():
     config = load_config()
     items = []
@@ -1102,6 +1157,7 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
     context = build_chat_context(portfolio, news)
     us_market_ctx = build_us_market_context()
     kospi_kosdaq_ctx = build_kospi_kosdaq_context()
+    us_market_news = get_us_market_news()
     if search_results is None:
         search_results = search_web(user_message)
     phase_label, trade_status, now_kst = get_market_status()
@@ -1109,13 +1165,22 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
     next_trade_date, next_trade_weekday = get_next_trading_day(now_kst)
     today_str = now_kst.strftime('%Y년 %m월 %d일')
 
+    # 미국증시 뉴스 컨텍스트
+    us_news_ctx = ""
+    if us_market_news:
+        us_news_ctx = "📰 미국증시 최신 뉴스:\n"
+        for i, article in enumerate(us_market_news[:5], 1):
+            us_news_ctx += f"{i}. {article['title']}\n"
+            if article.get('source'):
+                us_news_ctx += f"   출처: {article['source']}\n"
+
     # 간소화된 시스템 프롬프트
     system_prompt = f"""Stock Manager AI입니다.
 오늘: {today_str} ({weekday_kr}) {now_kst.strftime('%H:%M')}
 장: {phase_label} | 다음 거래일: {next_trade_date}
 
 규칙:
-1. 위 뉴스 데이터를 사용하세요. 검색 결과의 오래된 뉴스를 사용하지 마세요.
+1. 반드시 위 '미국증시 최신 뉴스'를 사용하세요. 다른 검색 결과를 사용하지 마세요.
 2. 모든 수치는 위 데이터에서만 가져오세요.
 3. 간결하게 답변하세요.
 
@@ -1125,6 +1190,8 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
         system_prompt += f"\n{us_market_ctx}\n"
     if kospi_kosdaq_ctx:
         system_prompt += f"\n{kospi_kosdaq_ctx}\n"
+    if us_news_ctx:
+        system_prompt += f"\n{us_news_ctx}\n"
 
     messages = [{"role": "system", "content": system_prompt}]
     sliced = history[-10:] if history else []
@@ -1135,13 +1202,13 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
     reply = result["reply"]
     reply = re.sub(r'\n*📚\s*출처[:：][\s\S]*$', '', reply).rstrip()
     h_refs = re.findall(r'\[H(\d+)\]', reply) if sliced else []
-    has_urls = search_results and any(r.get("url") for r in search_results[:3])
+    has_urls = us_market_news and any(a.get("url") for a in us_market_news[:3])
     if has_urls or h_refs:
         reply += "\n\n📚 출처:\n"
         if has_urls:
-            for i, r in enumerate(search_results[:3], 1):
-                if r.get("url"):
-                    reply += f"[{i}] {r['url']}\n"
+            for i, article in enumerate(us_market_news[:3], 1):
+                if article.get("url"):
+                    reply += f"[{i}] {article['url']}\n"
     return reply
 
 
@@ -1179,6 +1246,9 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if p == "/api/kospi-kosdaq":
             self.send_json(fetch_kospi_kosdaq())
+            return
+        if p == "/api/us-market-news":
+            self.send_json({"articles": get_us_market_news()})
             return
         if p == "/api/chat/history":
             self.send_json({"history": load_chat_history()})

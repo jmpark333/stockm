@@ -825,6 +825,14 @@ def api_kospi_kosdaq():
         headers={"Cache-Control": "no-store", "Access-Control-Allow-Origin": "*"},
     )
 
+@app.route("/api/us-market-news")
+def api_us_market_news():
+    return Response(
+        json.dumps({"articles": get_us_market_news()}, ensure_ascii=False),
+        mimetype="application/json",
+        headers={"Cache-Control": "no-store", "Access-Control-Allow-Origin": "*"},
+    )
+
 @app.route("/api/news")
 def api_news():
     return Response(
@@ -1121,6 +1129,60 @@ def load_us_market():
         return fetch_us_market_realtime()
     except Exception:
         return {"marketStatus": "closed"}
+
+def fetch_us_market_news(limit=5):
+    """미국증시 관련 최신 뉴스를 가져온다."""
+    try:
+        query = "미국증시 뉴욕증시 when:1d"
+        encoded = urllib.parse.quote(query)
+        url = f"https://news.google.com/rss/search?q={encoded}&hl=ko&gl=KR&ceid=KR:ko"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            raw = resp.read()
+        root = ET.fromstring(raw)
+        items = root.findall(".//item")
+        articles = []
+        for item in items[:limit * 3]:
+            title_el = item.find("title")
+            link_el = item.find("link")
+            source_el = item.find("source")
+            pub_el = item.find("pubDate")
+            if title_el is not None and title_el.text:
+                pub_str = pub_el.text.strip() if pub_el is not None and pub_el.text else ""
+                pub_ts = 0
+                if pub_str:
+                    try:
+                        from email.utils import parsedate_to_datetime
+                        pub_ts = parsedate_to_datetime(pub_str).timestamp()
+                    except Exception:
+                        pass
+                articles.append({
+                    "title": re.sub(r"\s+", " ", title_el.text).strip(),
+                    "url": link_el.text.strip() if link_el is not None and link_el.text else "#",
+                    "source": source_el.text.strip() if source_el is not None and source_el.text else "",
+                    "pubDate": pub_str,
+                    "_ts": pub_ts,
+                })
+        articles.sort(key=lambda x: x.get("_ts", 0), reverse=True)
+        for a in articles:
+            a.pop("_ts", None)
+        return articles[:limit]
+    except Exception as exc:
+        print(f"[fetch_us_market_news] error: {exc}", flush=True)
+        return []
+
+_us_market_news_cache = []
+_us_market_news_cache_time = 0
+
+def get_us_market_news():
+    """캐시된 미국증시 뉴스를 가져온다 (5분 캐시)."""
+    global _us_market_news_cache, _us_market_news_cache_time
+    now = time.time()
+    if _us_market_news_cache and now - _us_market_news_cache_time < 300:
+        return _us_market_news_cache
+    _us_market_news_cache = fetch_us_market_news(limit=5)
+    _us_market_news_cache_time = now
+    return _us_market_news_cache
 
 KOSPI_INDEX_URL = "https://finance.naver.com/sise/sise_index.naver?code=KOSPI"
 KOSDAQ_INDEX_URL = "https://finance.naver.com/sise/sise_index.naver?code=KOSDAQ"
@@ -1617,6 +1679,7 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
     context = build_chat_context(portfolio, news)
     us_market_ctx = build_us_market_context()
     kospi_kosdaq_ctx = build_kospi_kosdaq_context()
+    us_market_news = get_us_market_news()
     if search_results is None:
         search_results = search_web(user_message)
     phase_label, trade_status, now_kst = get_market_status()
@@ -1624,41 +1687,33 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
     next_trade_date, next_trade_weekday = get_next_trading_day(now_kst)
     today_str = now_kst.strftime('%Y년 %m월 %d일')
 
-    # 시장 관련 키워드로 검색 결과 필터링
-    filtered_search = []
-    if search_results:
-        for r in search_results:
-            text = r.get("text", "")
-            stock_kw = ["주식", "증시", "코스피", "코스닥", "종목", "투자", "매매",
-                        "호실적", "실적", "전망", "목표가", "상승", "하락", "급락",
-                        "반도체", "메모리", "HBM", "전자", "차", "자동차",
-                        "로봇", "AI", "인공지능", "배당", "수익", "손실"]
-            if any(kw in text for kw in stock_kw):
-                filtered_search.append(r)
-    if not filtered_search:
-        filtered_search = search_results[:3] if search_results else []
+    # 미국증시 뉴스 컨텍스트
+    us_news_ctx = ""
+    if us_market_news:
+        us_news_ctx = "📰 미국증시 최신 뉴스:\n"
+        for i, article in enumerate(us_market_news[:5], 1):
+            us_news_ctx += f"{i}. {article['title']}\n"
+            if article.get('source'):
+                us_news_ctx += f"   출처: {article['source']}\n"
 
     # 시스템 프롬프트 간소화
-    system_prompt = f"""당신은 Stock Manager AI 투자 어드바이저입니다.
+    system_prompt = f"""Stock Manager AI입니다.
+오늘: {today_str} ({weekday_kr}) {now_kst.strftime('%H:%M')}
+장: {phase_label} | 다음 거래일: {next_trade_date}
 
-📅 오늘: {today_str} ({weekday_kr}요일) {now_kst.strftime('%H:%M')}
-📈 장 상태: {phase_label} — {trade_status}
-📅 다음 거래일: {next_trade_date} ({next_trade_weekday}요일)
+규칙:
+1. 반드시 위 '미국증시 최신 뉴스'를 사용하세요. 다른 검색 결과를 사용하지 마세요.
+2. 모든 수치는 위 데이터에서만 가져오세요.
+3. 간결하게 답변하세요.
 
-【 핵심 규칙 】
-1. 반드시 위 '최근 뉴스' 데이터를 사용하세요. 검색 결과의 오래된 뉴스를 사용하지 마세요.
-2. 모든 수치는 위 포트폴리오/시장 데이터에서만 가져오세요. 절대 만들지 마세요.
-3. 검색 결과와 위 데이터가 다르면 위 데이터를 신뢰하세요.
-4. 간결하고 명확하게 답변하세요. 너무 길게 쓰지 마세요.
-5. 할루네이션 금지: 모르는 것은 '확인 필요'라고 하세요.
-
-【 포트폴리오 】
 {context}
 """
     if us_market_ctx:
-        system_prompt += f"【 미국증시 】\n{us_market_ctx}\n"
+        system_prompt += f"\n{us_market_ctx}\n"
     if kospi_kosdaq_ctx:
-        system_prompt += f"【 코스피/코스닥 】\n{kospi_kosdaq_ctx}\n"
+        system_prompt += f"\n{kospi_kosdaq_ctx}\n"
+    if us_news_ctx:
+        system_prompt += f"\n{us_news_ctx}\n"
 
     messages = [{"role": "system", "content": system_prompt}]
     sliced = history[-CHAT_MSG_LIMIT:] if history else []
