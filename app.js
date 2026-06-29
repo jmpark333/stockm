@@ -810,7 +810,7 @@ function renderKospiKosdaq(data) {
         <span class="us-index-name">${idx.name}</span>
         <span>
           <span class="us-index-value">${idx.value.toLocaleString('ko-KR')}</span>
-          <span class="us-index-change ${cls}">${sign}${idx.change.toFixed(2)} (${sign}${idx.rate.toFixed(2)}%)</span>
+          <span class="us-index-change ${cls}">${sign}${idx.rate.toFixed(2)}%</span>
         </span>
       </div>`;
     });
@@ -888,7 +888,7 @@ function renderUSMarket(data) {
         <span class="us-index-name">${idx.name}</span>
         <span>
           <span class="us-index-value">${idx.value.toLocaleString('ko-KR')}</span>
-          <span class="us-index-change ${cls}">${sign}${idx.change.toFixed(2)} (${sign}${idx.rate.toFixed(2)}%)</span>
+          <span class="us-index-change ${cls}">${sign}${idx.rate.toFixed(2)}%</span>
         </span>
       </div>`;
     });
