@@ -355,9 +355,56 @@ def fetch_us_market_news(limit=5):
         print(f"[fetch_us_market_news] error: {exc}", flush=True)
         return []
 
-# 전역 변수: 미국증시 뉴스 캐시
+def fetch_kr_market_news(limit=5):
+    """한국증시 관련 최신 뉴스를 가져온다 (24시간 이내만)."""
+    try:
+        query = "코스피 코스닥 한국증시"
+        encoded = urllib.parse.quote(query)
+        url = f"https://news.google.com/rss/search?q={encoded}&hl=ko&gl=KR&ceid=KR:ko"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            raw = resp.read()
+        root = ET.fromstring(raw)
+        items = root.findall(".//item")
+        articles = []
+        cutoff = time.time() - 86400  # 24시간 전
+        for item in items[:limit * 5]:
+            title_el = item.find("title")
+            link_el = item.find("link")
+            source_el = item.find("source")
+            pub_el = item.find("pubDate")
+            if title_el is not None and title_el.text:
+                pub_str = pub_el.text.strip() if pub_el is not None and pub_el.text else ""
+                pub_ts = 0
+                if pub_str:
+                    try:
+                        from email.utils import parsedate_to_datetime
+                        pub_ts = parsedate_to_datetime(pub_str).timestamp()
+                    except Exception:
+                        pass
+                if pub_ts < cutoff:
+                    continue
+                articles.append({
+                    "title": re.sub(r"\s+", " ", title_el.text).strip(),
+                    "url": link_el.text.strip() if link_el is not None and link_el.text else "#",
+                    "source": source_el.text.strip() if source_el is not None and source_el.text else "",
+                    "pubDate": pub_str,
+                    "_ts": pub_ts,
+                })
+        articles.sort(key=lambda x: x.get("_ts", 0), reverse=True)
+        for a in articles:
+            a.pop("_ts", None)
+        return articles[:limit]
+    except Exception as exc:
+        print(f"[fetch_kr_market_news] error: {exc}", flush=True)
+        return []
+
+# 전역 변수: 뉴스 캐시
 _us_market_news_cache = []
 _us_market_news_cache_time = 0
+
+_kr_market_news_cache = []
+_kr_market_news_cache_time = 0
 
 def get_us_market_news():
     """캐시된 미국증시 뉴스를 가져온다 (5분 캐시)."""
@@ -368,6 +415,16 @@ def get_us_market_news():
     _us_market_news_cache = fetch_us_market_news(limit=5)
     _us_market_news_cache_time = now
     return _us_market_news_cache
+
+def get_kr_market_news():
+    """캐시된 한국증시 뉴스를 가져온다 (5분 캐시)."""
+    global _kr_market_news_cache, _kr_market_news_cache_time
+    now = time.time()
+    if _kr_market_news_cache and now - _kr_market_news_cache_time < 300:
+        return _kr_market_news_cache
+    _kr_market_news_cache = fetch_kr_market_news(limit=5)
+    _kr_market_news_cache_time = now
+    return _kr_market_news_cache
 
 def build_news():
     config = load_config()
@@ -613,6 +670,80 @@ US_INDICES = [
     ("나스닥", "NAS@IXIC"),
 ]
 
+_us_analysis_cache = {"highlights": [], "summary": "", "_date": ""}
+
+def generate_us_market_analysis(indices, us_now):
+    today = us_now.strftime("%Y-%m-%d")
+    if _us_analysis_cache["_date"] == today and _us_analysis_cache["summary"]:
+        return _us_analysis_cache["highlights"], _us_analysis_cache["summary"]
+
+    idx_text = ""
+    for idx in indices:
+        sign = "+" if idx["rate"] > 0 else ""
+        idx_text += f"{idx['name']}: {idx['value']:,.2f} ({sign}{idx['rate']:.2f}%)\n"
+
+    news = get_us_market_news()
+    news_text = ""
+    if news:
+        news_text = "\n".join(f"- {a['title']}" for a in news[:5])
+
+    prompt = (
+        f"미국 증시 마감 분석입니다.\n\n"
+        f"[지수]\n{idx_text}\n"
+        f"[최신 뉴스]\n{news_text}\n\n"
+        f"위 정보를 바탕으로 JSON만 응답하세요:\n"
+        f'{{"summary":"2~3문장 요약 (시장 흐름과 주요 이슈)","highlights":["하이라이트1","하이라이트2","하이라이트3"]}}\n'
+        f"규칙: summary는 간결하게, highlights는 3개, 한국어로 작성."
+    )
+    messages = [{"role": "user", "content": prompt}]
+    try:
+        result = call_llm(messages)
+        content = result.get("reply", "")
+        match = re.search(r"\{.*\}", content, re.DOTALL)
+        if match:
+            parsed = json.loads(match.group())
+            highlights = parsed.get("highlights", [])[:3]
+            summary = parsed.get("summary", "")
+            if highlights and summary:
+                _us_analysis_cache.update({"highlights": highlights, "summary": summary, "_date": today})
+                return highlights, summary
+    except Exception as e:
+        print(f"[generate_us_market_analysis] LLM error: {e}", flush=True)
+
+    highlights = _fallback_highlights(indices)
+    summary = _fallback_summary(indices)
+    _us_analysis_cache.update({"highlights": highlights, "summary": summary, "_date": today})
+    return highlights, summary
+
+
+def _fallback_highlights(indices):
+    items = []
+    for idx in indices:
+        if idx["rate"] > 0.5:
+            items.append(f"{idx['name']} {idx['rate']:+.2f}% 상승")
+        elif idx["rate"] < -0.5:
+            items.append(f"{idx['name']} {idx['rate']:+.2f}% 하락")
+    return items[:3] or ["지수 변동 없음"]
+
+
+def _fallback_summary(indices):
+    ups = sum(1 for i in indices if i["rate"] > 0)
+    downs = sum(1 for i in indices if i["rate"] < 0)
+    nasdaq = next((i for i in indices if "나스닥" in i["name"]), None)
+    dow = next((i for i in indices if "다우" in i["name"]), None)
+    sp = next((i for i in indices if "S&P" in i["name"]), None)
+    if ups == 3:
+        desc = "3대 지수 동반 상승"
+    elif downs == 3:
+        desc = "3대 지수 동반 하락"
+    else:
+        desc = "3대 지수 혼조세"
+    parts = [desc + " 마감."]
+    if nasdaq:
+        sign = "상승" if nasdaq["rate"] > 0 else "하락"
+        parts.append(f"나스닥 {abs(nasdaq['rate']):.2f}% {sign}.")
+    return " ".join(parts)
+
 def fetch_us_market_realtime():
     """네이버 금융에서 미국 증시 실시간 데이터를 가져온다."""
     result = {"date": "", "indices": [], "marketStatus": "closed", "highlights": [], "summary": ""}
@@ -704,14 +835,9 @@ def fetch_us_market_realtime():
     
     result["date"] = us_now.strftime("%Y-%m-%d")
     
-    # Try to load highlights and summary from local file as fallback
-    try:
-        with US_MARKET_FILE.open("r", encoding="utf-8") as f:
-            file_data = json.load(f)
-            result["highlights"] = file_data.get("highlights", [])
-            result["summary"] = file_data.get("summary", "")
-    except Exception:
-        pass
+    highlights, summary = generate_us_market_analysis(result["indices"], us_now)
+    result["highlights"] = highlights
+    result["summary"] = summary
     
     return result
 
@@ -1179,6 +1305,9 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if p == "/api/us-market-news":
             self.send_json({"articles": get_us_market_news()})
+            return
+        if p == "/api/kr-market-news":
+            self.send_json({"articles": get_kr_market_news()})
             return
         if p == "/api/chat/history":
             self.send_json({"history": load_chat_history()})
