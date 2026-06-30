@@ -1154,7 +1154,6 @@ function renderUSMarketNews(data) {
     html = '<p class="muted">최신 뉴스 없음</p>';
     if (usMarketNewsMore) usMarketNewsMore.style.display = 'none';
   }
-  }
 
   usMarketNewsBody.innerHTML = html;
 }
