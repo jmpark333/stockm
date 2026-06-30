@@ -1245,12 +1245,22 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
         for i, article in enumerate(us_market_news[:3], 1):
             us_news_ctx += f"{i}. {article['title']}\n"
 
+    # 한국증시 뉴스 컨텍스트
+    kr_market_news = get_kr_market_news()
+    kr_news_ctx = ""
+    if kr_market_news:
+        kr_news_ctx = "한국증시 뉴스:\n"
+        for i, article in enumerate(kr_market_news[:5], 1):
+            kr_news_ctx += f"{i}. {article['title']}\n"
+
     # 프롬프트: 최소한으로
     system_prompt = f"Stock Manager AI. 오늘 {today_str} {now_kst.strftime('%H:%M')}.\n"
     if us_market_ctx:
         system_prompt += f"{us_market_ctx}\n"
     if kospi_kosdaq_ctx:
         system_prompt += f"{kospi_kosdaq_ctx}\n"
+    if kr_news_ctx:
+        system_prompt += f"{kr_news_ctx}\n"
     if us_news_ctx:
         system_prompt += f"{us_news_ctx}\n"
     system_prompt += f"{context}\n"
