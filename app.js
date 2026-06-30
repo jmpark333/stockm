@@ -1078,6 +1078,43 @@ function setupNewsRefresh() {
 refreshBtn.addEventListener('click', loadPortfolio);
 autoBtn.addEventListener('click', () => setAutoRefresh(!autoEnabled));
 
+/* Korean Market News Section */
+const krMarketNewsBody = document.querySelector('#krMarketNewsBody');
+const krMarketNewsDate = document.querySelector('#krMarketNewsDate');
+
+async function loadKrMarketNews() {
+  try {
+    const res = await fetch('/api/kr-market-news', { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    renderKrMarketNews(data);
+  } catch (e) {
+    if (krMarketNewsBody) krMarketNewsBody.innerHTML = '<p class="muted">한국증시 뉴스를 불러올 수 없습니다.</p>';
+  }
+}
+
+function renderKrMarketNews(data) {
+  if (!krMarketNewsBody || !data) return;
+
+  let html = '';
+  if (krMarketNewsDate) {
+    krMarketNewsDate.textContent = `최종 갱신: ${new Date().toLocaleTimeString('ko-KR')}`;
+  }
+
+  if (data.articles && data.articles.length) {
+    data.articles.forEach(article => {
+      html += `<a class="news-item" href="${article.url}" target="_blank" rel="noopener">
+        <div class="news-title">${article.title}</div>
+        ${article.source ? `<div class="news-meta">${article.source}</div>` : ''}
+      </a>`;
+    });
+  } else {
+    html = '<p class="muted">최신 뉴스 없음</p>';
+  }
+
+  krMarketNewsBody.innerHTML = html;
+}
+
 /* US Market News Section */
 const usMarketNewsBody = document.querySelector('#usMarketNewsBody');
 const usMarketNewsDate = document.querySelector('#usMarketNewsDate');
@@ -1120,6 +1157,7 @@ loadPortfolio();
 loadNews();
 loadKospiKosdaq();
 loadUSMarket();
+loadKrMarketNews();
 loadUSMarketNews();
 setAutoRefresh(true);
 setupNewsRefresh();
