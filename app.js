@@ -1081,10 +1081,11 @@ autoBtn.addEventListener('click', () => setAutoRefresh(!autoEnabled));
 /* Korean Market News Section */
 const krMarketNewsBody = document.querySelector('#krMarketNewsBody');
 const krMarketNewsDate = document.querySelector('#krMarketNewsDate');
+const krMarketNewsMore = document.querySelector('#krMarketNewsMore');
 
 async function loadKrMarketNews() {
   try {
-    const res = await fetch('/api/kr-market-news', { cache: 'no-store' });
+    const res = await fetch('/api/kr-market-news?limit=5', { cache: 'no-store' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     renderKrMarketNews(data);
@@ -1108,8 +1109,10 @@ function renderKrMarketNews(data) {
         ${article.source ? `<div class="news-meta">${article.source}</div>` : ''}
       </a>`;
     });
+    if (krMarketNewsMore) krMarketNewsMore.style.display = 'block';
   } else {
     html = '<p class="muted">최신 뉴스 없음</p>';
+    if (krMarketNewsMore) krMarketNewsMore.style.display = 'none';
   }
 
   krMarketNewsBody.innerHTML = html;
@@ -1118,10 +1121,11 @@ function renderKrMarketNews(data) {
 /* US Market News Section */
 const usMarketNewsBody = document.querySelector('#usMarketNewsBody');
 const usMarketNewsDate = document.querySelector('#usMarketNewsDate');
+const usMarketNewsMore = document.querySelector('#usMarketNewsMore');
 
 async function loadUSMarketNews() {
   try {
-    const res = await fetch('/api/us-market-news', { cache: 'no-store' });
+    const res = await fetch('/api/us-market-news?limit=5', { cache: 'no-store' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     renderUSMarketNews(data);
@@ -1145,8 +1149,11 @@ function renderUSMarketNews(data) {
         ${article.source ? `<div class="news-meta">${article.source}</div>` : ''}
       </a>`;
     });
+    if (usMarketNewsMore) usMarketNewsMore.style.display = 'block';
   } else {
     html = '<p class="muted">최신 뉴스 없음</p>';
+    if (usMarketNewsMore) usMarketNewsMore.style.display = 'none';
+  }
   }
 
   usMarketNewsBody.innerHTML = html;
