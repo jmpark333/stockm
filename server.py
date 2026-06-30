@@ -358,7 +358,7 @@ def fetch_us_market_news(limit=5):
 def fetch_kr_market_news(limit=5):
     """한국증시 관련 최신 뉴스를 가져온다 (24시간 이내만)."""
     try:
-        query = "코스피 코스닥 한국증시"
+        query = "코스피 코스닥 주식시장 증시"
         encoded = urllib.parse.quote(query)
         url = f"https://news.google.com/rss/search?q={encoded}&hl=ko&gl=KR&ceid=KR:ko"
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
