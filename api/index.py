@@ -1030,6 +1030,78 @@ US_INDICES = [
     ("나스닥", "NAS@IXIC"),
 ]
 
+_us_analysis_cache = {"highlights": [], "summary": "", "_date": ""}
+
+def generate_us_market_analysis(indices, us_now):
+    today = us_now.strftime("%Y-%m-%d")
+    if _us_analysis_cache["_date"] == today and _us_analysis_cache["summary"]:
+        return _us_analysis_cache["highlights"], _us_analysis_cache["summary"]
+
+    idx_text = ""
+    for idx in indices:
+        sign = "+" if idx["rate"] > 0 else ""
+        idx_text += f"{idx['name']}: {idx['value']:,.2f} ({sign}{idx['rate']:.2f}%)\n"
+
+    news = get_us_market_news()
+    news_text = ""
+    if news:
+        news_text = "\n".join(f"- {a['title']}" for a in news[:5])
+
+    prompt = (
+        f"미국 증시 마감 분석입니다.\n\n"
+        f"[지수]\n{idx_text}\n"
+        f"[최신 뉴스]\n{news_text}\n\n"
+        f"위 정보를 바탕으로 JSON만 응답하세요:\n"
+        f'{{"summary":"2~3문장 요약 (시장 흐름과 주요 이슈)","highlights":["하이라이트1","하이라이트2","하이라이트3"]}}\n'
+        f"규칙: summary는 간결하게, highlights는 3개, 한국어로 작성."
+    )
+    messages = [{"role": "user", "content": prompt}]
+    try:
+        result = call_llm(messages)
+        content = result.get("reply", "")
+        match = re.search(r"\{.*\}", content, re.DOTALL)
+        if match:
+            parsed = json.loads(match.group())
+            highlights = parsed.get("highlights", [])[:3]
+            summary = parsed.get("summary", "")
+            if highlights and summary:
+                _us_analysis_cache.update({"highlights": highlights, "summary": summary, "_date": today})
+                return highlights, summary
+    except Exception as e:
+        print(f"[generate_us_market_analysis] LLM error: {e}", flush=True)
+
+    highlights = _fallback_highlights(indices)
+    summary = _fallback_summary(indices)
+    _us_analysis_cache.update({"highlights": highlights, "summary": summary, "_date": today})
+    return highlights, summary
+
+
+def _fallback_highlights(indices):
+    items = []
+    for idx in indices:
+        if idx["rate"] > 0.5:
+            items.append(f"{idx['name']} {idx['rate']:+.2f}% 상승")
+        elif idx["rate"] < -0.5:
+            items.append(f"{idx['name']} {idx['rate']:+.2f}% 하락")
+    return items[:3] or ["지수 변동 없음"]
+
+
+def _fallback_summary(indices):
+    ups = sum(1 for i in indices if i["rate"] > 0)
+    downs = sum(1 for i in indices if i["rate"] < 0)
+    nasdaq = next((i for i in indices if "나스닥" in i["name"]), None)
+    if ups == 3:
+        desc = "3대 지수 동반 상승"
+    elif downs == 3:
+        desc = "3대 지수 동반 하락"
+    else:
+        desc = "3대 지수 혼조세"
+    parts = [desc + " 마감."]
+    if nasdaq:
+        sign = "상승" if nasdaq["rate"] > 0 else "하락"
+        parts.append(f"나스닥 {abs(nasdaq['rate']):.2f}% {sign}.")
+    return " ".join(parts)
+
 def fetch_us_market_realtime():
     """네이버 금융에서 미국 증시 실시간 데이터를 가져온다."""
     result = {"date": "", "indices": [], "marketStatus": "closed", "highlights": [], "summary": ""}
@@ -1121,14 +1193,9 @@ def fetch_us_market_realtime():
     
     result["date"] = us_now.strftime("%Y-%m-%d")
     
-    # Try to load highlights and summary from local file as fallback
-    try:
-        with US_MARKET_FILE.open("r", encoding="utf-8") as f:
-            file_data = json.load(f)
-            result["highlights"] = file_data.get("highlights", [])
-            result["summary"] = file_data.get("summary", "")
-    except Exception:
-        pass
+    highlights, summary = generate_us_market_analysis(result["indices"], us_now)
+    result["highlights"] = highlights
+    result["summary"] = summary
     
     return result
 
