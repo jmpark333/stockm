@@ -232,7 +232,7 @@ function loadLightweightCharts() {
   });
 }
 
-function showChartModal(name, code) {
+function showChartModal(name, code, avgPrice) {
   chartModalTitle.textContent = `${name} 주가 차트`;
   if (lwChart) { try { lwChart.remove(); } catch(e){} lwChart = null; }
   tvChartContainer.innerHTML = '<p style="text-align:center;padding:40px;color:var(--muted)">차트 로딩 중...</p>';
@@ -304,6 +304,17 @@ function showChartModal(name, code) {
 
     candleSeries.setData(candleData);
     volumeSeries.setData(volumeData);
+
+    if (avgPrice > 0) {
+      candleSeries.createPriceLine({
+        price: avgPrice,
+        color: '#f59e0b',
+        lineWidth: 1,
+        lineStyle: 2,
+        axisLabelVisible: true,
+        title: '평균단가',
+      });
+    }
 
     lwChart.timeScale().fitContent();
 
@@ -659,7 +670,8 @@ function attachChartHandlers(container) {
     el.addEventListener('click', () => {
       const code = el.dataset.code;
       const name = el.dataset.name;
-      if (code && name) showChartModal(name, code);
+      const avgPrice = parseFloat(el.dataset.avg) || 0;
+      if (code && name) showChartModal(name, code, avgPrice);
     });
   });
 }
@@ -689,9 +701,9 @@ function renderHoldings(rows) {
       ? `<button class="ai-btn done" data-code="${row.code}" data-name="${row.name}">✓</button>`
       : `<button class="ai-btn" data-code="${row.code}" data-name="${row.name}" title="AI 뉴스 분석">AI</button>`;
     tr.innerHTML = `
-      <td><div class="name-cell"><strong class="clickable" data-code="${row.code}" data-name="${row.name}">${row.name}</strong><small>${row.code}</small></div></td>
+      <td><div class="name-cell"><strong class="clickable" data-code="${row.code}" data-name="${row.name}" data-avg="${row.avgPrice}">${row.name}</strong><small>${row.code}</small></div></td>
       <td>${money.format(row.quantity)}주</td>
-      <td class="clickable" data-code="${row.code}" data-name="${row.name}">${formatMoney(row.currentPrice)}</td>
+      <td class="clickable" data-code="${row.code}" data-name="${row.name}" data-avg="${row.avgPrice}">${formatMoney(row.currentPrice)}</td>
       <td class="${row.change > 0 ? 'up' : row.change < 0 ? 'down' : 'neutral'}">${formatSignedMoney(row.change)} / ${formatPercent(row.changeRate)}</td>
       <td class="avg-price-cell" data-code="${row.code}" data-name="${row.name}" data-avg="${row.avgPrice}" data-qty="${row.quantity}" data-price="${row.currentPrice}">${formatMoney(row.avgPrice)}</td>
       <td>${formatMoney(row.currentValue)}</td>
