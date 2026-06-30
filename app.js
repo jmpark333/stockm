@@ -1072,7 +1072,7 @@ function setAutoRefresh(enabled) {
 function setupNewsRefresh() {
   if (newsTimer) clearInterval(newsTimer);
   newsTimer = setInterval(loadNews, 600000);
-  newsRefreshBtn.addEventListener('click', () => { loadNews(); });
+  newsRefreshBtn.addEventListener('click', () => { loadKospiKosdaq(); loadUSMarket(); loadKrMarketNews(); loadUSMarketNews(); });
 }
 
 refreshBtn.addEventListener('click', loadPortfolio);
