@@ -1263,45 +1263,51 @@ def get_us_market_news():
     return _us_market_news_cache
 
 def fetch_kr_market_news(limit=5):
-    """한국증시 관련 최신 뉴스를 가져온다 (24시간 이내만)."""
+    """한국증시 관련 최신 뉴스를 가져온다."""
     try:
-        query = "코스피 코스닥 주식시장 증시"
-        encoded = urllib.parse.quote(query)
-        url = f"https://news.google.com/rss/search?q={encoded}&hl=ko&gl=KR&ceid=KR:ko"
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=8) as resp:
-            raw = resp.read()
-        root = ET.fromstring(raw)
-        items = root.findall(".//item")
-        articles = []
-        cutoff = time.time() - 86400
-        for item in items[:limit * 5]:
-            title_el = item.find("title")
-            link_el = item.find("link")
-            source_el = item.find("source")
-            pub_el = item.find("pubDate")
-            if title_el is not None and title_el.text:
-                pub_str = pub_el.text.strip() if pub_el is not None and pub_el.text else ""
-                pub_ts = 0
-                if pub_str:
-                    try:
-                        from email.utils import parsedate_to_datetime
-                        pub_ts = parsedate_to_datetime(pub_str).timestamp()
-                    except Exception:
-                        pass
-                if pub_ts < cutoff:
-                    continue
-                articles.append({
-                    "title": re.sub(r"\s+", " ", title_el.text).strip(),
-                    "url": link_el.text.strip() if link_el is not None and link_el.text else "#",
-                    "source": source_el.text.strip() if source_el is not None and source_el.text else "",
-                    "pubDate": pub_str,
-                    "_ts": pub_ts,
-                })
-        articles.sort(key=lambda x: x.get("_ts", 0), reverse=True)
-        for a in articles:
+        queries = ["코스피 코스닥", "한국 증시 주식"]
+        all_articles = []
+        seen_titles = set()
+        for query in queries:
+            encoded = urllib.parse.quote(query)
+            url = f"https://news.google.com/rss/search?q={encoded}&hl=ko&gl=KR&ceid=KR:ko"
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            try:
+                with urllib.request.urlopen(req, timeout=8) as resp:
+                    raw = resp.read()
+                root = ET.fromstring(raw)
+                items = root.findall(".//item")
+                for item in items[:10]:
+                    title_el = item.find("title")
+                    link_el = item.find("link")
+                    source_el = item.find("source")
+                    pub_el = item.find("pubDate")
+                    if title_el is not None and title_el.text:
+                        title = re.sub(r"\s+", " ", title_el.text).strip()
+                        if title in seen_titles:
+                            continue
+                        seen_titles.add(title)
+                        pub_str = pub_el.text.strip() if pub_el is not None and pub_el.text else ""
+                        pub_ts = 0
+                        if pub_str:
+                            try:
+                                from email.utils import parsedate_to_datetime
+                                pub_ts = parsedate_to_datetime(pub_str).timestamp()
+                            except Exception:
+                                pass
+                        all_articles.append({
+                            "title": title,
+                            "url": link_el.text.strip() if link_el is not None and link_el.text else "#",
+                            "source": source_el.text.strip() if source_el is not None and source_el.text else "",
+                            "pubDate": pub_str,
+                            "_ts": pub_ts,
+                        })
+            except Exception as e:
+                print(f"[fetch_kr_market_news] query '{query}' error: {e}", flush=True)
+        all_articles.sort(key=lambda x: x.get("_ts", 0), reverse=True)
+        for a in all_articles:
             a.pop("_ts", None)
-        return articles[:limit]
+        return all_articles[:limit]
     except Exception as exc:
         print(f"[fetch_kr_market_news] error: {exc}", flush=True)
         return []
