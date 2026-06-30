@@ -358,7 +358,7 @@ def fetch_us_market_news(limit=5):
 def fetch_kr_market_news(limit=5):
     """한국증시 관련 최신 뉴스를 가져온다."""
     try:
-        queries = ["코스피 코스닥", "한국 증시 주식"]
+        queries = ["코스피 코스닥 오늘", "코스피 하락 급락", "외국인 매도 코스피", "코스피 전망"]
         all_articles = []
         seen_titles = set()
         cutoff = time.time() - 86400
