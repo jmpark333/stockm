@@ -1373,19 +1373,38 @@ def fetch_kospi_kosdaq():
     market_close = 15 * 60 + 30  # 15:30
     
     if current_time < market_open:
-        # 장 시작 전
         result["marketStatus"] = "pre_open"
         result["date"] = now.strftime("%Y-%m-%d")
     elif current_time >= market_open and current_time <= market_close:
-        # 장 운영 중
         result["marketStatus"] = "open"
         result["date"] = now.strftime("%Y-%m-%d")
     else:
-        # 장 마감 후
         result["marketStatus"] = "closed"
         result["date"] = now.strftime("%Y-%m-%d")
+
+    kr_news = get_kr_market_news()
+    result["highlights"] = [a["title"] for a in kr_news[:3]] if kr_news else []
+    result["summary"] = _kr_summary_from_indices(result["indices"])
     
     return result
+
+
+def _kr_summary_from_indices(indices):
+    if not indices:
+        return ""
+    parts = []
+    ups = sum(1 for i in indices if i["rate"] > 0)
+    downs = sum(1 for i in indices if i["rate"] < 0)
+    if ups == len(indices):
+        parts.append("코스피·코스닥 동반 상승")
+    elif downs == len(indices):
+        parts.append("코스피·코스닥 동반 하락")
+    else:
+        parts.append("코스피·코스닥 혼조세")
+    for idx in indices:
+        sign = "상승" if idx["rate"] > 0 else "하락" if idx["rate"] < 0 else "보합"
+        parts.append(f"{idx['name']} {abs(idx['rate']):.2f}% {sign}")
+    return ". ".join(parts) + "."
 
 def build_us_market_context():
     data = load_us_market()

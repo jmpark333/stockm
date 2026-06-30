@@ -830,6 +830,18 @@ function renderKospiKosdaq(data) {
     html += '<p class="muted">지수 데이터를 불러올 수 없습니다.</p>';
   }
 
+  if (data.summary) {
+    html += `<div class="us-summary-box">${data.summary}</div>`;
+  }
+
+  if (data.highlights && data.highlights.length) {
+    html += '<div class="us-highlights">';
+    data.highlights.forEach(h => {
+      html += `<div class="us-highlight-item">• ${h}</div>`;
+    });
+    html += '</div>';
+  }
+
   kospiKosdaqBody.innerHTML = html;
 }
 
