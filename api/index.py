@@ -1778,6 +1778,22 @@ def build_chat_context(portfolio, news):
     lines = []
     summary = portfolio["summary"]
     lines.append(f"총평가 {summary['currentValue']:,.0f}원 수익 {summary['profit']:+,.0f}원({summary['profitRate']:+.1f}%)")
+    
+    # 종목별 뉴스 컨텍스트
+    if news:
+        news_lines = ["[종목별 최신 뉴스]"]
+        for item in news[:10]:
+            name = item.get("name", "")
+            articles = item.get("articles", [])
+            if articles:
+                news_lines.append(f"• {name}:")
+                for a in articles[:2]:
+                    title = a.get("title", "")
+                    if title:
+                        news_lines.append(f"  - {title}")
+        if len(news_lines) > 1:
+            lines.extend(news_lines)
+    
     if portfolio.get("holdings"):
         for h in portfolio["holdings"]:
             if not h.get("error"):
@@ -1821,12 +1837,76 @@ def build_chat_context(portfolio, news):
                         stoch_status = "과매수" if stoch.get("k", 0) > 80 else "과매도" if stoch.get("k", 0) < 20 else "중립"
                         tech_lines.append(f"    스토캐스틱: %K {stoch.get('k', 0):.1f} (%D {stoch.get('d', 0):.1f}) - {stoch_status}")
                     
+                    if indicators.get("ma5") and indicators.get("ma20") and indicators.get("ma60"):
+                        tech_lines.append(f"    이동평균선: MA5 {indicators['ma5']:,.0f} / MA20 {indicators['ma20']:,.0f} / MA60 {indicators['ma60']:,.0f}")
+                    
                     if signals:
-                        tech_lines.append(f"    시그널: {', '.join(signals[:3])}")
+                        tech_lines.append(f"    시그널: {', '.join(signals[:5])}")
                     
                     lines.extend(tech_lines)
                 except Exception:
                     pass
+    
+    # 관심종목 기술적 분석 데이터 추가
+    if portfolio.get("watchlist"):
+        watchlist_lines = ["\n[관심종목 기술적 분석]"]
+        for w in portfolio["watchlist"]:
+            if not w.get("error"):
+                code = w.get("code", "")
+                name = w["name"]
+                current_price = w.get("currentPrice")
+                if current_price:
+                    watchlist_lines.append(f"• {name} ({code}): {current_price:,.0f}원")
+                    
+                    try:
+                        tech = calc_tech_indicators(code)
+                        indicators = tech.get("indicators", {})
+                        signals = tech.get("signals", [])
+                        signal_score = tech.get("signalScore", 0)
+                        tech_signal = tech.get("techSignal", "hold")
+                        
+                        signal_labels = {
+                            'strong_buy': '강력매수', 'buy': '매수', 'hold': '관망',
+                            'sell': '매도', 'strong_sell': '강력매도'
+                        }
+                        
+                        watchlist_lines.append(f"  [기술적분석] 종합: {signal_labels.get(tech_signal, '관망')} (점수: {signal_score})")
+                        
+                        if indicators.get("rsi14") is not None:
+                            rsi = indicators["rsi14"]
+                            rsi_status = "과매수" if rsi > 70 else "강세" if rsi > 60 else "약세" if rsi < 40 else "과매도" if rsi < 30 else "중립"
+                            watchlist_lines.append(f"    RSI(14): {rsi:.1f} ({rsi_status})")
+                        
+                        if indicators.get("macd"):
+                            macd = indicators["macd"]
+                            macd_signal = "상승모멘텀" if macd.get("macd", 0) > macd.get("signal", 0) else "하락모멘텀"
+                            watchlist_lines.append(f"    MACD: {macd.get('macd', 0):.0f} (시그널: {macd.get('signal', 0):.0f}) - {macd_signal}")
+                        
+                        if indicators.get("bollinger"):
+                            bb = indicators["bollinger"]
+                            if current_price and bb.get("upper") and bb.get("lower"):
+                                bb_pos = (current_price - bb["lower"]) / (bb["upper"] - bb["lower"]) * 100
+                                watchlist_lines.append(f"    볼린저밴드: 위치 {bb_pos:.0f}%")
+                        
+                        if indicators.get("stochastic"):
+                            stoch = indicators["stochastic"]
+                            stoch_status = "과매수" if stoch.get("k", 0) > 80 else "과매도" if stoch.get("k", 0) < 20 else "중립"
+                            watchlist_lines.append(f"    스토캐스틱: %K {stoch.get('k', 0):.1f} (%D {stoch.get('d', 0):.1f}) - {stoch_status}")
+                        
+                        if indicators.get("ma5") and indicators.get("ma20") and indicators.get("ma60"):
+                            watchlist_lines.append(f"    이동평균선: MA5 {indicators['ma5']:,.0f} / MA20 {indicators['ma20']:,.0f} / MA60 {indicators['ma60']:,.0f}")
+                        
+                        if current_price and indicators.get("ma20"):
+                            price_vs_ma20 = (current_price - indicators["ma20"]) / indicators["ma20"] * 100
+                            watchlist_lines.append(f"    MA20 대비: {price_vs_ma20:+.1f}%")
+                        
+                        if signals:
+                            watchlist_lines.append(f"    시그널: {', '.join(signals[:5])}")
+                        
+                    except Exception:
+                        pass
+        lines.extend(watchlist_lines)
+    
     return "\n".join(lines)
 
 def chat_from_zai(messages):
