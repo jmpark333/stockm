@@ -1154,12 +1154,49 @@ function renderTechDetailContent(name, code, trendData, chartData) {
   html += '<div class="tech-detail-section">';
   html += '<div class="tech-detail-section-title">🎯 시그널 분석</div>';
   
+  // 시그널 설명 매핑
+  const signalDescriptions = {
+    '정배열': '단기 이동평균선이 장기선 위에 있어 상승 추세가 강함',
+    '역배열': '단기 이동평균선이 장기선 아래에 있어 하락 추세가 강함',
+    'MACD 골든크로스': 'MACD선이 시그널선을 아래에서 위로 돌파 — 매수 신호',
+    'MACD 데드크로스': 'MACD선이 시그널선을 위에서 아래로 돌파 — 매도 신호',
+    'MACD 히스토그램 양전환': 'MACD와 시그널 차이가 양전환 — 상승 모멘텀 시작',
+    'MACD 히스토그램 음전환': 'MACD와 시그널 차이가 음전환 — 하락 모멘텀 시작',
+    'RSI 과매수': 'RSI 70 이상 — 상승 과잉, 하락 전환 가능',
+    'RSI 과매도': 'RSI 30 이하 — 하락 과잉, 반등 기대',
+    '볼린저 상단 돌파': '주가가 볼린저 밴드 상단 돌파 — 과열 상태',
+    '볼린저 하단 이탈': '주가가 볼린저 밴드 하단 이탈 — 과매도 상태',
+    '볼린저 상단 접근': '주가가 볼린저 밴드 상단에 접근 중 — 매도 압력 가능',
+    '볼린저 하단 접근': '주가가 볼린저 밴드 하단에 접근 중 — 매수 기회 가능',
+    '스토캐스틱 과매수': '%K 80 이상 — 단기 과매수, 조정 가능',
+    '스토캐스틱 과매도': '%K 20 이하 — 단기 과매도, 반등 기대',
+    '스토캐스틱 골든크로스': '%K가 %D를 아래에서 위로 돌파 — 단기 매수 신호',
+    '스토캐스틱 데드크로스': '%K가 %D를 위에서 아래로 돌파 — 단기 매도 신호',
+    '거래량': '거래량 변화 관련 시그널',
+    'MA20 대비': '20일 이동평균선 대비 주가가 과도하게 벗어남',
+    '거래량 폭증': '평균 대비 3배 이상 거래량 증가 — 중요 변수 발생',
+    '거래량 급증': '평균 대비 2배 이상 거래량 증가 — 추세 전환 신호',
+    '거래량 급감': '평균 대비 0.3배 이하 거래량 감소 — 유동성 주의',
+    '거래량 감소': '평균 대비 0.5배 이하 거래량 감소 — 관망세 심화',
+  };
+  
   if (signals.length > 0) {
     signals.forEach(signal => {
       const cls = signal.includes('매수') || signal.includes('상승') || signal.includes('골든') || signal.includes('과매도') ? 'positive' : 
                   signal.includes('매도') || signal.includes('하락') || signal.includes('데드') || signal.includes('과매수') ? 'negative' : 'neutral';
+      
+      // 설명 찾기
+      let description = '';
+      for (const [key, desc] of Object.entries(signalDescriptions)) {
+        if (signal.includes(key)) {
+          description = desc;
+          break;
+        }
+      }
+      
       html += `<div class="tech-detail-signal">
         <div class="tech-detail-signal-title ${cls}">• ${signal}</div>
+        ${description ? `<div class="tech-detail-signal-desc">${description}</div>` : ''}
       </div>`;
     });
   } else {
