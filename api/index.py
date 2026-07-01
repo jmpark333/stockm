@@ -1030,6 +1030,38 @@ def handle_analyze_signal(code):
     result["changeRate"] = quote.get("changeRate")
     result["high"] = quote.get("high")
     result["low"] = quote.get("low")
+
+    # 기술적 지표 점수를 AI 분석에 반영
+    tech = calc_tech_indicators(code)
+    tech_signal = tech.get("techSignal", "hold")
+    tech_score = tech.get("signalScore", 0)
+    tech_signals = tech.get("signals", [])
+    ai_signal = result.get("signal", "hold")
+
+    if tech_signal != "hold":
+        reasons = result.get("reasons", [])
+        if ai_signal == "hold":
+            result["signal"] = tech_signal
+            reasons.insert(0, f"기술적 지표: {tech_signal} (점수: {tech_score})")
+        elif ai_signal != tech_signal:
+            if tech_score <= -30 and ai_signal in ("buy", "strong_buy"):
+                result["signal"] = "hold"
+                reasons.insert(0, f"기술적 지표 반대로 매수 보류 (점수: {tech_score})")
+            elif tech_score >= 30 and ai_signal in ("sell", "strong_sell"):
+                result["signal"] = "hold"
+                reasons.insert(0, f"기술적 지표 반대로 매도 보류 (점수: {tech_score})")
+            elif tech_score <= -15 and ai_signal == "hold":
+                result["signal"] = tech_signal
+                reasons.insert(0, f"기술적 지표: {tech_signal} (점수: {tech_score})")
+            elif tech_score >= 15 and ai_signal == "hold":
+                result["signal"] = tech_signal
+                reasons.insert(0, f"기술적 지표: {tech_signal} (점수: {tech_score})")
+        for ts in tech_signals[:3]:
+            if ts not in reasons:
+                reasons.append(ts)
+        result["reasons"] = reasons
+    result["techSignalScore"] = tech_score
+
     result["_ts"] = now
     ai_cache[code] = result
     return {k: v for k, v in result.items() if k != "_ts"}
