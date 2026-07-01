@@ -2316,7 +2316,9 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
     messages = [{"role": "system", "content": system_prompt}]
     sliced = history[-5:] if history else []
     for h in sliced:
-        messages.append({"role": h["role"], "content": h["content"][:150]})
+        # assistant 답변만 포함 (사용자 질문은 제외 - AI 혼동 방지)
+        if h.get("role") == "assistant":
+            messages.append({"role": "assistant", "content": h["content"][:300]})
     messages.append({"role": "user", "content": user_message})
     result = call_llm(messages)
     reply = result["reply"]
