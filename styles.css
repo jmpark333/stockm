@@ -1733,10 +1733,8 @@ td {
   }
 
   .chart-modal-body {
-    height: 100vh;
-    min-height: 100vh;
-    border-radius: 0;
     flex: 1;
+    border-radius: 0;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -1753,12 +1751,7 @@ td {
   }
 
   .tech-panel {
-    width: 100%;
-    max-height: 140px;
-    border-left: none;
-    border-top: 1px solid var(--line);
-    padding: 10px 12px;
-    gap: 6px;
+    display: none !important;
   }
 
   .tech-panel-header h3 {
