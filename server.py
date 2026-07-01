@@ -1091,6 +1091,7 @@ def signal_from_zai(name, code, quote, articles):
     payload = {
         "model": "glm-5",
         "messages": [{"role": "user", "content": prompt}],
+        "thinking": {"type": "disabled"},
         "temperature": 0.3,
         "max_tokens": 600,
     }
@@ -1108,7 +1109,11 @@ def signal_from_zai(name, code, quote, articles):
         with urllib.request.urlopen(req, timeout=20) as resp:
             raw = resp.read().decode("utf-8")
         result = json.loads(raw)
-        content = result["choices"][0]["message"]["content"]
+        msg = result["choices"][0]["message"]
+        content = msg.get("content", "") or ""
+        reasoning = msg.get("reasoning_content", "") or ""
+        if reasoning:
+            print(f"[signal_from_zai] GLM-5 reasoning_content detected ({len(reasoning)} chars), ignoring", flush=True)
         match = re.search(r"\{.*\}", content, re.DOTALL)
         if match:
             parsed = json.loads(match.group())
@@ -1698,6 +1703,7 @@ def chat_from_zai(messages):
     payload = {
         "model": "glm-5",
         "messages": messages,
+        "thinking": {"type": "disabled"},
         "temperature": 0.7,
         "max_tokens": 2000,
     }
@@ -1715,7 +1721,11 @@ def chat_from_zai(messages):
         with urllib.request.urlopen(req, timeout=30) as resp:
             raw = resp.read().decode("utf-8")
         result = json.loads(raw)
-        content = result["choices"][0]["message"]["content"]
+        msg = result["choices"][0]["message"]
+        content = msg.get("content", "") or ""
+        reasoning = msg.get("reasoning_content", "") or ""
+        if reasoning:
+            print(f"[chat_from_zai] GLM-5 reasoning_content detected ({len(reasoning)} chars), ignoring", flush=True)
         return {"reply": content.strip(), "_source": "zai"}
     except urllib.error.HTTPError as exc:
         if exc.code in (429, 401, 403):
@@ -1798,6 +1808,7 @@ def call_llm(messages):
         payload = {
             "model": "glm-5",
             "messages": messages,
+            "thinking": {"type": "disabled"},
             "temperature": 0.7,
             "max_tokens": 2500,
         }
@@ -1815,7 +1826,11 @@ def call_llm(messages):
             with urllib.request.urlopen(req, timeout=60) as resp:
                 raw = resp.read().decode("utf-8")
             result = json.loads(raw)
-            content = result["choices"][0]["message"]["content"]
+            msg = result["choices"][0]["message"]
+            content = msg.get("content", "") or ""
+            reasoning = msg.get("reasoning_content", "") or ""
+            if reasoning:
+                print(f"[call_llm] GLM-5 reasoning_content detected ({len(reasoning)} chars), ignoring", flush=True)
             if content:
                 return {"reply": content.strip(), "_source": "zai"}
         except Exception:

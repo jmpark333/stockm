@@ -737,7 +737,11 @@ def signal_from_zai(name, code, quote, articles):
         with urllib.request.urlopen(req, timeout=15) as resp:
             raw = resp.read().decode("utf-8")
         result = json.loads(raw)
-        content = result["choices"][0]["message"]["content"]
+        msg = result["choices"][0]["message"]
+        content = msg.get("content", "") or ""
+        reasoning = msg.get("reasoning_content", "") or ""
+        if reasoning:
+            print(f"[signal_from_zai] GLM-5 reasoning_content detected ({len(reasoning)} chars), ignoring", flush=True)
         match = re.search(r"\{.*\}", content, re.DOTALL)
         if match:
             parsed = json.loads(match.group())
@@ -1848,7 +1852,11 @@ def chat_from_zai(messages):
         with urllib.request.urlopen(req, timeout=30) as resp:
             raw = resp.read().decode("utf-8")
         result = json.loads(raw)
-        content = result["choices"][0]["message"]["content"]
+        msg = result["choices"][0]["message"]
+        content = msg.get("content", "") or ""
+        reasoning = msg.get("reasoning_content", "") or ""
+        if reasoning:
+            print(f"[chat_from_zai] GLM-5 reasoning_content detected ({len(reasoning)} chars), ignoring", flush=True)
         return {"reply": content.strip(), "_source": "zai"}
     except urllib.error.HTTPError as exc:
         if exc.code in (429, 401, 403):
