@@ -889,11 +889,72 @@ function renderTechDetailContent(name, code, trendData, chartData) {
   
   // 기술적 지표 섹션
   html += '<div class="tech-detail-section">';
-  html += '<div class="tech-detail-section-title">📈 기술적 지표</div>';
-  html += '<div class="tech-detail-grid">';
   
-  // 이동평균선
+  // 기술적 지표 요약 생성
   const currentPrice = chartData.candles?.length ? chartData.candles[chartData.candles.length - 1].close : null;
+  let techSummaryParts = [];
+  
+  // 단기 추세 (MA5, RSI, 스토캐스틱)
+  const shortBullish = [];
+  const shortBearish = [];
+  if (indicators.ma5 && currentPrice) {
+    if (currentPrice > indicators.ma5) shortBullish.push('MA5 위');
+    else shortBearish.push('MA5 아래');
+  }
+  if (indicators.rsi14 !== null && indicators.rsi14 !== undefined) {
+    if (indicators.rsi14 > 70) shortBearish.push('RSI 과매수');
+    else if (indicators.rsi14 > 60) shortBullish.push('RSI 강세');
+    else if (indicators.rsi14 < 30) shortBullish.push('RSI 과매도(반등)');
+    else if (indicators.rsi14 < 40) shortBearish.push('RSI 약세');
+  }
+  if (indicators.stochastic) {
+    if (indicators.stochastic.k > 80) shortBearish.push('스토캐스틱 과매수');
+    else if (indicators.stochastic.k < 20) shortBullish.push('스토캐스틱 과매도(반등)');
+    else if (indicators.stochastic.k > indicators.stochastic.d) shortBullish.push('스토캐스틱 상승모멘텀');
+    else shortBearish.push('스토캐스틱 하락모멘텀');
+  }
+  
+  // 중기 추세 (MA20, MACD, 볼린저)
+  const midBullish = [];
+  const midBearish = [];
+  if (indicators.ma20 && currentPrice) {
+    if (currentPrice > indicators.ma20) midBullish.push('MA20 위');
+    else midBearish.push('MA20 아래');
+  }
+  if (indicators.macd) {
+    if (indicators.macd.macd > indicators.macd.signal) midBullish.push('MACD 상승');
+    else midBearish.push('MACD 하락');
+  }
+  if (indicators.bollinger && currentPrice && indicators.bollinger.upper && indicators.bollinger.lower) {
+    const bbPos = ((currentPrice - indicators.bollinger.lower) / (indicators.bollinger.upper - indicators.bollinger.lower) * 100);
+    if (bbPos > 80) midBearish.push('볼린저 상단접근');
+    else if (bbPos < 20) midBullish.push('볼린저 하단접근');
+  }
+  
+  // 장기 추세 (MA60)
+  if (indicators.ma60 && currentPrice) {
+    if (currentPrice > indicators.ma60) midBullish.push('MA60 위');
+    else midBearish.push('MA60 아래');
+  }
+  
+  // 요약 문장 조합
+  const shortScore = shortBullish.length - shortBearish.length;
+  const midScore = midBullish.length - midBearish.length;
+  const longTrend = indicators.ma60 && currentPrice ? (currentPrice > indicators.ma60 ? '상승' : '하락') : '불명';
+  
+  let techSummary;
+  if (shortScore > 0 && midScore > 0 && longTrend === '상승') techSummary = '단기·중기·장기 모두 상승 추세';
+  else if (shortScore > 0 && midScore > 0 && longTrend === '하락') techSummary = '단기·중기 반등이나 장기 하락 추세 지속 주의';
+  else if (shortScore > 0 && midScore <= 0 && longTrend === '상승') techSummary = '단기 반등이나 중기 조정, 장기 상승 추세 유지';
+  else if (shortScore > 0 && midScore <= 0 && longTrend === '하락') techSummary = '단기 반등신호 있으나 중장기 하락 추세 지속 주의';
+  else if (shortScore <= 0 && midScore > 0 && longTrend === '상승') techSummary = '단기 조정이나 중장기 상승 추세 유지';
+  else if (shortScore <= 0 && midScore > 0 && longTrend === '하락') techSummary = '단기 약세이나 중기 반등, 장기 하락 전환 주의';
+  else if (shortScore <= 0 && midScore <= 0 && longTrend === '상승') techSummary = '단기·중기 조정이나 장기 상승 추세 유지';
+  else if (shortScore <= 0 && midScore <= 0 && longTrend === '하락') techSummary = '단기·중기·장기 모두 하락 추세';
+  else techSummary = '뚜렷한 추세 방향 없음';
+  
+  html += `<div class="tech-detail-section-title">📈 기술적 지표 <span style="font-size:12px;font-weight:500;color:var(--muted);margin-left:8px">${techSummary}</span></div>`;
+  html += '<div class="tech-detail-grid">';
   if (indicators.ma5) {
     const diff5 = currentPrice ? ((currentPrice - indicators.ma5) / indicators.ma5 * 100) : 0;
     const ma5Meaning = diff5 > 0 ? '주가가 MA5 위 (단기 강세)' : '주가가 MA5 아래 (단기 약세)';
