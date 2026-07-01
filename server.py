@@ -1612,7 +1612,52 @@ def build_chat_context(portfolio, news):
     if portfolio.get("holdings"):
         for h in portfolio["holdings"]:
             if not h.get("error"):
-                lines.append(f"• {h['name']}: {h['quantity']}주 {h['currentPrice']:,.0f}원 ({h['profitRate']:+.1f}%)")
+                code = h.get("code", "")
+                name = h["name"]
+                lines.append(f"• {name}: {h['quantity']}주 {h['currentPrice']:,.0f}원 ({h['profitRate']:+.1f}%)")
+                
+                # 기술적 분석 데이터 추가
+                try:
+                    tech = calc_tech_indicators(code)
+                    indicators = tech.get("indicators", {})
+                    signals = tech.get("signals", [])
+                    signal_score = tech.get("signalScore", 0)
+                    tech_signal = tech.get("techSignal", "hold")
+                    
+                    signal_labels = {
+                        'strong_buy': '강력매수', 'buy': '매수', 'hold': '관망',
+                        'sell': '매도', 'strong_sell': '강력매도'
+                    }
+                    
+                    tech_lines = [f"  [기술적분석] 종합: {signal_labels.get(tech_signal, '관망')} (점수: {signal_score})"]
+                    
+                    if indicators.get("rsi14") is not None:
+                        rsi = indicators["rsi14"]
+                        rsi_status = "과매수" if rsi > 70 else "강세" if rsi > 60 else "약세" if rsi < 40 else "과매도" if rsi < 30 else "중립"
+                        tech_lines.append(f"    RSI(14): {rsi:.1f} ({rsi_status})")
+                    
+                    if indicators.get("macd"):
+                        macd = indicators["macd"]
+                        macd_signal = "상승모멘텀" if macd.get("macd", 0) > macd.get("signal", 0) else "하락모멘텀"
+                        tech_lines.append(f"    MACD: {macd.get('macd', 0):.0f} (시그널: {macd.get('signal', 0):.0f}) - {macd_signal}")
+                    
+                    if indicators.get("bollinger"):
+                        bb = indicators["bollinger"]
+                        if h.get("currentPrice") and bb.get("upper") and bb.get("lower"):
+                            bb_pos = (h["currentPrice"] - bb["lower"]) / (bb["upper"] - bb["lower"]) * 100
+                            tech_lines.append(f"    볼린저밴드: 위치 {bb_pos:.0f}%")
+                    
+                    if indicators.get("stochastic"):
+                        stoch = indicators["stochastic"]
+                        stoch_status = "과매수" if stoch.get("k", 0) > 80 else "과매도" if stoch.get("k", 0) < 20 else "중립"
+                        tech_lines.append(f"    스토캐스틱: %K {stoch.get('k', 0):.1f} (%D {stoch.get('d', 0):.1f}) - {stoch_status}")
+                    
+                    if signals:
+                        tech_lines.append(f"    시그널: {', '.join(signals[:3])}")
+                    
+                    lines.extend(tech_lines)
+                except Exception:
+                    pass
     return "\n".join(lines)
 
 def chat_from_zai(messages):
