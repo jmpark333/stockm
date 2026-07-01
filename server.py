@@ -1969,21 +1969,18 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
             kr_news_ctx += f"{i}. {article['title']}\n"
 
     # 프롬프트: 뉴스를 가장 먼저 배치
-    system_prompt = f"Stock Manager AI. 오늘 {today_str} {now_kst.strftime('%H:%M')}.\n\n"
+    system_prompt = f"오늘 {today_str} {now_kst.strftime('%H:%M')}. 위 데이터만 사용. 할루네이션 금지. think출력금지. 결론→근거(뉴스인용)→유의사항 4줄.\n\n"
     # 뉴스를 프롬프트 가장 앞쪽에 배치
     if kr_news_ctx:
         system_prompt += f"{kr_news_ctx}\n"
     if us_news_ctx:
         system_prompt += f"{us_news_ctx}\n"
-    system_prompt += f"{context}\n\n"
+    system_prompt += f"{context}\n"
     # 시장 컨텍스트는 뒤쪽에 배치
     if kospi_kosdaq_ctx:
         system_prompt += f"{kospi_kosdaq_ctx}\n"
     if us_market_ctx:
         system_prompt += f"{us_market_ctx}\n"
-    system_prompt += "규칙: 위 뉴스와 데이터를 반드시 활용하여 답변하세요. "
-    system_prompt += "할루네이션 금지, think 출력 금지. "
-    system_prompt += "결론 → 뉴스 인용 근거 → 유의사항 순서로 4~5줄 작성.\n"
 
     messages = [{"role": "system", "content": system_prompt}]
     sliced = history[-5:] if history else []
