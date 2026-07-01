@@ -31,8 +31,8 @@ _tech_indicators_cache: dict[str, dict] = {}
 _tech_indicators_cache_time: dict[str, float] = {}
 TECH_CACHE_TTL = 300  # 5분 캐시
 
-ZAI_URL = "https://api.z.ai/api/coding/paas/v4"
-ZAI_KEY = "136d90754ebd999f4a4cc4547b638.LUXSKaxDozJgFHLQ"
+ZAI_URL = "https://api.z.ai/api/coding/paas/v4/chat/completions"
+ZAI_KEY = os.environ.get("ZAI_KEY", "").strip()
 
 NOUS_URL = "https://inference-api.nousresearch.com/v1/chat/completions"
 NOUS_KEY = os.environ.get("NOUS_KEY", "sk-nous-dueimEQDyVHzxeKCOolvFyx7e0DKZzBR").strip()
@@ -1793,10 +1793,39 @@ def chat_from_nous(messages, model=None):
         return {"error": str(exc)}
 
 def call_llm(messages):
+    # zai glm-5 우선 사용
+    if ZAI_KEY:
+        payload = {
+            "model": "glm-5",
+            "messages": messages,
+            "temperature": 0.7,
+            "max_tokens": 2500,
+        }
+        headers = {
+            "Authorization": f"Bearer {ZAI_KEY}",
+            "Content-Type": "application/json",
+        }
+        req = urllib.request.Request(
+            ZAI_URL,
+            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                raw = resp.read().decode("utf-8")
+            result = json.loads(raw)
+            content = result["choices"][0]["message"]["content"]
+            if content:
+                return {"reply": content.strip(), "_source": "zai"}
+        except Exception:
+            pass
+    # fallback: nous
     for m in NOUS_MODELS:
         result = chat_from_nous(messages, model=m)
         if "error" not in result:
             return result
+    # fallback: openrouter
     if OPENROUTER_KEY:
         for m in OPENROUTER_MODELS:
             result = chat_from_openrouter(messages, model=m)
