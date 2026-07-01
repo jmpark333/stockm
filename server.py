@@ -1699,7 +1699,7 @@ def chat_from_openrouter(messages, model=None):
         "model": model,
         "messages": messages,
         "temperature": 0.7,
-        "max_tokens": 2000,
+        "max_tokens": 2500,
     }
     headers = {
         "Authorization": f"Bearer {OPENROUTER_KEY}",
@@ -1717,7 +1717,8 @@ def chat_from_openrouter(messages, model=None):
         with urllib.request.urlopen(req, timeout=30) as resp:
             raw = resp.read().decode("utf-8")
         result = json.loads(raw)
-        content = result["choices"][0]["message"]["content"]
+        msg = result["choices"][0]["message"]
+        content = msg.get("content") or ""
         if not content:
             return {"error": "empty content"}
         return {"reply": content.strip(), "_source": "openrouter"}
@@ -1946,7 +1947,11 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
     system_prompt += f"{context}\n"
     system_prompt += "규칙: 위 데이터만 사용, 할루네이션 금지. "
     system_prompt += "절대 논리적 추론과정, 사고 과정, 분석 과정을 출력하지 마. "
-    system_prompt += "핵심 근거와 이유를 간결하게 설명하되, 한 문단 이내로 작성해.\n"
+    system_prompt += "답변은 다음 구조를 따르세요:\n"
+    system_prompt += "1) 결론 먼저 제시\n"
+    system_prompt += "2) 핵심 근거 2~3개를 구체적으로 설명 (제공된 뉴스, 기술적 지표 등 인용)\n"
+    system_prompt += "3) 투자 시 유의사항 1~2개 포함\n"
+    system_prompt += "4~5줄 분량으로 작성하고, 전문 용어는 쉬운 설명을 병기하세요.\n"
 
     messages = [{"role": "system", "content": system_prompt}]
     sliced = history[-5:] if history else []
