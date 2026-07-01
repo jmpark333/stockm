@@ -629,10 +629,28 @@ def get_kr_market_news():
 def build_news():
     config = load_config()
     items = []
+    seen_codes = set()
+    # 보유종목 + 관심종목 합쳐서 중복 제거
+    all_stocks = []
     for h in config["holdings"]:
-        items.append(fetch_news(h["name"], h["code"]))
+        if h["code"] not in seen_codes:
+            all_stocks.append(h)
+            seen_codes.add(h["code"])
     for w in config.get("watchlist", []):
-        items.append(fetch_news(w["name"], w["code"]))
+        if w["code"] not in seen_codes:
+            all_stocks.append(w)
+            seen_codes.add(w["code"])
+    # 병렬로 뉴스 가져오기
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    def fetch_one(stock):
+        return fetch_news(stock["name"], stock["code"])
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {executor.submit(fetch_one, s): s for s in all_stocks}
+        for future in as_completed(futures):
+            try:
+                items.append(future.result())
+            except Exception:
+                pass
     return items
 
 def fetch_chart_data(code, days=120):
@@ -1613,18 +1631,15 @@ def build_chat_context(portfolio, news):
     # 종목별 뉴스 컨텍스트
     if news:
         news_lines = ["[종목별 최신 뉴스]"]
-        for item in news[:5]:
+        for item in news[:10]:
             name = item.get("name", "")
             articles = item.get("articles", [])
             if articles:
                 news_lines.append(f"• {name}:")
                 for a in articles[:2]:
                     title = a.get("title", "")
-                    desc = a.get("description", "")
                     if title:
                         news_lines.append(f"  - {title}")
-                    if desc:
-                        news_lines.append(f"    {desc[:100]}")
         if len(news_lines) > 1:
             lines.extend(news_lines)
     
