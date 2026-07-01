@@ -1718,3 +1718,69 @@ td {
     max-height: 300px;
   }
 }
+
+/* ──────────────────────────────────────────
+   실시간 급변 시그널
+   ────────────────────────────────────────── */
+
+.realtime-signals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.realtime-signal {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.realtime-signal.up {
+  background: rgba(255, 77, 94, 0.15);
+  color: var(--up);
+  border: 1px solid rgba(255, 77, 94, 0.3);
+}
+
+.realtime-signal.down {
+  background: rgba(45, 212, 191, 0.15);
+  color: var(--down);
+  border: 1px solid rgba(45, 212, 191, 0.3);
+}
+
+.realtime-signal.neutral {
+  background: rgba(148, 163, 184, 0.15);
+  color: var(--muted);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.realtime-signal.critical {
+  animation: flash 0.8s ease-in-out infinite;
+  font-weight: 700;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+@keyframes flash {
+  0%, 100% { opacity: 1; background-color: rgba(255, 77, 94, 0.2); }
+  50% { opacity: 0.6; background-color: rgba(255, 77, 94, 0.4); }
+}
+
+/* 급변 시그널 툴팁 */
+.realtime-signal[title] {
+  cursor: help;
+}
+
+/* 테이블 내 실시간 시그널 영역 */
+.table-wrap td:last-child {
+  max-width: 200px;
+}

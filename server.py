@@ -21,6 +21,11 @@ NAVER_REALTIME_URL = "https://polling.finance.naver.com/api/realtime?query=SERVI
 history: dict[str, deque] = {}
 MAX_HISTORY = 12
 
+# 실시간 급변 감지용 데이터
+price_history: dict[str, deque] = {}  # {code: deque([(timestamp, price, volume), ...])}
+PRICE_HISTORY_MAX = 60  # 최근 60개 데이터포인트 (약 10분)
+VOLUME_HISTORY_MAX = 20  # 최근 20개 거래량 데이터
+
 # 기술적 지표 캐시
 _tech_indicators_cache: dict[str, dict] = {}
 _tech_indicators_cache_time: dict[str, float] = {}
@@ -119,6 +124,7 @@ def fetch_quote(code):
             "high": item.get("hv"),
             "low": item.get("lv"),
             "open": item.get("ov"),
+            "volume": item.get("nmv") or item.get("vlm"),  # 누적 거래량
             "afterMarketPrice": over_price,
             "updatedAt": extra.get("localTradedAt") or payload.get("time"),
         }
@@ -130,6 +136,145 @@ def track_history(code, current_price):
         history[code] = deque(maxlen=MAX_HISTORY)
     if current_price is not None:
         history[code].append(current_price)
+
+
+def track_price_volume(code, price, volume=None):
+    """실시간 가격과 거래량을 이력에 저장"""
+    if code not in price_history:
+        price_history[code] = deque(maxlen=PRICE_HISTORY_MAX)
+    timestamp = time.time()
+    price_history[code].append((timestamp, price, volume))
+
+
+def detect_price_surge(code, current_price):
+    """가격 급변 감지 (최근 5분 내 급등락)"""
+    if code not in price_history or len(price_history[code]) < 2:
+        return None
+    
+    now = time.time()
+    recent_prices = [(t, p) for t, p, v in price_history[code] if now - t <= 300]  # 5분 이내
+    
+    if len(recent_prices) < 2:
+        return None
+    
+    # 5분 전 가격과 현재 가격 비교
+    old_price = recent_prices[0][1]
+    new_price = recent_prices[-1][1]
+    
+    if old_price is None or new_price is None or old_price == 0:
+        return None
+    
+    change_pct = (new_price - old_price) / old_price * 100
+    
+    # 1분 내 변동
+    one_min_ago = now - 60
+    one_min_prices = [(t, p) for t, p in recent_prices if t <= one_min_ago]
+    one_min_change = 0
+    if one_min_prices:
+        one_min_old = one_min_prices[-1][1]
+        if one_min_old and one_min_old > 0:
+            one_min_change = (new_price - one_min_old) / one_min_old * 100
+    
+    signals = []
+    
+    # 5분 내 급락 (-2% 이상)
+    if change_pct <= -2:
+        signals.append({
+            "type": "price_drop",
+            "severity": "critical" if change_pct <= -3 else "warning",
+            "message": f"5분 내 {change_pct:.1f}% 급락",
+            "change_pct": round(change_pct, 2),
+            "timeframe": "5min"
+        })
+    
+    # 5분 내 급등 (+2% 이상)
+    if change_pct >= 2:
+        signals.append({
+            "type": "price_surge",
+            "severity": "critical" if change_pct >= 3 else "warning",
+            "message": f"5분 내 +{change_pct:.1f}% 급등",
+            "change_pct": round(change_pct, 2),
+            "timeframe": "5min"
+        })
+    
+    # 1분 내 급변 (±1% 이상)
+    if abs(one_min_change) >= 1:
+        signals.append({
+            "type": "price_volatility",
+            "severity": "warning",
+            "message": f"1분 내 {one_min_change:+.1f}% 급변",
+            "change_pct": round(one_min_change, 2),
+            "timeframe": "1min"
+        })
+    
+    return signals if signals else None
+
+
+def detect_volume_surge(code, current_volume):
+    """거래량 급증 감지"""
+    if code not in price_history or len(price_history[code]) < 5:
+        return None
+    
+    # 최근 거래량 이력
+    recent_volumes = [v for _, _, v in price_history[code] if v is not None and v > 0]
+    
+    if len(recent_volumes) < 3:
+        return None
+    
+    # 평균 거래량 계산 (최근 데이터 제외)
+    avg_volume = sum(recent_volumes[:-1]) / len(recent_volumes[:-1]) if len(recent_volumes) > 1 else 0
+    
+    if avg_volume == 0 or current_volume is None:
+        return None
+    
+    volume_ratio = current_volume / avg_volume
+    
+    signals = []
+    
+    # 거래량 200% 이상 급증
+    if volume_ratio >= 2.0:
+        signals.append({
+            "type": "volume_surge",
+            "severity": "critical" if volume_ratio >= 3.0 else "warning",
+            "message": f"거래량 {volume_ratio:.1f}倍 급증",
+            "volume_ratio": round(volume_ratio, 2),
+            "current_volume": current_volume,
+            "avg_volume": round(avg_volume)
+        })
+    
+    # 거래량 50% 이상 감소 (유동성 주의)
+    if volume_ratio <= 0.5 and len(recent_volumes) > 5:
+        signals.append({
+            "type": "volume_drop",
+            "severity": "info",
+            "message": f"거래량 {volume_ratio:.1f}倍 감소",
+            "volume_ratio": round(volume_ratio, 2)
+        })
+    
+    return signals if signals else None
+
+
+def detect_all_signals(code, quote):
+    """종목의 모든 실시간 시그널 감지"""
+    all_signals = []
+    
+    current_price = quote.get("currentPrice")
+    current_volume = quote.get("volume")
+    
+    # 가격 급변 감지
+    price_signals = detect_price_surge(code, current_price)
+    if price_signals:
+        all_signals.extend(price_signals)
+    
+    # 거래량 급증 감지
+    volume_signals = detect_volume_surge(code, current_volume)
+    if volume_signals:
+        all_signals.extend(volume_signals)
+    
+    # 가격 이력 업데이트
+    track_price_volume(code, current_price, current_volume)
+    
+    return all_signals
 
 def calc_trend(quote):
     cp = quote.get("currentPrice")
@@ -213,6 +358,18 @@ def calc_trend(quote):
         elif signal_score < -20 and signal in ("buy", "strong_buy"):
             signal = "hold"
             reasons.append("기술적 지표 하락 신호로 매수 보류")
+    
+    # 실시간 급변 시그널 감지
+    realtime_signals = detect_all_signals(code, quote)
+    if realtime_signals:
+        for rs in realtime_signals:
+            reasons.append(rs["message"])
+        # 실시간 급변 시그널이 있으면 시그널 업데이트
+        for rs in realtime_signals:
+            if rs["type"] == "price_drop" and rs["severity"] == "critical":
+                signal = "strong_buy" if signal not in ("sell", "strong_sell") else signal
+            elif rs["type"] == "price_surge" and rs["severity"] == "critical":
+                signal = "strong_sell" if signal not in ("buy", "strong_buy") else signal
 
     return {
         "rangePos": range_pos,
@@ -225,6 +382,7 @@ def calc_trend(quote):
         "techIndicators": indicators,
         "techSignals": tech_signals,
         "techSignalScore": signal_score,
+        "realtimeSignals": realtime_signals,
     }
 
 def build_item(quote):
@@ -233,6 +391,7 @@ def build_item(quote):
     hv = quote.get("high")
     lv = quote.get("low")
     op = quote.get("open")
+    trend = calc_trend(quote)
     return {
         "code": quote.get("code"),
         "name": quote.get("name"),
@@ -244,9 +403,11 @@ def build_item(quote):
         "high": hv,
         "low": lv,
         "open": op,
+        "volume": quote.get("volume"),
         "updatedAt": quote.get("updatedAt"),
         "error": quote.get("error"),
-        "trend": calc_trend(quote),
+        "trend": trend,
+        "realtimeSignals": trend.get("realtimeSignals", []),
     }
 
 def build_portfolio():

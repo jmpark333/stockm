@@ -891,6 +891,20 @@ function renderHoldings(rows) {
     const aiBtnHtml = cached
       ? `<button class="ai-btn done" data-code="${row.code}" data-name="${row.name}">✓</button>`
       : `<button class="ai-btn" data-code="${row.code}" data-name="${row.name}" title="AI 뉴스 분석">AI</button>`;
+    
+    // 실시간 시그널 표시
+    let realtimeHtml = '';
+    if (row.realtimeSignals && row.realtimeSignals.length > 0) {
+      realtimeHtml = '<div class="realtime-signals">';
+      row.realtimeSignals.forEach(sig => {
+        const cls = sig.type === 'price_drop' || sig.type === 'volume_drop' ? 'down' : 
+                    sig.type === 'price_surge' || sig.type === 'volume_surge' ? 'up' : 'neutral';
+        const severityCls = sig.severity === 'critical' ? 'critical' : '';
+        realtimeHtml += `<span class="realtime-signal ${cls} ${severityCls}" title="${sig.message}">⚡ ${sig.message}</span>`;
+      });
+      realtimeHtml += '</div>';
+    }
+    
     tr.innerHTML = `
       <td><div class="name-cell"><strong class="clickable" data-code="${row.code}" data-name="${row.name}" data-avg="${row.avgPrice}">${row.name}</strong><small>${row.code}</small></div></td>
       <td>${money.format(row.quantity)}주</td>
@@ -901,7 +915,7 @@ function renderHoldings(rows) {
       <td class="${row.profit >= 0 ? 'up' : 'down'}">${formatPercent(row.profitRate)}</td>
       <td class="${row.profit >= 0 ? 'up' : 'down'}">${formatSignedMoney(row.profit)}</td>
       <td>${badgeHtml} ${aiBtnHtml}</td>
-      <td>${row.session || row.error || '-'}</td>
+      <td>${row.session || row.error || '-'}${realtimeHtml}</td>
     `;
     holdingsBody.appendChild(tr);
   });
@@ -926,6 +940,20 @@ function renderWatchlist(rows) {
     const aiBtnHtml = cached
       ? `<button class="ai-btn done" data-code="${row.code}" data-name="${row.name}">✓</button>`
       : `<button class="ai-btn" data-code="${row.code}" data-name="${row.name}" title="AI 뉴스 분석">AI</button>`;
+    
+    // 실시간 시그널 표시
+    let realtimeHtml = '';
+    if (row.realtimeSignals && row.realtimeSignals.length > 0) {
+      realtimeHtml = '<div class="realtime-signals">';
+      row.realtimeSignals.forEach(sig => {
+        const cls = sig.type === 'price_drop' || sig.type === 'volume_drop' ? 'down' : 
+                    sig.type === 'price_surge' || sig.type === 'volume_surge' ? 'up' : 'neutral';
+        const severityCls = sig.severity === 'critical' ? 'critical' : '';
+        realtimeHtml += `<span class="realtime-signal ${cls} ${severityCls}" title="${sig.message}">⚡ ${sig.message}</span>`;
+      });
+      realtimeHtml += '</div>';
+    }
+    
     tr.innerHTML = `
       <td><div class="name-cell"><strong class="clickable" data-code="${row.code}" data-name="${row.name}">${row.name}</strong><small>${row.code}</small></div></td>
       <td class="clickable" data-code="${row.code}" data-name="${row.name}">${formatMoney(row.currentPrice)}</td>
@@ -934,7 +962,7 @@ function renderWatchlist(rows) {
       <td>${t.volatility}%</td>
       <td>${trendIcon(t.shortTrend)} ${t.shortTrend === 'up' ? '상승' : t.shortTrend === 'down' ? '하락' : '보합'}</td>
       <td>${badgeHtml} ${aiBtnHtml}</td>
-      <td>${row.session || row.error || '-'}</td>
+      <td>${row.session || row.error || '-'}${realtimeHtml}</td>
     `;
     watchlistBody.appendChild(tr);
   });
