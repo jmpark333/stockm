@@ -1812,7 +1812,7 @@ def call_llm(messages):
             method="POST",
         )
         try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            with urllib.request.urlopen(req, timeout=60) as resp:
                 raw = resp.read().decode("utf-8")
             result = json.loads(raw)
             content = result["choices"][0]["message"]["content"]
