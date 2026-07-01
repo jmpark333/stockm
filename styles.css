@@ -1784,3 +1784,177 @@ td {
 .table-wrap td:last-child {
   max-width: 200px;
 }
+
+/* ──────────────────────────────────────────
+   기술적 분석 상세 모달
+   ────────────────────────────────────────── */
+
+.tech-detail-modal-box {
+  max-width: 600px;
+  max-height: 80vh;
+}
+
+.tech-detail-body {
+  padding: 20px;
+  overflow-y: auto;
+  max-height: calc(80vh - 60px);
+}
+
+.tech-detail-section {
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.tech-detail-section:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+}
+
+.tech-detail-section-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent);
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tech-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.tech-detail-item {
+  background: rgba(15, 23, 42, 0.5);
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+}
+
+.tech-detail-item-label {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.tech-detail-item-value {
+  font-size: 16px;
+  font-weight: 700;
+  font-family: 'SF Mono', 'Consolas', monospace;
+}
+
+.tech-detail-item-value.up {
+  color: var(--up);
+}
+
+.tech-detail-item-value.down {
+  color: var(--down);
+}
+
+.tech-detail-item-value.neutral {
+  color: var(--text);
+}
+
+.tech-detail-item-sub {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.tech-detail-signal {
+  background: rgba(15, 23, 42, 0.5);
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  margin-bottom: 8px;
+}
+
+.tech-detail-signal:last-child {
+  margin-bottom: 0;
+}
+
+.tech-detail-signal-title {
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tech-detail-signal-title.positive {
+  color: var(--up);
+}
+
+.tech-detail-signal-title.negative {
+  color: var(--down);
+}
+
+.tech-detail-signal-title.neutral {
+  color: var(--muted);
+}
+
+.tech-detail-signal-desc {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.tech-detail-signal-score {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.tech-detail-signal-bar {
+  flex: 1;
+  height: 8px;
+  background: rgba(148, 163, 184, 0.2);
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+
+.tech-detail-signal-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.tech-detail-signal-fill.positive {
+  background: linear-gradient(90deg, #f59e0b, var(--up));
+}
+
+.tech-detail-signal-fill.negative {
+  background: linear-gradient(90deg, var(--down), #2dd4bf);
+}
+
+.tech-detail-signal-value {
+  font-size: 14px;
+  font-weight: 700;
+  min-width: 50px;
+  text-align: right;
+}
+
+/* 단기추세 클릭 가능 스타일 */
+.trend-clickable {
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: background 0.2s ease;
+}
+
+.trend-clickable:hover {
+  background: rgba(148, 163, 184, 0.15);
+}
+
+/* 모바일 대응 */
+@media (max-width: 600px) {
+  .tech-detail-grid {
+    grid-template-columns: 1fr;
+  }
+}

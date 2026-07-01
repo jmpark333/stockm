@@ -20,6 +20,12 @@ const chartModalTitle = document.querySelector('#chartModalTitle');
 const chartModalClose = document.querySelector('#chartModalClose');
 const tvChartContainer = document.querySelector('#tvChartContainer');
 
+// 기술적 분석 상세 모달
+const techDetailModal = document.querySelector('#techDetailModal');
+const techDetailTitle = document.querySelector('#techDetailTitle');
+const techDetailClose = document.querySelector('#techDetailClose');
+const techDetailBody = document.querySelector('#techDetailBody');
+
 let autoTimer = null;
 let autoEnabled = true;
 let newsTimer = null;
@@ -750,11 +756,19 @@ modalClose.addEventListener('click', closeSignalModal);
 signalModal.addEventListener('click', e => {
   if (e.target === signalModal) closeSignalModal();
 });
+
+// 기술적 분석 상세 모달 이벤트
+techDetailClose.addEventListener('click', closeTechDetailModal);
+techDetailModal.addEventListener('click', e => {
+  if (e.target === techDetailModal) closeTechDetailModal();
+});
+
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     closeChartModal();
     closeCalcModal();
     closeSignalModal();
+    closeTechDetailModal();
     toggleChat(false);
   }
 });
@@ -786,6 +800,215 @@ function attachSignalHandlers(container) {
         low: cached.low,
       } : (ai ? { reasons, newsSentiment: el.dataset.newsSentiment || '' } : null);
       showSignalModal(name, signal, ai ? [] : reasons, aiAnalysis);
+    });
+  });
+}
+
+/* 기술적 분석 상세 모달 */
+function showTechDetailModal(name, code, trendData) {
+  techDetailTitle.textContent = `${name} 기술적 분석`;
+  techDetailBody.innerHTML = '<p class="muted">기술적 지표를 불러오는 중...</p>';
+  techDetailModal.hidden = false;
+  
+  // 차트 API에서 기술적 지표 가져오기
+  fetch(`/api/chart?code=${code}`)
+    .then(r => r.json())
+    .then(data => {
+      renderTechDetailContent(name, code, trendData, data);
+    })
+    .catch(err => {
+      techDetailBody.innerHTML = `<p class="muted">기술적 지표를 불러올 수 없습니다: ${err.message}</p>`;
+    });
+}
+
+function closeTechDetailModal() {
+  techDetailModal.hidden = true;
+}
+
+function renderTechDetailContent(name, code, trendData, chartData) {
+  const indicators = chartData.techIndicators || {};
+  const signals = chartData.techSignals || [];
+  const signalScore = chartData.techSignalScore || 0;
+  const techSignal = chartData.techSignal || 'hold';
+  const realtimeSignals = trendData.realtimeSignals || [];
+  
+  let html = '';
+  
+  // 종합 시그널 섹션
+  html += '<div class="tech-detail-section">';
+  html += '<div class="tech-detail-section-title">📊 종합 시그널</div>';
+  
+  const signalLabels = {
+    'strong_buy': { text: '🔴 강력매수', cls: 'positive' },
+    'buy': { text: '🟠 매수', cls: 'positive' },
+    'hold': { text: '⚪ 관망', cls: 'neutral' },
+    'sell': { text: '🟡 매도', cls: 'negative' },
+    'strong_sell': { text: '🟢 강력매도', cls: 'negative' }
+  };
+  const signalInfo = signalLabels[techSignal] || signalLabels.hold;
+  
+  html += `<div class="tech-detail-signal">`;
+  html += `<div class="tech-detail-signal-title ${signalInfo.cls}">${signalInfo.text}</div>`;
+  html += `<div class="tech-detail-signal-desc">기술적 지표 종합 판단 결과</div>`;
+  html += `</div>`;
+  
+  // 시그널 점수 바
+  html += '<div class="tech-detail-signal-score">';
+  html += '<span style="font-size:12px;color:var(--muted)">매도</span>';
+  html += '<div class="tech-detail-signal-bar">';
+  const fillWidth = Math.min(100, Math.max(0, (signalScore + 100) / 2));
+  const fillCls = signalScore > 0 ? 'positive' : 'negative';
+  html += `<div class="tech-detail-signal-fill ${fillCls}" style="width:${fillWidth}%"></div>`;
+  html += '</div>';
+  html += `<span class="tech-detail-signal-value ${signalScore > 0 ? 'up' : signalScore < 0 ? 'down' : 'neutral'}">${signalScore > 0 ? '+' : ''}${signalScore}</span>`;
+  html += '<span style="font-size:12px;color:var(--muted)">매수</span>';
+  html += '</div>';
+  html += '</div>';
+  
+  // 기술적 지표 섹션
+  html += '<div class="tech-detail-section">';
+  html += '<div class="tech-detail-section-title">📈 기술적 지표</div>';
+  html += '<div class="tech-detail-grid">';
+  
+  // 이동평균선
+  if (indicators.ma5) {
+    const diff5 = chartData.candles?.length ? ((chartData.candles[chartData.candles.length - 1].close - indicators.ma5) / indicators.ma5 * 100) : 0;
+    html += `<div class="tech-detail-item">
+      <div class="tech-detail-item-label">MA5 (5일선)</div>
+      <div class="tech-detail-item-value ${diff5 > 0 ? 'up' : 'down'}">${money.format(Math.round(indicators.ma5))}원</div>
+      <div class="tech-detail-item-sub">${diff5 > 0 ? '+' : ''}${diff5.toFixed(1)}%</div>
+    </div>`;
+  }
+  if (indicators.ma20) {
+    const diff20 = chartData.candles?.length ? ((chartData.candles[chartData.candles.length - 1].close - indicators.ma20) / indicators.ma20 * 100) : 0;
+    html += `<div class="tech-detail-item">
+      <div class="tech-detail-item-label">MA20 (20일선)</div>
+      <div class="tech-detail-item-value ${diff20 > 0 ? 'up' : 'down'}">${money.format(Math.round(indicators.ma20))}원</div>
+      <div class="tech-detail-item-sub">${diff20 > 0 ? '+' : ''}${diff20.toFixed(1)}%</div>
+    </div>`;
+  }
+  if (indicators.ma60) {
+    const diff60 = chartData.candles?.length ? ((chartData.candles[chartData.candles.length - 1].close - indicators.ma60) / indicators.ma60 * 100) : 0;
+    html += `<div class="tech-detail-item">
+      <div class="tech-detail-item-label">MA60 (60일선)</div>
+      <div class="tech-detail-item-value ${diff60 > 0 ? 'up' : 'down'}">${money.format(Math.round(indicators.ma60))}원</div>
+      <div class="tech-detail-item-sub">${diff60 > 0 ? '+' : ''}${diff60.toFixed(1)}%</div>
+    </div>`;
+  }
+  
+  // RSI
+  if (indicators.rsi14 !== null && indicators.rsi14 !== undefined) {
+    const rsiCls = indicators.rsi14 > 70 ? 'up' : indicators.rsi14 < 30 ? 'down' : 'neutral';
+    const rsiLabel = indicators.rsi14 > 70 ? '과매수' : indicators.rsi14 < 30 ? '과매도' : '중립';
+    html += `<div class="tech-detail-item">
+      <div class="tech-detail-item-label">RSI (14일)</div>
+      <div class="tech-detail-item-value ${rsiCls}">${indicators.rsi14.toFixed(1)}</div>
+      <div class="tech-detail-item-sub">${rsiLabel}</div>
+    </div>`;
+  }
+  
+  // MACD
+  if (indicators.macd) {
+    const macd = indicators.macd;
+    if (macd.macd !== null && macd.macd !== undefined) {
+      const macdCls = macd.histogram > 0 ? 'up' : 'down';
+      html += `<div class="tech-detail-item">
+        <div class="tech-detail-item-label">MACD</div>
+        <div class="tech-detail-item-value ${macdCls}">${macd.macd.toFixed(0)}</div>
+        <div class="tech-detail-item-sub">시그널: ${macd.signal?.toFixed(0) || '-'}</div>
+      </div>`;
+    }
+  }
+  
+  // 볼린저 밴드
+  if (indicators.bollinger) {
+    const bb = indicators.bollinger;
+    html += `<div class="tech-detail-item">
+      <div class="tech-detail-item-label">볼린저 밴드</div>
+      <div class="tech-detail-item-value neutral">중간: ${bb.middle ? money.format(Math.round(bb.middle)) : '-'}</div>
+      <div class="tech-detail-item-sub">상단: ${bb.upper ? money.format(Math.round(bb.upper)) : '-'} / 하단: ${bb.lower ? money.format(Math.round(bb.lower)) : '-'}</div>
+    </div>`;
+  }
+  
+  // 스토캐스틱
+  if (indicators.stochastic) {
+    const stoch = indicators.stochastic;
+    const stochCls = stoch.k > 80 ? 'up' : stoch.k < 20 ? 'down' : 'neutral';
+    html += `<div class="tech-detail-item">
+      <div class="tech-detail-item-label">스토캐스틱</div>
+      <div class="tech-detail-item-value ${stochCls}">%K: ${stoch.k?.toFixed(1) || '-'}</div>
+      <div class="tech-detail-item-sub">%D: ${stoch.d?.toFixed(1) || '-'}</div>
+    </div>`;
+  }
+  
+  html += '</div></div>';
+  
+  // 시그널 분석 섹션
+  html += '<div class="tech-detail-section">';
+  html += '<div class="tech-detail-section-title">🎯 시그널 분석</div>';
+  
+  if (signals.length > 0) {
+    signals.forEach(signal => {
+      const cls = signal.includes('매수') || signal.includes('상승') || signal.includes('골든') || signal.includes('과매도') ? 'positive' : 
+                  signal.includes('매도') || signal.includes('하락') || signal.includes('데드') || signal.includes('과매수') ? 'negative' : 'neutral';
+      html += `<div class="tech-detail-signal">
+        <div class="tech-detail-signal-title ${cls}">• ${signal}</div>
+      </div>`;
+    });
+  } else {
+    html += '<div class="tech-detail-signal"><div class="tech-detail-signal-title neutral">특이사항 없음</div></div>';
+  }
+  
+  // 실시간 시그널
+  if (realtimeSignals.length > 0) {
+    html += '<div style="margin-top:12px">';
+    html += '<div class="tech-detail-signal-title" style="margin-bottom:8px">⚡ 실시간 시그널</div>';
+    realtimeSignals.forEach(sig => {
+      const cls = sig.type === 'price_drop' || sig.type === 'volume_drop' ? 'negative' : 
+                  sig.type === 'price_surge' || sig.type === 'volume_surge' ? 'positive' : 'neutral';
+      html += `<div class="tech-detail-signal">
+        <div class="tech-detail-signal-title ${cls}">${sig.message}</div>
+        <div class="tech-detail-signal-desc">심각도: ${sig.severity === 'critical' ? '치명적' : '경고'}</div>
+      </div>`;
+    });
+    html += '</div>';
+  }
+  
+  html += '</div>';
+  
+  // 단기 추세 분석 섹션
+  html += '<div class="tech-detail-section">';
+  html += '<div class="tech-detail-section-title">📉 단기 추세 분석</div>';
+  
+  const trendLabels = {
+    'up': { text: '▲ 상승', cls: 'positive' },
+    'down': { text: '▼ 하락', cls: 'negative' },
+    'flat': { text: '― 보합', cls: 'neutral' }
+  };
+  const trendInfo = trendLabels[trendData.shortTrend] || trendLabels.flat;
+  
+  html += `<div class="tech-detail-signal">`;
+  html += `<div class="tech-detail-signal-title ${trendInfo.cls}">${trendInfo.text}</div>`;
+  html += `<div class="tech-detail-signal-desc">일중 범위: ${trendData.rangePos?.toFixed(1) || 50}%</div>`;
+  html += `<div class="tech-detail-signal-desc">변동성: ${trendData.volatility || 0}%</div>`;
+  html += `</div>`;
+  
+  html += '</div>';
+  
+  techDetailBody.innerHTML = html;
+}
+
+/* Attach trend click handlers (보합/상승/하락 클릭) */
+function attachTrendHandlers(container) {
+  container.querySelectorAll('.trend-cell').forEach(el => {
+    el.style.cursor = 'pointer';
+    el.addEventListener('click', () => {
+      const row = el.closest('tr');
+      if (!row) return;
+      const name = row.querySelector('.name-cell strong')?.textContent || '';
+      const code = row.querySelector('.name-cell small')?.textContent || '';
+      const trendData = JSON.parse(el.dataset.trend || '{}');
+      showTechDetailModal(name, code, trendData);
     });
   });
 }
@@ -905,6 +1128,11 @@ function renderHoldings(rows) {
       realtimeHtml += '</div>';
     }
     
+    // 단기추세 (trend 데이터가 있다고 가정)
+    const t = row.trend || {};
+    const trendText = t.shortTrend === 'up' ? '상승' : t.shortTrend === 'down' ? '하락' : '보합';
+    const trendDataAttr = `data-trend='${JSON.stringify(t)}'`;
+    
     tr.innerHTML = `
       <td><div class="name-cell"><strong class="clickable" data-code="${row.code}" data-name="${row.name}" data-avg="${row.avgPrice}">${row.name}</strong><small>${row.code}</small></div></td>
       <td>${money.format(row.quantity)}주</td>
@@ -914,6 +1142,7 @@ function renderHoldings(rows) {
       <td>${formatMoney(row.currentValue)}</td>
       <td class="${row.profit >= 0 ? 'up' : 'down'}">${formatPercent(row.profitRate)}</td>
       <td class="${row.profit >= 0 ? 'up' : 'down'}">${formatSignedMoney(row.profit)}</td>
+      <td class="trend-cell trend-clickable" ${trendDataAttr}>${trendIcon(t.shortTrend)} ${trendText}</td>
       <td>${badgeHtml} ${aiBtnHtml}</td>
       <td>${row.session || row.error || '-'}${realtimeHtml}</td>
     `;
@@ -923,6 +1152,7 @@ function renderHoldings(rows) {
   attachAIHandlers(holdingsBody);
   attachChartHandlers(holdingsBody);
   attachCalcHandlers(holdingsBody);
+  attachTrendHandlers(holdingsBody);
 }
 
 function renderWatchlist(rows) {
@@ -954,13 +1184,17 @@ function renderWatchlist(rows) {
       realtimeHtml += '</div>';
     }
     
+    // 단기추세 클릭 가능하게
+    const trendText = t.shortTrend === 'up' ? '상승' : t.shortTrend === 'down' ? '하락' : '보합';
+    const trendDataAttr = `data-trend='${JSON.stringify(t)}'`;
+    
     tr.innerHTML = `
       <td><div class="name-cell"><strong class="clickable" data-code="${row.code}" data-name="${row.name}">${row.name}</strong><small>${row.code}</small></div></td>
       <td class="clickable" data-code="${row.code}" data-name="${row.name}">${formatMoney(row.currentPrice)}</td>
       <td class="${row.change > 0 ? 'up' : row.change < 0 ? 'down' : 'neutral'}">${formatSignedMoney(row.change)} / ${formatPercent(row.changeRate)}</td>
       <td>${dayRange}<br>${rangeBar(t.rangePos)}</td>
       <td>${t.volatility}%</td>
-      <td>${trendIcon(t.shortTrend)} ${t.shortTrend === 'up' ? '상승' : t.shortTrend === 'down' ? '하락' : '보합'}</td>
+      <td class="trend-cell trend-clickable" ${trendDataAttr}>${trendIcon(t.shortTrend)} ${trendText}</td>
       <td>${badgeHtml} ${aiBtnHtml}</td>
       <td>${row.session || row.error || '-'}${realtimeHtml}</td>
     `;
@@ -969,6 +1203,7 @@ function renderWatchlist(rows) {
   attachSignalHandlers(watchlistBody);
   attachAIHandlers(watchlistBody);
   attachChartHandlers(watchlistBody);
+  attachTrendHandlers(watchlistBody);
 }
 
 function renderSummary(summary) {
