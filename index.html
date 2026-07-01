@@ -182,7 +182,19 @@
         <button id="chartModalClose" class="icon-btn">&times;</button>
       </div>
       <div id="chartModalBody" class="chart-modal-body">
-        <div id="tvChartContainer"></div>
+        <div class="chart-layout">
+          <div id="tvChartContainer" class="chart-main"></div>
+          <div id="techPanel" class="tech-panel">
+            <div class="tech-panel-header">
+              <h3>📊 기술적 분석</h3>
+              <span id="techSignalBadge" class="tech-signal-badge">-</span>
+            </div>
+            <div id="techIndicators" class="tech-indicators">
+              <p class="muted">차트를 로딩 중입니다...</p>
+            </div>
+            <div id="techSignals" class="tech-signals"></div>
+          </div>
+        </div>
       </div>
     </div>
   </div>

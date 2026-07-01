@@ -236,6 +236,10 @@ function showChartModal(name, code, avgPrice) {
   chartModalTitle.textContent = `${name} 주가 차트`;
   if (lwChart) { try { lwChart.remove(); } catch(e){} lwChart = null; }
   tvChartContainer.innerHTML = '<p style="text-align:center;padding:40px;color:var(--muted)">차트 로딩 중...</p>';
+  document.querySelector('#techIndicators').innerHTML = '<p class="muted">기술적 지표 로딩 중...</p>';
+  document.querySelector('#techSignals').innerHTML = '';
+  document.querySelector('#techSignalBadge').textContent = '-';
+  document.querySelector('#techSignalBadge').className = 'tech-signal-badge';
   chartModal.hidden = false;
 
   loadLightweightCharts().then(() => {
@@ -305,6 +309,32 @@ function showChartModal(name, code, avgPrice) {
     candleSeries.setData(candleData);
     volumeSeries.setData(volumeData);
 
+    // 이동평균선 추가
+    if (data.maArrays) {
+      const maArrays = data.maArrays;
+      const addMALine = (values, color, title) => {
+        const lineData = candles.map((c, i) => ({
+          time: c.time,
+          value: values[i],
+        })).filter(d => d.value !== null && d.value !== undefined);
+        if (lineData.length > 0) {
+          const series = lwChart.addLineSeries({
+            color: color,
+            lineWidth: 1,
+            lineStyle: 2,
+            priceLineVisible: false,
+            lastValueVisible: false,
+          });
+          series.setData(lineData);
+        }
+      };
+      
+      if (maArrays.ma5) addMALine(maArrays.ma5, '#f59e0b', 'MA5');
+      if (maArrays.ma20) addMALine(maArrays.ma20, '#60a5fa', 'MA20');
+      if (maArrays.ma60) addMALine(maArrays.ma60, '#a78bfa', 'MA60');
+      if (maArrays.ma120) addMALine(maArrays.ma120, '#f472b6', 'MA120');
+    }
+
     if (avgPrice > 0) {
       candleSeries.createPriceLine({
         price: avgPrice,
@@ -325,6 +355,9 @@ function showChartModal(name, code, avgPrice) {
       }
     });
     resizeObserver.observe(tvChartContainer);
+    
+    // 기술적 지표 표시
+    renderTechPanel(data);
   }).catch(err => {
     tvChartContainer.innerHTML = '<p style="text-align:center;padding:40px;color:var(--muted)">차트 로드 실패: ' + err.message + '</p>';
   });
@@ -334,6 +367,164 @@ function closeChartModal() {
   chartModal.hidden = true;
   if (lwChart) { try { lwChart.remove(); } catch(e){} lwChart = null; }
   tvChartContainer.innerHTML = '';
+}
+
+function renderTechPanel(data) {
+  const techIndicators = document.querySelector('#techIndicators');
+  const techSignals = document.querySelector('#techSignals');
+  const techSignalBadge = document.querySelector('#techSignalBadge');
+  
+  if (!data.techIndicators) {
+    techIndicators.innerHTML = '<p class="muted">기술적 지표를 사용할 수 없습니다.</p>';
+    return;
+  }
+  
+  const indicators = data.techIndicators;
+  const currentPrice = (data.candles && data.candles.length) ? data.candles[data.candles.length - 1].close : 0;
+  
+  // 시그널 배지
+  const techSignal = data.techSignal || 'hold';
+  const signalLabels = {
+    'strong_buy': '강력매수',
+    'buy': '매수',
+    'hold': '관망',
+    'sell': '매도',
+    'strong_sell': '강력매도'
+  };
+  techSignalBadge.textContent = signalLabels[techSignal] || '관망';
+  techSignalBadge.className = `tech-signal-badge ${techSignal}`;
+  
+  // 지표 표시
+  let html = '';
+  
+  // 이동평균선 섹션
+  html += '<div class="tech-indicator-section">';
+  html += '<div class="tech-indicator-section-title">이동평균선</div>';
+  
+  const maItems = [
+    { label: 'MA5', value: indicators.ma5 },
+    { label: 'MA20', value: indicators.ma20 },
+    { label: 'MA60', value: indicators.ma60 },
+    { label: 'MA120', value: indicators.ma120 },
+  ];
+  
+  maItems.forEach(item => {
+    if (item.value !== null && item.value !== undefined) {
+      const diff = currentPrice ? ((currentPrice - item.value) / item.value * 100) : 0;
+      const cls = diff > 0 ? 'up' : diff < 0 ? 'down' : 'neutral';
+      html += `<div class="tech-indicator-row">
+        <span class="tech-indicator-label">${item.label}</span>
+        <span class="tech-indicator-value ${cls}">${money.format(Math.round(item.value))}원 (${diff > 0 ? '+' : ''}${diff.toFixed(1)}%)</span>
+      </div>`;
+    }
+  });
+  html += '</div>';
+  
+  // RSI
+  if (indicators.rsi14 !== null && indicators.rsi14 !== undefined) {
+    const rsiCls = indicators.rsi14 > 70 ? 'up' : indicators.rsi14 < 30 ? 'down' : 'neutral';
+    const rsiLabel = indicators.rsi14 > 70 ? '과매수' : indicators.rsi14 < 30 ? '과매도' : '중립';
+    html += '<div class="tech-indicator-section">';
+    html += '<div class="tech-indicator-section-title">모멘텀</div>';
+    html += `<div class="tech-indicator-row">
+      <span class="tech-indicator-label">RSI(14)</span>
+      <span class="tech-indicator-value ${rsiCls}">${indicators.rsi14.toFixed(1)} (${rsiLabel})</span>
+    </div>`;
+    html += '</div>';
+  }
+  
+  // MACD
+  if (indicators.macd) {
+    const macd = indicators.macd;
+    html += '<div class="tech-indicator-section">';
+    html += '<div class="tech-indicator-section-title">MACD</div>';
+    if (macd.macd !== null && macd.macd !== undefined) {
+      const macdCls = macd.histogram > 0 ? 'up' : macd.histogram < 0 ? 'down' : 'neutral';
+      html += `<div class="tech-indicator-row">
+        <span class="tech-indicator-label">MACD</span>
+        <span class="tech-indicator-value ${macdCls}">${macd.macd.toFixed(2)}</span>
+      </div>`;
+    }
+    if (macd.signal !== null && macd.signal !== undefined) {
+      html += `<div class="tech-indicator-row">
+        <span class="tech-indicator-label">시그널</span>
+        <span class="tech-indicator-value">${macd.signal.toFixed(2)}</span>
+      </div>`;
+    }
+    if (macd.histogram !== null && macd.histogram !== undefined) {
+      const histCls = macd.histogram > 0 ? 'up' : 'down';
+      html += `<div class="tech-indicator-row">
+        <span class="tech-indicator-label">히스토그램</span>
+        <span class="tech-indicator-value ${histCls}">${macd.histogram.toFixed(2)}</span>
+      </div>`;
+    }
+    html += '</div>';
+  }
+  
+  // 볼린저 밴드
+  if (indicators.bollinger) {
+    const bb = indicators.bollinger;
+    html += '<div class="tech-indicator-section">';
+    html += '<div class="tech-indicator-section-title">볼린저 밴드</div>';
+    if (bb.upper) {
+      html += `<div class="tech-indicator-row">
+        <span class="tech-indicator-label">상단</span>
+        <span class="tech-indicator-value up">${money.format(Math.round(bb.upper))}원</span>
+      </div>`;
+    }
+    if (bb.middle) {
+      html += `<div class="tech-indicator-row">
+        <span class="tech-indicator-label">중간</span>
+        <span class="tech-indicator-value neutral">${money.format(Math.round(bb.middle))}원</span>
+      </div>`;
+    }
+    if (bb.lower) {
+      html += `<div class="tech-indicator-row">
+        <span class="tech-indicator-label">하단</span>
+        <span class="tech-indicator-value down">${money.format(Math.round(bb.lower))}원</span>
+      </div>`;
+    }
+    html += '</div>';
+  }
+  
+  // 스토캐스틱
+  if (indicators.stochastic) {
+    const stoch = indicators.stochastic;
+    html += '<div class="tech-indicator-section">';
+    html += '<div class="tech-indicator-section-title">스토캐스틱</div>';
+    if (stoch.k !== null && stoch.k !== undefined) {
+      const stochCls = stoch.k > 80 ? 'up' : stoch.k < 20 ? 'down' : 'neutral';
+      html += `<div class="tech-indicator-row">
+        <span class="tech-indicator-label">%K</span>
+        <span class="tech-indicator-value ${stochCls}">${stoch.k.toFixed(1)}</span>
+      </div>`;
+    }
+    if (stoch.d !== null && stoch.d !== undefined) {
+      html += `<div class="tech-indicator-row">
+        <span class="tech-indicator-label">%D</span>
+        <span class="tech-indicator-value">${stoch.d.toFixed(1)}</span>
+      </div>`;
+    }
+    html += '</div>';
+  }
+  
+  techIndicators.innerHTML = html;
+  
+  // 기술적 시그널 표시
+  const signals = data.techSignals || [];
+  if (signals.length > 0) {
+    let signalHtml = '<div class="tech-indicator-section">';
+    signalHtml += '<div class="tech-indicator-section-title">매매 시그널</div>';
+    signals.forEach(signal => {
+      const cls = signal.includes('매수') || signal.includes('상승') || signal.includes('골든') || signal.includes('과매도') ? 'positive' : 
+                  signal.includes('매도') || signal.includes('하락') || signal.includes('데드') || signal.includes('과매수') ? 'negative' : '';
+      signalHtml += `<div class="tech-signal-item ${cls}">• ${signal}</div>`;
+    });
+    signalHtml += '</div>';
+    techSignals.innerHTML = signalHtml;
+  } else {
+    techSignals.innerHTML = '<div class="tech-indicator-section"><div class="tech-indicator-section-title">매매 시그널</div><div class="tech-signal-item">특이사항 없음</div></div>';
+  }
 }
 
 chartModalClose.addEventListener('click', closeChartModal);

@@ -21,6 +21,11 @@ NAVER_REALTIME_URL = "https://polling.finance.naver.com/api/realtime?query=SERVI
 history: dict[str, deque] = {}
 MAX_HISTORY = 12
 
+# 기술적 지표 캐시
+_tech_indicators_cache: dict[str, dict] = {}
+_tech_indicators_cache_time: dict[str, float] = {}
+TECH_CACHE_TTL = 300  # 5분 캐시
+
 ZAI_URL = "https://api.z.ai/api/coding/paas/v4"
 ZAI_KEY = "136d90754ebd999f4a4cc4547b638.LUXSKaxDozJgFHLQ"
 
@@ -165,6 +170,7 @@ def calc_trend(quote):
         elif last < first * 0.999:
             short_trend = "down"
 
+    # 기본 시그널 (가격 기반)
     signal = "hold"
     reasons = []
     if cp and pc:
@@ -185,6 +191,29 @@ def calc_trend(quote):
             reasons.append("전일대비 +5% 급등")
             reasons.append("일중 고점권")
 
+    # 기술적 지표 통합
+    tech = calc_tech_indicators(code)
+    tech_signals = tech.get("signals", [])
+    tech_signal = tech.get("techSignal", "hold")
+    signal_score = tech.get("signalScore", 0)
+    indicators = tech.get("indicators", {})
+    
+    # 기술적 지표가 있으면 reasons에 추가
+    if tech_signals:
+        reasons.extend(tech_signals[:5])  # 최대 5개까지
+    
+    # 기술적 시그널이 더 강하면 이를 우선
+    if tech_signal != "hold" and signal == "hold":
+        signal = tech_signal
+    elif tech_signal != "hold":
+        # 기본 시그널과 기술적 시그널이 다르면 점수 기반 판단
+        if signal_score > 20 and signal in ("sell", "strong_sell"):
+            signal = "hold"
+            reasons.append("기술적 지표 상승 신호로 매도 보류")
+        elif signal_score < -20 and signal in ("buy", "strong_buy"):
+            signal = "hold"
+            reasons.append("기술적 지표 하락 신호로 매수 보류")
+
     return {
         "rangePos": range_pos,
         "volatility": volatility,
@@ -193,6 +222,9 @@ def calc_trend(quote):
         "shortTrend": short_trend,
         "signal": signal,
         "signalReasons": reasons,
+        "techIndicators": indicators,
+        "techSignals": tech_signals,
+        "techSignalScore": signal_score,
     }
 
 def build_item(quote):
@@ -473,6 +505,378 @@ def fetch_chart_data(code, days=120):
         return {"code": code, "candles": candles}
     except Exception as exc:
         return {"code": code, "candles": [], "error": str(exc)}
+
+
+# ──────────────────────────────────────────
+# 기술적 지표 계산 함수
+# ──────────────────────────────────────────
+
+def calc_sma(data: list[float], period: int) -> list[float | None]:
+    """단순 이동평균선 (Simple Moving Average)"""
+    result = [None] * len(data)
+    for i in range(period - 1, len(data)):
+        result[i] = sum(data[i - period + 1:i + 1]) / period
+    return result
+
+
+def calc_ema(data: list[float], period: int) -> list[float | None]:
+    """지수 이동평균선 (Exponential Moving Average)"""
+    result = [None] * len(data)
+    if len(data) < period:
+        return result
+    # 첫 EMA는 SMA로 시작
+    result[period - 1] = sum(data[:period]) / period
+    multiplier = 2 / (period + 1)
+    for i in range(period, len(data)):
+        result[i] = (data[i] - result[i - 1]) * multiplier + result[i - 1]
+    return result
+
+
+def calc_rsi(closes: list[float], period: int = 14) -> list[float | None]:
+    """상대강도지수 (Relative Strength Index)"""
+    result = [None] * len(closes)
+    if len(closes) < period + 1:
+        return result
+    
+    gains = []
+    losses = []
+    for i in range(1, len(closes)):
+        change = closes[i] - closes[i - 1]
+        gains.append(max(0, change))
+        losses.append(max(0, -change))
+    
+    # 첫 평균 계산
+    avg_gain = sum(gains[:period]) / period
+    avg_loss = sum(losses[:period]) / period
+    
+    if avg_loss == 0:
+        result[period] = 100.0
+    else:
+        rs = avg_gain / avg_loss
+        result[period] = 100 - (100 / (1 + rs))
+    
+    # 나머지 계산 (Wilder's smoothing)
+    for i in range(period, len(gains)):
+        avg_gain = (avg_gain * (period - 1) + gains[i]) / period
+        avg_loss = (avg_loss * (period - 1) + losses[i]) / period
+        if avg_loss == 0:
+            result[i + 1] = 100.0
+        else:
+            rs = avg_gain / avg_loss
+            result[i + 1] = 100 - (100 / (1 + rs))
+    
+    return result
+
+
+def calc_macd(closes: list[float], fast: int = 12, slow: int = 26, signal: int = 9) -> dict:
+    """MACD (Moving Average Convergence Divergence)"""
+    ema_fast = calc_ema(closes, fast)
+    ema_slow = calc_ema(closes, slow)
+    
+    macd_line = [None] * len(closes)
+    for i in range(len(closes)):
+        if ema_fast[i] is not None and ema_slow[i] is not None:
+            macd_line[i] = ema_fast[i] - ema_slow[i]
+    
+    # 시그널 라인 계산 (MACD의 EMA)
+    macd_values = [v for v in macd_line if v is not None]
+    signal_line = [None] * len(closes)
+    if len(macd_values) >= signal:
+        ema_signal = calc_ema(macd_values, signal)
+        j = 0
+        for i in range(len(closes)):
+            if macd_line[i] is not None:
+                signal_line[i] = ema_signal[j]
+                j += 1
+    
+    # 히스토그램
+    histogram = [None] * len(closes)
+    for i in range(len(closes)):
+        if macd_line[i] is not None and signal_line[i] is not None:
+            histogram[i] = macd_line[i] - signal_line[i]
+    
+    return {
+        "macd": macd_line,
+        "signal": signal_line,
+        "histogram": histogram
+    }
+
+
+def calc_bollinger_bands(closes: list[float], period: int = 20, std_dev: float = 2.0) -> dict:
+    """볼린저 밴드 (Bollinger Bands)"""
+    middle = calc_sma(closes, period)
+    upper = [None] * len(closes)
+    lower = [None] * len(closes)
+    
+    for i in range(period - 1, len(closes)):
+        window = closes[i - period + 1:i + 1]
+        avg = middle[i]
+        if avg is not None:
+            variance = sum((x - avg) ** 2 for x in window) / period
+            std = variance ** 0.5
+            upper[i] = avg + std_dev * std
+            lower[i] = avg - std_dev * std
+    
+    return {
+        "upper": upper,
+        "middle": middle,
+        "lower": lower
+    }
+
+
+def calc_stochastic(highs: list[float], lows: list[float], closes: list[float], 
+                    k_period: int = 14, d_period: int = 3) -> dict:
+    """스토캐스틱 (Stochastic Oscillator)"""
+    k_values = [None] * len(closes)
+    
+    for i in range(k_period - 1, len(closes)):
+        window_high = max(highs[i - k_period + 1:i + 1])
+        window_low = min(lows[i - k_period + 1:i + 1])
+        if window_high != window_low:
+            k_values[i] = ((closes[i] - window_low) / (window_high - window_low)) * 100
+        else:
+            k_values[i] = 50.0
+    
+    # %D = %K의 이동평균
+    d_values = [None] * len(closes)
+    valid_k = [(i, v) for i, v in enumerate(k_values) if v is not None]
+    for i in range(d_period - 1, len(valid_k)):
+        window = [v for _, v in valid_k[i - d_period + 1:i + 1]]
+        d_values[valid_k[i][0]] = sum(window) / d_period
+    
+    return {
+        "k": k_values,
+        "d": d_values
+    }
+
+
+def calc_atr(highs: list[float], lows: list[float], closes: list[float], period: int = 14) -> list[float | None]:
+    """평균 진실 범위 (Average True Range) - 변동성 측정"""
+    result = [None] * len(closes)
+    if len(closes) < 2:
+        return result
+    
+    true_ranges = [highs[0] - lows[0]]
+    for i in range(1, len(closes)):
+        tr = max(
+            highs[i] - lows[i],
+            abs(highs[i] - closes[i - 1]),
+            abs(lows[i] - closes[i - 1])
+        )
+        true_ranges.append(tr)
+    
+    if len(true_ranges) >= period:
+        result[period - 1] = sum(true_ranges[:period]) / period
+        for i in range(period, len(true_ranges)):
+            result[i] = (result[i - 1] * (period - 1) + true_ranges[i]) / period
+    
+    return result
+
+
+def calc_tech_indicators(code: str) -> dict:
+    """종목의 기술적 지표를 계산하여 반환"""
+    now = time.time()
+    cached = _tech_indicators_cache.get(code)
+    if cached and now - _tech_indicators_cache_time.get(code, 0) < TECH_CACHE_TTL:
+        return cached
+    
+    chart = fetch_chart_data(code, days=120)
+    candles = chart.get("candles", [])
+    if len(candles) < 30:
+        return {"error": "데이터 부족", "candles": len(candles)}
+    
+    closes = [c["close"] for c in candles]
+    highs = [c["high"] for c in candles]
+    lows = [c["low"] for c in candles]
+    
+    # 이동평균선
+    ma5 = calc_sma(closes, 5)
+    ma20 = calc_sma(closes, 20)
+    ma60 = calc_sma(closes, 60)
+    ma120 = calc_sma(closes, 120) if len(closes) >= 120 else [None] * len(closes)
+    ema12 = calc_ema(closes, 12)
+    ema26 = calc_ema(closes, 26)
+    
+    # RSI
+    rsi14 = calc_rsi(closes, 14)
+    
+    # MACD
+    macd_data = calc_macd(closes, 12, 26, 9)
+    
+    # 볼린저 밴드
+    bb = calc_bollinger_bands(closes, 20, 2.0)
+    
+    # 스토캐스틱
+    stoch = calc_stochastic(highs, lows, closes, 14, 3)
+    
+    # ATR
+    atr14 = calc_atr(highs, lows, closes, 14)
+    
+    # 현재 값들
+    current_close = closes[-1]
+    current_ma5 = ma5[-1]
+    current_ma20 = ma20[-1]
+    current_ma60 = ma60[-1]
+    current_ma120 = ma120[-1] if ma120 else None
+    current_rsi = rsi14[-1]
+    current_macd = macd_data["macd"][-1]
+    current_signal = macd_data["signal"][-1]
+    current_histogram = macd_data["histogram"][-1]
+    current_bb_upper = bb["upper"][-1]
+    current_bb_middle = bb["middle"][-1]
+    current_bb_lower = bb["lower"][-1]
+    current_stoch_k = stoch["k"][-1]
+    current_stoch_d = stoch["d"][-1]
+    current_atr = atr14[-1]
+    
+    # 과거 값들 (크로스오버 감지)
+    prev_macd = macd_data["macd"][-2] if len(macd_data["macd"]) > 1 else None
+    prev_signal = macd_data["signal"][-2] if len(macd_data["signal"]) > 1 else None
+    prev_histogram = macd_data["histogram"][-2] if len(macd_data["histogram"]) > 1 else None
+    prev_stoch_k = stoch["k"][-2] if len(stoch["k"]) > 1 else None
+    prev_stoch_d = stoch["d"][-2] if len(stoch["d"]) > 1 else None
+    
+    # 기술적 시그널 분석
+    signals = []
+    signal_score = 0  # -100 ~ +100
+    
+    # 1. 이동평균선 배열 분석
+    if current_ma5 and current_ma20 and current_ma60:
+        if current_ma5 > current_ma20 > current_ma60:
+            signals.append("정배열 (상승추세)")
+            signal_score += 20
+        elif current_ma5 < current_ma20 < current_ma60:
+            signals.append("역배열 (하락추세)")
+            signal_score -= 20
+    
+    # 2. 골든크로스/데드크로스
+    if current_ma5 and current_ma20 and ma5[-2] and ma20[-2]:
+        if ma5[-2] < ma20[-2] and current_ma5 > current_ma20:
+            signals.append("MA5/20 골든크로스")
+            signal_score += 15
+        elif ma5[-2] > ma20[-2] and current_ma5 < current_ma20:
+            signals.append("MA5/20 데드크로스")
+            signal_score -= 15
+    
+    # 3. RSI 분석
+    if current_rsi is not None:
+        if current_rsi > 70:
+            signals.append(f"RSI 과매수 ({current_rsi:.1f})")
+            signal_score -= 15
+        elif current_rsi < 30:
+            signals.append(f"RSI 과매도 ({current_rsi:.1f})")
+            signal_score += 15
+        elif current_rsi > 60:
+            signals.append(f"RSI 강세 ({current_rsi:.1f})")
+            signal_score += 5
+        elif current_rsi < 40:
+            signals.append(f"RSI 약세 ({current_rsi:.1f})")
+            signal_score -= 5
+    
+    # 4. MACD 분석
+    if current_macd is not None and current_signal is not None:
+        if prev_macd is not None and prev_signal is not None:
+            if prev_macd < prev_signal and current_macd > current_signal:
+                signals.append("MACD 골든크로스")
+                signal_score += 20
+            elif prev_macd > prev_signal and current_macd < current_signal:
+                signals.append("MACD 데드크로스")
+                signal_score -= 20
+        if current_histogram is not None:
+            if current_histogram > 0:
+                signals.append("MACD 히스토그램 양전환")
+                signal_score += 5
+            else:
+                signals.append("MACD 히스토그램 음전환")
+                signal_score -= 5
+    
+    # 5. 볼린저 밴드 분석
+    if current_bb_upper and current_bb_lower:
+        bb_position = (current_close - current_bb_lower) / (current_bb_upper - current_bb_lower) * 100
+        if current_close > current_bb_upper:
+            signals.append("볼린저 상단 돌파")
+            signal_score -= 10
+        elif current_close < current_bb_lower:
+            signals.append("볼린저 하단 이탈")
+            signal_score += 10
+        elif bb_position > 80:
+            signals.append(f"볼린저 상단 접근 ({bb_position:.0f}%)")
+            signal_score -= 5
+        elif bb_position < 20:
+            signals.append(f"볼린저 하단 접근 ({bb_position:.0f}%)")
+            signal_score += 5
+    
+    # 6. 스토캐스틱 분석
+    if current_stoch_k is not None and current_stoch_d is not None:
+        if current_stoch_k > 80:
+            signals.append(f"스토캐스틱 과매수 ({current_stoch_k:.1f})")
+            signal_score -= 10
+        elif current_stoch_k < 20:
+            signals.append(f"스토캐스틱 과매도 ({current_stoch_k:.1f})")
+            signal_score += 10
+        if prev_stoch_k is not None and prev_stoch_d is not None:
+            if prev_stoch_k < prev_stoch_d and current_stoch_k > current_stoch_d:
+                signals.append("스토캐스틱 골든크로스")
+                signal_score += 10
+            elif prev_stoch_k > prev_stoch_d and current_stoch_k < current_stoch_d:
+                signals.append("스토캐스틱 데드크로스")
+                signal_score -= 10
+    
+    # 7. 가격 vs 이동평균선 위치
+    if current_ma20:
+        price_vs_ma20 = (current_close - current_ma20) / current_ma20 * 100
+        if price_vs_ma20 > 5:
+            signals.append(f"MA20 대비 +{price_vs_ma20:.1f}% (과열)")
+            signal_score -= 5
+        elif price_vs_ma20 < -5:
+            signals.append(f"MA20 대비 {price_vs_ma20:.1f}% (과침)")
+            signal_score += 5
+    
+    # 종합 시그널 판단
+    tech_signal = "hold"
+    if signal_score >= 30:
+        tech_signal = "strong_buy"
+    elif signal_score >= 15:
+        tech_signal = "buy"
+    elif signal_score <= -30:
+        tech_signal = "strong_sell"
+    elif signal_score <= -15:
+        tech_signal = "sell"
+    
+    result = {
+        "indicators": {
+            "ma5": round(current_ma5, 0) if current_ma5 else None,
+            "ma20": round(current_ma20, 0) if current_ma20 else None,
+            "ma60": round(current_ma60, 0) if current_ma60 else None,
+            "ma120": round(current_ma120, 0) if current_ma120 else None,
+            "rsi14": round(current_rsi, 2) if current_rsi else None,
+            "macd": {
+                "macd": round(current_macd, 2) if current_macd else None,
+                "signal": round(current_signal, 2) if current_signal else None,
+                "histogram": round(current_histogram, 2) if current_histogram else None,
+            },
+            "bollinger": {
+                "upper": round(current_bb_upper, 0) if current_bb_upper else None,
+                "middle": round(current_bb_middle, 0) if current_bb_middle else None,
+                "lower": round(current_bb_lower, 0) if current_bb_lower else None,
+            },
+            "stochastic": {
+                "k": round(current_stoch_k, 2) if current_stoch_k else None,
+                "d": round(current_stoch_d, 2) if current_stoch_d else None,
+            },
+            "atr14": round(current_atr, 0) if current_atr else None,
+        },
+        "signals": signals,
+        "signalScore": signal_score,
+        "techSignal": tech_signal,
+        "currentPrice": current_close,
+        "dataPoints": len(candles),
+    }
+    
+    _tech_indicators_cache[code] = result
+    _tech_indicators_cache_time[code] = now
+    
+    return result
 
 def signal_from_zai(name, code, quote, articles):
     titles = "\n".join(a.get("title", "") for a in articles[:6])
@@ -1323,7 +1727,28 @@ class Handler(SimpleHTTPRequestHandler):
             if not code:
                 self.send_json({"error": "code parameter required"})
                 return
-            self.send_json(fetch_chart_data(code))
+            chart_data = fetch_chart_data(code)
+            # 기술적 지표 추가
+            tech = calc_tech_indicators(code)
+            chart_data["techIndicators"] = tech.get("indicators", {})
+            chart_data["techSignals"] = tech.get("signals", [])
+            chart_data["techSignalScore"] = tech.get("signalScore", 0)
+            chart_data["techSignal"] = tech.get("techSignal", "hold")
+            
+            # 이동평균선 배열 데이터 추가 (차트용)
+            candles = chart_data.get("candles", [])
+            if len(candles) >= 5:
+                closes = [c["close"] for c in candles]
+                chart_data["maArrays"] = {
+                    "ma5": calc_sma(closes, 5),
+                    "ma20": calc_sma(closes, 20),
+                    "ma60": calc_sma(closes, 60),
+                    "ma120": calc_sma(closes, 120) if len(closes) >= 120 else [None] * len(closes),
+                }
+                # RSI 배열
+                chart_data["rsiArray"] = calc_rsi(closes, 14)
+            
+            self.send_json(chart_data)
             return
         if p == "/api/analyze-signal":
             qs = urllib.parse.parse_qs(parsed.query)
