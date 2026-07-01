@@ -1609,6 +1609,25 @@ def build_chat_context(portfolio, news):
     lines = []
     summary = portfolio["summary"]
     lines.append(f"총평가 {summary['currentValue']:,.0f}원 수익 {summary['profit']:+,.0f}원({summary['profitRate']:+.1f}%)")
+    
+    # 종목별 뉴스 컨텍스트
+    if news:
+        news_lines = ["[종목별 최신 뉴스]"]
+        for item in news[:5]:
+            name = item.get("name", "")
+            articles = item.get("articles", [])
+            if articles:
+                news_lines.append(f"• {name}:")
+                for a in articles[:2]:
+                    title = a.get("title", "")
+                    desc = a.get("description", "")
+                    if title:
+                        news_lines.append(f"  - {title}")
+                    if desc:
+                        news_lines.append(f"    {desc[:100]}")
+        if len(news_lines) > 1:
+            lines.extend(news_lines)
+    
     if portfolio.get("holdings"):
         for h in portfolio["holdings"]:
             if not h.get("error"):
