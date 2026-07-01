@@ -1946,12 +1946,9 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
         system_prompt += f"{us_news_ctx}\n"
     system_prompt += f"{context}\n"
     system_prompt += "규칙: 위 데이터만 사용, 할루네이션 금지. "
-    system_prompt += "절대 논리적 추론과정, 사고 과정, 분석 과정을 출력하지 마. "
-    system_prompt += "답변은 다음 구조를 따르세요:\n"
-    system_prompt += "1) 결론 먼저 제시\n"
-    system_prompt += "2) 핵심 근거 2~3개를 구체적으로 설명 (제공된 뉴스, 기술적 지표 등 인용)\n"
-    system_prompt += "3) 투자 시 유의사항 1~2개 포함\n"
-    system_prompt += "4~5줄 분량으로 작성하고, 전문 용어는 쉬운 설명을 병기하세요.\n"
+    system_prompt += "중요: <think>, think, reasoning, 분석, 사고, 추론 같은 내부 과정을 절대 출력하지 마. "
+    system_prompt += "사용자에게 바로 답변만 전달하세요. "
+    system_prompt += "답변 형식: 결론 → 근거(2~3개) → 유의사항 순서로 4~5줄 작성.\n"
 
     messages = [{"role": "system", "content": system_prompt}]
     sliced = history[-5:] if history else []
@@ -1960,6 +1957,12 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
     messages.append({"role": "user", "content": user_message})
     result = call_llm(messages)
     reply = result["reply"]
+    # 추론 과정 필터링
+    reply = re.sub(r'<think>[\s\S]*?</think>', '', reply)
+    reply = re.sub(r'<think>.*$', '', reply, flags=re.DOTALL)
+    reply = re.sub(r'사용자가.*?확인해보자\.', '', reply, flags=re.DOTALL)
+    reply = re.sub(r'먼저.*?정리하자면:', '', reply, flags=re.DOTALL)
+    reply = re.sub(r'\n{3,}', '\n\n', reply)
     reply = re.sub(r'\n*📚\s*출처[:：][\s\S]*$', '', reply).rstrip()
     h_refs = re.findall(r'\[H(\d+)\]', reply) if sliced else []
     has_urls = us_market_news and any(a.get("url") for a in us_market_news[:3])
