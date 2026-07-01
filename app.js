@@ -518,6 +518,24 @@ function renderTechPanel(data) {
     html += '</div>';
   }
   
+  // 거래량 요약
+  const candles = data.candles || [];
+  if (candles.length >= 10) {
+    const currentVol = candles[candles.length - 1].volume || 0;
+    const recent20 = candles.slice(-20);
+    const avgVol20 = recent20.reduce((s, c) => s + (c.volume || 0), 0) / recent20.length;
+    const volRatio = avgVol20 > 0 ? currentVol / avgVol20 : 1;
+    const volCls = volRatio >= 2.0 ? 'up' : volRatio <= 0.5 ? 'down' : 'neutral';
+    
+    html += '<div class="tech-indicator-section">';
+    html += '<div class="tech-indicator-section-title">거래량</div>';
+    html += `<div class="tech-indicator-row">
+      <span class="tech-indicator-label">현재/평균</span>
+      <span class="tech-indicator-value ${volCls}">${volRatio.toFixed(1)}배</span>
+    </div>`;
+    html += '</div>';
+  }
+  
   techIndicators.innerHTML = html;
   
   // 기술적 시그널 표시
@@ -998,6 +1016,81 @@ function renderTechDetailContent(name, code, trendData, chartData) {
   }
   
   html += '</div></div>';
+  
+  // 거래량 분석 섹션
+  const candles = chartData.candles || [];
+  if (candles.length >= 10) {
+    html += '<div class="tech-detail-section">';
+    html += '<div class="tech-detail-section-title">📊 거래량 분석</div>';
+    html += '<div class="tech-detail-grid">';
+    
+    const currentVol = candles[candles.length - 1].volume || 0;
+    const recent20 = candles.slice(-20);
+    const avgVol20 = recent20.reduce((s, c) => s + (c.volume || 0), 0) / recent20.length;
+    const volRatio = avgVol20 > 0 ? currentVol / avgVol20 : 1;
+    
+    // 5일 거래량 추세
+    const recent5 = candles.slice(-5);
+    const recent5Prev = candles.slice(-10, -5);
+    const avgVol5 = recent5.reduce((s, c) => s + (c.volume || 0), 0) / recent5.length;
+    const avgVol5Prev = recent5Prev.length ? recent5Prev.reduce((s, c) => s + (c.volume || 0), 0) / recent5Prev.length : avgVol5;
+    const volTrend = avgVol5Prev > 0 ? ((avgVol5 - avgVol5Prev) / avgVol5Prev * 100) : 0;
+    
+    // 거래량 비율 해석
+    let volRatioMeaning;
+    if (volRatio >= 3.0) volRatioMeaning = '극심한 거래량 폭증 — 중요 변수 발생';
+    else if (volRatio >= 2.0) volRatioMeaning = '거래량 급증 — 추세 전환 신호';
+    else if (volRatio >= 1.5) volRatioMeaning = '거래량 증가 — 관심 확대';
+    else if (volRatio >= 0.7) volRatioMeaning = '보통 거래량';
+    else if (volRatio >= 0.3) volRatioMeaning = '거래량 감소 — 관망세';
+    else volRatioMeaning = '극심한 거래량 감소 — 유동성 주의';
+    
+    // 거래량 추세 해석
+    let volTrendMeaning;
+    if (volTrend > 30) volTrendMeaning = '최근 거래량 급증 추세';
+    else if (volTrend > 10) volTrendMeaning = '최근 거래량 증가 추세';
+    else if (volTrend > -10) volTrendMeaning = '거래량 변화 없음';
+    else if (volTrend > -30) volTrendMeaning = '최근 거래량 감소 추세';
+    else volTrendMeaning = '최근 거래량 급감 추세';
+    
+    // 가격-거래량 관계
+    const priceChange5 = candles.length >= 6 ? ((candles[candles.length - 1].close - candles[candles.length - 6].close) / candles[candles.length - 6].close * 100) : 0;
+    let priceVolMeaning;
+    if (priceChange5 > 0 && volTrend > 10) priceVolMeaning = '가격↑ + 거래량↑ = 상승 추세 강화';
+    else if (priceChange5 > 0 && volTrend < -10) priceVolMeaning = '가격↑ + 거래량↓ = 상승 추세 약화 (반전 주의)';
+    else if (priceChange5 < 0 && volTrend > 10) priceVolMeaning = '가격↓ + 거래량↑ = 하락 추세 강화 (추가 하락 가능)';
+    else if (priceChange5 < 0 && volTrend < -10) priceVolMeaning = '가격↓ + 거래량↓ = 하락 추세 약화 (반등 기대)';
+    else priceVolMeaning = '뚜렷한 가격-거래량 괴리 없음';
+    
+    const volCls = volRatio >= 2.0 ? 'up' : volRatio <= 0.5 ? 'down' : 'neutral';
+    
+    html += `<div class="tech-detail-item">
+      <div class="tech-detail-item-label">현재 거래량</div>
+      <div class="tech-detail-item-value ${volCls}">${money.format(Math.round(currentVol))}주</div>
+      <div class="tech-detail-item-sub">20일 평균 대비 ${volRatio.toFixed(1)}배 — ${volRatioMeaning}</div>
+    </div>`;
+    
+    html += `<div class="tech-detail-item">
+      <div class="tech-detail-item-label">20일 평균 거래량</div>
+      <div class="tech-detail-item-value neutral">${money.format(Math.round(avgVol20))}주</div>
+      <div class="tech-detail-item-sub">거래량 기준선</div>
+    </div>`;
+    
+    const trendCls = volTrend > 10 ? 'up' : volTrend < -10 ? 'down' : 'neutral';
+    html += `<div class="tech-detail-item">
+      <div class="tech-detail-item-label">5일 거래량 추세</div>
+      <div class="tech-detail-item-value ${trendCls}">${volTrend > 0 ? '+' : ''}${volTrend.toFixed(1)}%</div>
+      <div class="tech-detail-item-sub">${volTrendMeaning}</div>
+    </div>`;
+    
+    html += `<div class="tech-detail-item">
+      <div class="tech-detail-item-label">가격-거래량 관계</div>
+      <div class="tech-detail-item-value neutral">5일 가격 ${priceChange5 > 0 ? '+' : ''}${priceChange5.toFixed(1)}%</div>
+      <div class="tech-detail-item-sub">${priceVolMeaning}</div>
+    </div>`;
+    
+    html += '</div></div>';
+  }
   
   // 시그널 분석 섹션
   html += '<div class="tech-detail-section">';

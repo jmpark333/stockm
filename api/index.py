@@ -630,6 +630,23 @@ def calc_tech_indicators(code):
             elif prev_stoch_k > prev_stoch_d and c_stoch_k < c_stoch_d:
                 signals.append("스토캐스틱 데드크로스")
                 score -= 10
+    # 거래량 분석
+    if len(candles) >= 10:
+        current_vol = candles[-1].get("volume", 0) or 0
+        recent_vols = [c.get("volume", 0) or 0 for c in candles[-20:]]
+        avg_vol_20 = sum(recent_vols) / len(recent_vols) if recent_vols else 0
+        if avg_vol_20 > 0 and current_vol > 0:
+            vol_ratio = current_vol / avg_vol_20
+            if vol_ratio >= 3.0:
+                signals.append(f"거래량 {vol_ratio:.1f}倍 폭증")
+                score += 5 if cur > (candles[-2].get("close", cur) if len(candles) >= 2 else cur) else -5
+            elif vol_ratio >= 2.0:
+                signals.append(f"거래량 {vol_ratio:.1f}倍 급증")
+                score += 3 if cur > (candles[-2].get("close", cur) if len(candles) >= 2 else cur) else -3
+            elif vol_ratio <= 0.3:
+                signals.append(f"거래량 {vol_ratio:.1f}倍 급감")
+            elif vol_ratio <= 0.5:
+                signals.append(f"거래량 {vol_ratio:.1f}倍 감소")
     if c_ma20:
         pvm = (cur - c_ma20) / c_ma20 * 100
         if pvm > 5:
