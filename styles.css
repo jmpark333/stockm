@@ -1790,14 +1790,15 @@ td {
    ────────────────────────────────────────── */
 
 .tech-detail-modal-box {
-  max-width: 600px;
-  max-height: 80vh;
+  max-width: 900px;
+  width: 90vw;
+  max-height: 85vh;
 }
 
 .tech-detail-body {
-  padding: 20px;
+  padding: 24px;
   overflow-y: auto;
-  max-height: calc(80vh - 60px);
+  max-height: calc(85vh - 60px);
 }
 
 .tech-detail-section {
@@ -1812,10 +1813,10 @@ td {
 }
 
 .tech-detail-section-title {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
   color: var(--accent);
-  margin-bottom: 12px;
+  margin-bottom: 14px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1823,27 +1824,28 @@ td {
 
 .tech-detail-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 12px;
 }
 
 .tech-detail-item {
   background: rgba(15, 23, 42, 0.5);
-  padding: 12px;
+  padding: 14px;
   border-radius: 8px;
   border: 1px solid var(--line);
 }
 
 .tech-detail-item-label {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
-  margin-bottom: 4px;
+  margin-bottom: 6px;
 }
 
 .tech-detail-item-value {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
   font-family: 'SF Mono', 'Consolas', monospace;
+  word-break: keep-all;
 }
 
 .tech-detail-item-value.up {
@@ -1861,15 +1863,16 @@ td {
 .tech-detail-item-sub {
   font-size: 11px;
   color: var(--muted);
-  margin-top: 2px;
+  margin-top: 4px;
+  word-break: keep-all;
 }
 
 .tech-detail-signal {
   background: rgba(15, 23, 42, 0.5);
-  padding: 12px;
+  padding: 14px;
   border-radius: 8px;
   border: 1px solid var(--line);
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 
 .tech-detail-signal:last-child {
@@ -1877,12 +1880,13 @@ td {
 }
 
 .tech-detail-signal-title {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
   display: flex;
   align-items: center;
   gap: 6px;
+  word-break: keep-all;
 }
 
 .tech-detail-signal-title.positive {
@@ -1900,7 +1904,8 @@ td {
 .tech-detail-signal-desc {
   font-size: 12px;
   color: var(--muted);
-  line-height: 1.5;
+  line-height: 1.6;
+  word-break: keep-all;
 }
 
 .tech-detail-signal-score {
@@ -1953,8 +1958,57 @@ td {
 }
 
 /* 모바일 대응 */
-@media (max-width: 600px) {
+@media (max-width: 768px) {
+  .tech-detail-modal-box {
+    max-width: 95vw;
+    width: 95vw;
+    max-height: 90vh;
+    margin: 10px;
+  }
+  
+  .tech-detail-body {
+    padding: 16px;
+    max-height: calc(90vh - 60px);
+  }
+  
+  .tech-detail-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  
+  .tech-detail-item {
+    padding: 12px;
+  }
+  
+  .tech-detail-item-value {
+    font-size: 14px;
+  }
+  
+  .tech-detail-signal {
+    padding: 12px;
+  }
+  
+  .tech-detail-signal-title {
+    font-size: 12px;
+  }
+  
+  .tech-detail-signal-desc {
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 480px) {
   .tech-detail-grid {
     grid-template-columns: 1fr;
+  }
+  
+  .tech-detail-modal-box {
+    max-width: 98vw;
+    width: 98vw;
+    margin: 5px;
+  }
+  
+  .tech-detail-body {
+    padding: 12px;
   }
 }
