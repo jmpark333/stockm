@@ -1890,11 +1890,21 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             chart_data = fetch_chart_data(code)
             # 기술적 지표 추가
-            tech = calc_tech_indicators(code)
-            chart_data["techIndicators"] = tech.get("indicators", {})
-            chart_data["techSignals"] = tech.get("signals", [])
-            chart_data["techSignalScore"] = tech.get("signalScore", 0)
-            chart_data["techSignal"] = tech.get("techSignal", "hold")
+            try:
+                tech = calc_tech_indicators(code)
+                chart_data["techIndicators"] = tech.get("indicators", {})
+                chart_data["techSignals"] = tech.get("signals", [])
+                chart_data["techSignalScore"] = tech.get("signalScore", 0)
+                chart_data["techSignal"] = tech.get("techSignal", "hold")
+            except Exception as e:
+                import traceback
+                tb = traceback.format_exc()
+                print(f"[CHART ERROR] code={code}: {tb}")
+                chart_data["techIndicators"] = {}
+                chart_data["techSignals"] = []
+                chart_data["techSignalScore"] = 0
+                chart_data["techSignal"] = "hold"
+                chart_data["_techError"] = str(e)
             
             # 이동평균선 배열 데이터 추가 (차트용)
             candles = chart_data.get("candles", [])
@@ -1904,7 +1914,7 @@ class Handler(SimpleHTTPRequestHandler):
                     "ma5": calc_sma(closes, 5),
                     "ma20": calc_sma(closes, 20),
                     "ma60": calc_sma(closes, 60),
-                    "ma120": calc_sma(closes, 120) if len(closes) >= 120 else [None] * len(closes),
+                    "ma120": calc_sma(closes, 120) if len(closes) >= 120 else [None] * len(candles),
                 }
                 # RSI 배열
                 chart_data["rsiArray"] = calc_rsi(closes, 14)
