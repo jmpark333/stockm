@@ -871,39 +871,59 @@ function renderTechDetailContent(name, code, trendData, chartData) {
   html += '<div class="tech-detail-grid">';
   
   // 이동평균선
+  const currentPrice = chartData.candles?.length ? chartData.candles[chartData.candles.length - 1].close : null;
   if (indicators.ma5) {
-    const diff5 = chartData.candles?.length ? ((chartData.candles[chartData.candles.length - 1].close - indicators.ma5) / indicators.ma5 * 100) : 0;
+    const diff5 = currentPrice ? ((currentPrice - indicators.ma5) / indicators.ma5 * 100) : 0;
+    const ma5Meaning = diff5 > 0 ? '주가가 MA5 위 (단기 강세)' : '주가가 MA5 아래 (단기 약세)';
     html += `<div class="tech-detail-item">
       <div class="tech-detail-item-label">MA5 (5일선)</div>
       <div class="tech-detail-item-value ${diff5 > 0 ? 'up' : 'down'}">${money.format(Math.round(indicators.ma5))}원</div>
-      <div class="tech-detail-item-sub">${diff5 > 0 ? '+' : ''}${diff5.toFixed(1)}%</div>
+      <div class="tech-detail-item-sub">${diff5 > 0 ? '+' : ''}${diff5.toFixed(1)}% — ${ma5Meaning}</div>
     </div>`;
   }
   if (indicators.ma20) {
-    const diff20 = chartData.candles?.length ? ((chartData.candles[chartData.candles.length - 1].close - indicators.ma20) / indicators.ma20 * 100) : 0;
+    const diff20 = currentPrice ? ((currentPrice - indicators.ma20) / indicators.ma20 * 100) : 0;
+    const ma20Meaning = diff20 > 5 ? '과열권 — 조정 가능' : diff20 < -5 ? '과침권 — 반등 가능' : diff20 > 0 ? '주가가 MA20 위 (중기 강세)' : '주가가 MA20 아래 (중기 약세)';
     html += `<div class="tech-detail-item">
       <div class="tech-detail-item-label">MA20 (20일선)</div>
       <div class="tech-detail-item-value ${diff20 > 0 ? 'up' : 'down'}">${money.format(Math.round(indicators.ma20))}원</div>
-      <div class="tech-detail-item-sub">${diff20 > 0 ? '+' : ''}${diff20.toFixed(1)}%</div>
+      <div class="tech-detail-item-sub">${diff20 > 0 ? '+' : ''}${diff20.toFixed(1)}% — ${ma20Meaning}</div>
     </div>`;
   }
   if (indicators.ma60) {
-    const diff60 = chartData.candles?.length ? ((chartData.candles[chartData.candles.length - 1].close - indicators.ma60) / indicators.ma60 * 100) : 0;
+    const diff60 = currentPrice ? ((currentPrice - indicators.ma60) / indicators.ma60 * 100) : 0;
+    const ma60Meaning = diff60 > 10 ? '장기 상승 추세 강화' : diff60 < -10 ? '장기 하락 추세 심화' : diff60 > 0 ? '주가가 MA60 위 (장기 강세)' : '주가가 MA60 아래 (장기 약세)';
     html += `<div class="tech-detail-item">
       <div class="tech-detail-item-label">MA60 (60일선)</div>
       <div class="tech-detail-item-value ${diff60 > 0 ? 'up' : 'down'}">${money.format(Math.round(indicators.ma60))}원</div>
-      <div class="tech-detail-item-sub">${diff60 > 0 ? '+' : ''}${diff60.toFixed(1)}%</div>
+      <div class="tech-detail-item-sub">${diff60 > 0 ? '+' : ''}${diff60.toFixed(1)}% — ${ma60Meaning}</div>
     </div>`;
   }
   
   // RSI
   if (indicators.rsi14 !== null && indicators.rsi14 !== undefined) {
     const rsiCls = indicators.rsi14 > 70 ? 'up' : indicators.rsi14 < 30 ? 'down' : 'neutral';
-    const rsiLabel = indicators.rsi14 > 70 ? '과매수' : indicators.rsi14 < 30 ? '과매도' : '중립';
+    let rsiLabel, rsiMeaning;
+    if (indicators.rsi14 > 70) {
+      rsiLabel = '과매수';
+      rsiMeaning = '상승 과잉 — 하락 전환 가능';
+    } else if (indicators.rsi14 > 60) {
+      rsiLabel = '강세';
+      rsiMeaning = '상승 모멘텀 유지 중';
+    } else if (indicators.rsi14 < 30) {
+      rsiLabel = '과매도';
+      rsiMeaning = '하락 과잉 — 반등 기대';
+    } else if (indicators.rsi14 < 40) {
+      rsiLabel = '약세';
+      rsiMeaning = '하락 모멘텀 지속 중';
+    } else {
+      rsiLabel = '중립';
+      rsiMeaning = '뚜렷한 방향 없음';
+    }
     html += `<div class="tech-detail-item">
       <div class="tech-detail-item-label">RSI (14일)</div>
       <div class="tech-detail-item-value ${rsiCls}">${indicators.rsi14.toFixed(1)}</div>
-      <div class="tech-detail-item-sub">${rsiLabel}</div>
+      <div class="tech-detail-item-sub">${rsiLabel} — ${rsiMeaning}</div>
     </div>`;
   }
   
@@ -912,10 +932,16 @@ function renderTechDetailContent(name, code, trendData, chartData) {
     const macd = indicators.macd;
     if (macd.macd !== null && macd.macd !== undefined) {
       const macdCls = macd.histogram > 0 ? 'up' : 'down';
+      let macdMeaning;
+      if (macd.macd > macd.signal) {
+        macdMeaning = 'MACD > 시그널 — 상승 모멘텀';
+      } else {
+        macdMeaning = 'MACD < 시그널 — 하락 모멘텀';
+      }
       html += `<div class="tech-detail-item">
         <div class="tech-detail-item-label">MACD</div>
         <div class="tech-detail-item-value ${macdCls}">${macd.macd.toFixed(0)}</div>
-        <div class="tech-detail-item-sub">시그널: ${macd.signal?.toFixed(0) || '-'}</div>
+        <div class="tech-detail-item-sub">시그널: ${macd.signal?.toFixed(0) || '-'} — ${macdMeaning}</div>
       </div>`;
     }
   }
@@ -923,10 +949,26 @@ function renderTechDetailContent(name, code, trendData, chartData) {
   // 볼린저 밴드
   if (indicators.bollinger) {
     const bb = indicators.bollinger;
+    let bbMeaning = '';
+    if (currentPrice && bb.upper && bb.lower) {
+      const bbRange = bb.upper - bb.lower;
+      const bbPos = ((currentPrice - bb.lower) / bbRange * 100).toFixed(0);
+      if (currentPrice > bb.upper) {
+        bbMeaning = '상단 돌파 — 과열/과매수';
+      } else if (currentPrice < bb.lower) {
+        bbMeaning = '하단 이탈 — 과매도/반등 기대';
+      } else if (bbPos > 80) {
+        bbMeaning = `상단 접근 (${bbPos}%) — 매도 압력`;
+      } else if (bbPos < 20) {
+        bbMeaning = `하단 접근 (${bbPos}%) — 매수 기회`;
+      } else {
+        bbMeaning = `밴드 내 위치 (${bbPos}%)`;
+      }
+    }
     html += `<div class="tech-detail-item">
       <div class="tech-detail-item-label">볼린저 밴드</div>
       <div class="tech-detail-item-value neutral">중간: ${bb.middle ? money.format(Math.round(bb.middle)) : '-'}</div>
-      <div class="tech-detail-item-sub">상단: ${bb.upper ? money.format(Math.round(bb.upper)) : '-'} / 하단: ${bb.lower ? money.format(Math.round(bb.lower)) : '-'}</div>
+      <div class="tech-detail-item-sub">상단: ${bb.upper ? money.format(Math.round(bb.upper)) : '-'} / 하단: ${bb.lower ? money.format(Math.round(bb.lower)) : '-'} — ${bbMeaning}</div>
     </div>`;
   }
   
@@ -934,10 +976,20 @@ function renderTechDetailContent(name, code, trendData, chartData) {
   if (indicators.stochastic) {
     const stoch = indicators.stochastic;
     const stochCls = stoch.k > 80 ? 'up' : stoch.k < 20 ? 'down' : 'neutral';
+    let stochMeaning;
+    if (stoch.k > 80) {
+      stochMeaning = '과매수 — 하락 전환 가능';
+    } else if (stoch.k < 20) {
+      stochMeaning = '과매도 — 반등 기대';
+    } else if (stoch.k > stoch.d) {
+      stochMeaning = '%K > %D — 단기 상승 모멘텀';
+    } else {
+      stochMeaning = '%K < %D — 단기 하락 모멘텀';
+    }
     html += `<div class="tech-detail-item">
       <div class="tech-detail-item-label">스토캐스틱</div>
       <div class="tech-detail-item-value ${stochCls}">%K: ${stoch.k?.toFixed(1) || '-'}</div>
-      <div class="tech-detail-item-sub">%D: ${stoch.d?.toFixed(1) || '-'}</div>
+      <div class="tech-detail-item-sub">%D: ${stoch.d?.toFixed(1) || '-'} — ${stochMeaning}</div>
     </div>`;
   }
   
