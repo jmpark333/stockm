@@ -1997,9 +1997,29 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
         for i, article in enumerate(kr_market_news[:5], 1):
             kr_news_ctx += f"{i}. {article['title']}\n"
 
+    # 사용자가 언급한 종목의 뉴스 강조 (사이드바 뉴스 활용)
+    mentioned_stock_news = ""
+    if news:
+        for stock_news in news:
+            stock_name = stock_news.get("name", "")
+            articles = stock_news.get("articles", [])
+            if stock_name and stock_name in user_message and articles:
+                mentioned_stock_news += f"\n📰 {stock_name} 관련 뉴스:\n"
+                for a in articles[:3]:
+                    title = a.get("title", "")
+                    source = a.get("source", "")
+                    if title:
+                        mentioned_stock_news += f"• {title}"
+                        if source:
+                            mentioned_stock_news += f" ({source})"
+                        mentioned_stock_news += "\n"
+
     # 프롬프트: 뉴스를 가장 먼저 배치
     system_prompt = f"오늘 {today_str} {now_kst.strftime('%H:%M')}. 위 데이터만 사용. 할루네이션 금지. think출력금지. 결론→근거(뉴스인용)→유의사항 4줄.\n\n"
-    # 뉴스를 프롬프트 가장 앞쪽에 배치
+    # 사용자가 언급한 종목 뉴스를 프롬프트 가장 앞쪽에 배치
+    if mentioned_stock_news:
+        system_prompt += f"[중요] 사용자가 질문한 종목의 최신 뉴스입니다:\n{mentioned_stock_news}\n"
+    # 뉴스를 프롬프트 앞쪽에 배치
     if kr_news_ctx:
         system_prompt += f"{kr_news_ctx}\n"
     if us_news_ctx:
