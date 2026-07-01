@@ -1152,7 +1152,20 @@ function renderTechDetailContent(name, code, trendData, chartData) {
   
   // 시그널 분석 섹션
   html += '<div class="tech-detail-section">';
-  html += '<div class="tech-detail-section-title">🎯 시그널 분석</div>';
+
+  // 시그널 요약
+  let signalSummary = '특이사항 없음';
+  if (signals.length > 0) {
+    let posCount = 0, negCount = 0;
+    signals.forEach(s => {
+      if (s.includes('매수') || s.includes('상승') || s.includes('골든') || s.includes('과매도')) posCount++;
+      if (s.includes('매도') || s.includes('하락') || s.includes('데드') || s.includes('과매수')) negCount++;
+    });
+    if (posCount > negCount) signalSummary = `매수 신호 ${posCount}건 우세 — 상승 모멘텀 기대`;
+    else if (negCount > posCount) signalSummary = `매도 신호 ${negCount}건 우세 — 하락 주의`;
+    else signalSummary = `매수·매도 신호 혼재 — 관망 추천`;
+  }
+  html += `<div class="tech-detail-section-title">🎯 시그널 분석 <span style="font-size:12px;font-weight:500;color:var(--muted);margin-left:8px">${signalSummary}</span></div>`;
   
   // 시그널 설명 매핑
   const signalDescriptions = {
