@@ -297,7 +297,8 @@ function showChartModal(name, code, avgPrice) {
     });
     lwChart.priceScale('volume').applyOptions({
       scaleMargins: { top: 0.85, bottom: 0 },
-      visible: false,
+      borderVisible: false,
+      ticksVisible: false,
     });
 
     const candleData = candles.map(c => ({
