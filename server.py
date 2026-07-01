@@ -1946,7 +1946,9 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
     if us_news_ctx:
         system_prompt += f"{us_news_ctx}\n"
     system_prompt += f"{context}\n"
-    system_prompt += "규칙: 위 데이터만 사용, 간결 답변, 할루네이션 금지.\n"
+    system_prompt += "규칙: 위 데이터만 사용, 간결 답변, 할루네이션 금지. "
+    system_prompt += "절대 논리적 추론과정, 사고 과정, 분석 과정을 출력하지 마. "
+    system_prompt += "최종 답변만 출력해. 마크다운으로 핵심만.\n"
 
     messages = [{"role": "system", "content": system_prompt}]
     sliced = history[-5:] if history else []
