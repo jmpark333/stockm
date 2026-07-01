@@ -1965,9 +1965,10 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
         system_prompt += f"{us_news_ctx}\n"
     system_prompt += f"{context}\n"
     system_prompt += "규칙: 위 데이터만 사용, 할루네이션 금지. "
-    system_prompt += "중요: <think>, think, reasoning, 분석, 사고, 추론 같은 내부 과정을 절대 출력하지 마. "
-    system_prompt += "사용자에게 바로 답변만 전달하세요. "
-    system_prompt += "답변 형식: 결론 → 근거(2~3개) → 유의사항 순서로 4~5줄 작성.\n"
+    system_prompt += "중요: [종목별 최신 뉴스]에 있는 뉴스를 반드시 활용하세요. "
+    system_prompt += "특정 종목을 물어보면 해당 종목의 뉴스를 인용하여 답변하세요. "
+    system_prompt += "절대 <think>, think, reasoning 같은 내부 과정을 출력하지 마. "
+    system_prompt += "답변 형식: 결론 → 근거(뉴스 인용 포함) → 유의사항 순서로 4~5줄 작성.\n"
 
     messages = [{"role": "system", "content": system_prompt}]
     sliced = history[-5:] if history else []
