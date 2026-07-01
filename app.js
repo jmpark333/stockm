@@ -1164,6 +1164,9 @@ function renderTechDetailContent(name, code, trendData, chartData) {
     'MACD 히스토그램 음전환': 'MACD와 시그널 차이가 음전환 — 하락 모멘텀 시작',
     'RSI 과매수': 'RSI 70 이상 — 상승 과잉, 하락 전환 가능',
     'RSI 과매도': 'RSI 30 이하 — 하락 과잉, 반등 기대',
+    'RSI 강세': 'RSI 60-70 — 상승 모멘텀 유지 중',
+    'RSI 약세': 'RSI 30-40 — 하락 모멘텀 지속 중',
+    'RSI 중립': 'RSI 40-60 — 뚜렷한 방향 없음',
     '볼린저 상단 돌파': '주가가 볼린저 밴드 상단 돌파 — 과열 상태',
     '볼린저 하단 이탈': '주가가 볼린저 밴드 하단 이탈 — 과매도 상태',
     '볼린저 상단 접근': '주가가 볼린저 밴드 상단에 접근 중 — 매도 압력 가능',
@@ -1173,7 +1176,7 @@ function renderTechDetailContent(name, code, trendData, chartData) {
     '스토캐스틱 골든크로스': '%K가 %D를 아래에서 위로 돌파 — 단기 매수 신호',
     '스토캐스틱 데드크로스': '%K가 %D를 위에서 아래로 돌파 — 단기 매도 신호',
     '거래량': '거래량 변화 관련 시그널',
-    'MA20 대비': '20일 이동평균선 대비 주가가 과도하게 벗어남',
+    'MA20 대비': '20일 이동평균선 대비 주가가 과도하게 벗어남 — 과열 또는 과침 상태',
     '거래량 폭증': '평균 대비 3배 이상 거래량 증가 — 중요 변수 발생',
     '거래량 급증': '평균 대비 2배 이상 거래량 증가 — 추세 전환 신호',
     '거래량 급감': '평균 대비 0.3배 이하 거래량 감소 — 유동성 주의',
@@ -1185,7 +1188,7 @@ function renderTechDetailContent(name, code, trendData, chartData) {
       const cls = signal.includes('매수') || signal.includes('상승') || signal.includes('골든') || signal.includes('과매도') ? 'positive' : 
                   signal.includes('매도') || signal.includes('하락') || signal.includes('데드') || signal.includes('과매수') ? 'negative' : 'neutral';
       
-      // 설명 찾기
+      // 설명 찾기 (숫자가 포함된 시그널도 매칭)
       let description = '';
       for (const [key, desc] of Object.entries(signalDescriptions)) {
         if (signal.includes(key)) {
