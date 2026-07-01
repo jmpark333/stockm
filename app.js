@@ -290,17 +290,6 @@ function showChartModal(name, code, avgPrice) {
       wickDownColor: '#26a69a',
     });
 
-    const volumeSeries = lwChart.addHistogramSeries({
-      color: 'rgba(76,175,80,0.3)',
-      priceFormat: { type: 'volume' },
-      priceScaleId: 'volume',
-    });
-    lwChart.priceScale('volume').applyOptions({
-      scaleMargins: { top: 0.85, bottom: 0 },
-      borderVisible: false,
-      ticksVisible: false,
-    });
-
     const candleData = candles.map(c => ({
       time: c.time,
       open: c.open,
@@ -308,14 +297,8 @@ function showChartModal(name, code, avgPrice) {
       low: c.low,
       close: c.close,
     }));
-    const volumeData = candles.map(c => ({
-      time: c.time,
-      value: c.volume,
-      color: c.close >= c.open ? 'rgba(239,83,80,0.3)' : 'rgba(38,166,154,0.3)',
-    }));
 
     candleSeries.setData(candleData);
-    volumeSeries.setData(volumeData);
 
     // 이동평균선 추가
     if (data.maArrays) {
