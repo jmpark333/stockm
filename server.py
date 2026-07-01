@@ -1762,6 +1762,7 @@ def chat_from_zai(messages):
     payload = {
         "model": "glm-5",
         "messages": messages,
+        "thinking": {"type": "disabled"},
         "temperature": 0.7,
         "max_tokens": 2000,
     }
@@ -1862,6 +1863,7 @@ def call_llm(messages):
         payload = {
             "model": "glm-5",
             "messages": messages,
+            "thinking": {"type": "disabled"},
             "temperature": 0.7,
             "max_tokens": 2500,
         }
@@ -2080,6 +2082,11 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
 
     # 프롬프트: 뉴스를 가장 먼저 배치
     system_prompt = f"오늘 {today_str} {now_kst.strftime('%H:%M')}. 위 데이터만 사용. 할루네이션 금지.\n\n"
+    system_prompt += "[절대 규칙] 다음과 같은 표현을 절대 출력하지 마라:\n"
+    system_prompt += "- '사용자가 ~을 물어봤으니', '먼저 ~을 확인해보자', '~해야지', '~해야 해', '~해야겠다'\n"
+    system_prompt += "- '그 다음 ~', 'wait', '아 맞아', '정리해보자', '다시 정리해보자'\n"
+    system_prompt += "- 내부 사고 과정, 분석 과정, 논리적 추론 과정, 사고의 흐름\n"
+    system_prompt += "- 결과만 깔끔하게 출력하라. 과정을 설명하지 마라.\n\n"
     system_prompt += "## 답변 스타일 규칙\n"
     system_prompt += "- 기술적 지표(RSI, MACD, 볼린저밴드, 스토캐스틱, 이동평균선 등)를 구체적인 수치와 함께 반드시 인용할 것\n"
     system_prompt += "- 현재가, 전일종가, 등락률, 거래량 등 수치 데이터를 근거로 제시할 것\n"

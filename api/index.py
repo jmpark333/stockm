@@ -718,6 +718,7 @@ def signal_from_zai(name, code, quote, articles):
     payload = {
         "model": "glm-5",
         "messages": [{"role": "user", "content": prompt}],
+        "thinking": {"type": "disabled"},
         "temperature": 0.3,
         "max_tokens": 600,
     }
@@ -1908,6 +1909,7 @@ def chat_from_zai(messages):
     payload = {
         "model": "glm-5",
         "messages": messages,
+        "thinking": {"type": "disabled"},
         "temperature": 0.7,
         "max_tokens": 2000,
     }
@@ -2005,6 +2007,35 @@ def chat_from_nous(messages, model=None):
         return {"error": str(exc)}
 
 def call_llm(messages):
+    # zai glm-5 우선 사용
+    if ZAI_KEY:
+        payload = {
+            "model": "glm-5",
+            "messages": messages,
+            "thinking": {"type": "disabled"},
+            "temperature": 0.7,
+            "max_tokens": 2500,
+        }
+        headers = {
+            "Authorization": f"Bearer {ZAI_KEY}",
+            "Content-Type": "application/json",
+        }
+        req = urllib.request.Request(
+            ZAI_URL,
+            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                raw = resp.read().decode("utf-8")
+            result = json.loads(raw)
+            content = result["choices"][0]["message"]["content"]
+            if content:
+                return {"reply": content.strip(), "_source": "zai"}
+        except Exception:
+            pass
+    # fallback: nous
     for m in NOUS_MODELS:
         result = chat_from_nous(messages, model=m)
         if "error" not in result:
@@ -2276,6 +2307,11 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
 
     # 프롬프트: 구체적이고 기술적인 답변을 위한 규칙
     system_prompt = f"Stock Manager AI. 오늘 {today_str} {now_kst.strftime('%H:%M')}.\n"
+    system_prompt += "[절대 규칙] 다음과 같은 표현을 절대 출력하지 마라:\n"
+    system_prompt += "- '사용자가 ~을 물어봤으니', '먼저 ~을 확인해보자', '~해야지', '~해야 해', '~해야겠다'\n"
+    system_prompt += "- '그 다음 ~', 'wait', '아 맞아', '정리해보자', '다시 정리해보자'\n"
+    system_prompt += "- 내부 사고 과정, 분석 과정, 논리적 추론 과정, 사고의 흐름\n"
+    system_prompt += "- 결과만 깔끔하게 출력하라. 과정을 설명하지 마라.\n"
     # 사용자가 언급한 종목 뉴스를 프롬프트 가장 앞쪽에 배치
     if mentioned_stock_news:
         system_prompt += f"[중요] 사용자가 질문한 종목의 최신 뉴스입니다:\n{mentioned_stock_news}\n"
