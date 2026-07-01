@@ -2030,7 +2030,15 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
                         mentioned_stock_news += "\n"
 
     # 프롬프트: 뉴스를 가장 먼저 배치
-    system_prompt = f"오늘 {today_str} {now_kst.strftime('%H:%M')}. 위 데이터만 사용. 할루네이션 금지. think출력금지. 결론→근거(뉴스인용)→유의사항 4줄.\n\n"
+    system_prompt = f"오늘 {today_str} {now_kst.strftime('%H:%M')}. 위 데이터만 사용. 할루네이션 금지. think출력금지.\n\n"
+    system_prompt += "## 답변 스타일 규칙\n"
+    system_prompt += "- 기술적 지표(RSI, MACD, 볼린저밴드, 스토캐스틱, 이동평균선 등)를 구체적인 수치와 함께 반드시 인용할 것\n"
+    system_prompt += "- 현재가, 전일종가, 등락률, 거래량 등 수치 데이터를 근거로 제시할 것\n"
+    system_prompt += "- 뉴스 내용을 인용할 때는 출처와 함께 구체적으로 언급할 것\n"
+    system_prompt += "- 결론은 2~3문단으로 작성하고, 각 문단마다 다른 관점(기술적/뉴스/시장심리)에서 분석할 것\n"
+    system_prompt += "- 매매 시그널(매수/매도/관망)을 명확히 제시하고, 목표가와 손절가를 수치로 제시할 것\n"
+    system_prompt += "- 불확실성은 '~할 수 있습니다', '~가능성이 있습니다'와 같이 표현할 것\n"
+    system_prompt += "- 한문단으로 끝내지 말고, 구조화된 답변(기술적 분석, 뉴스 영향, 시장 심리, 종합 판단)을 제공할 것\n\n"
     # 사용자가 언급한 종목 뉴스를 프롬프트 가장 앞쪽에 배치
     if mentioned_stock_news:
         system_prompt += f"[중요] 사용자가 질문한 종목의 최신 뉴스입니다:\n{mentioned_stock_news}\n"

@@ -2204,7 +2204,7 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
                             mentioned_stock_news += f" ({source})"
                         mentioned_stock_news += "\n"
 
-    # 프롬프트: 최소한으로
+    # 프롬프트: 구체적이고 기술적인 답변을 위한 규칙
     system_prompt = f"Stock Manager AI. 오늘 {today_str} {now_kst.strftime('%H:%M')}.\n"
     # 사용자가 언급한 종목 뉴스를 프롬프트 가장 앞쪽에 배치
     if mentioned_stock_news:
@@ -2218,9 +2218,15 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
     if us_news_ctx:
         system_prompt += f"{us_news_ctx}\n"
     system_prompt += f"{context}\n"
-    system_prompt += "규칙: 위 데이터만 사용, 할루네이션 금지. "
-    system_prompt += "절대 논리적 추론과정, 사고 과정, 분석 과정을 출력하지 마. "
-    system_prompt += "핵심 근거와 이유를 간결하게 설명하되, 한 문단 이내로 작성해.\n"
+    system_prompt += "## 답변 스타일 규칙\n"
+    system_prompt += "- 기술적 지표(RSI, MACD, 볼린저밴드, 스토캐스틱, 이동평균선 등)를 구체적인 수치와 함께 반드시 인용할 것\n"
+    system_prompt += "- 현재가, 전일종가, 등락률, 거래량 등 수치 데이터를 근거로 제시할 것\n"
+    system_prompt += "- 뉴스 내용을 인용할 때는 출처와 함께 구체적으로 언급할 것\n"
+    system_prompt += "- 결론은 2~3문단으로 작성하고, 각 문단마다 다른 관점(기술적/뉴스/시장심리)에서 분석할 것\n"
+    system_prompt += "- 매매 시그널(매수/매도/관망)을 명확히 제시하고, 목표가와 손절가를 수치로 제시할 것\n"
+    system_prompt += "- 불확실성은 '~할 수 있습니다', '~가능성이 있습니다'와 같이 표현할 것\n"
+    system_prompt += "- 한문단으로 끝내지 말고, 구조화된 답변(기술적 분석, 뉴스 영향, 시장 심리, 종합 판단)을 제공할 것\n"
+    system_prompt += "- 절대 논리적 추론과정, 사고 과정을 출력하지 마. 결과만 출력할 것\n"
 
     messages = [{"role": "system", "content": system_prompt}]
     sliced = history[-5:] if history else []
