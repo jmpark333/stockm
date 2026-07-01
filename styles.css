@@ -1751,28 +1751,47 @@ td {
   }
 
   .tech-panel {
-    display: none !important;
+    width: 100%;
+    border-left: none;
+    border-top: 1px solid var(--line);
+    padding: 10px 12px;
+    gap: 6px;
+    overflow-y: auto;
+    max-height: 120px;
   }
 
   .tech-panel-header h3 {
     font-size: 12px;
   }
 
+  .tech-panel-header {
+    margin-bottom: 4px;
+  }
+
+  .tech-indicator-section {
+    margin-top: 4px;
+  }
+
+  .tech-indicator-section-title {
+    font-size: 10px;
+    margin-bottom: 3px;
+  }
+
   .tech-indicator-row {
-    padding: 4px 0;
+    padding: 2px 0;
   }
 
   .tech-indicator-label {
-    font-size: 11px;
+    font-size: 10px;
   }
 
   .tech-indicator-value {
-    font-size: 11px;
+    font-size: 10px;
   }
 
   .tech-signal-item {
-    font-size: 10px;
-    padding: 4px 6px;
+    font-size: 9px;
+    padding: 3px 5px;
   }
 
   .chart-modal .modal-head {
