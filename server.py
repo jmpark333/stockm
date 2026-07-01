@@ -236,7 +236,7 @@ def detect_volume_surge(code, current_volume):
         signals.append({
             "type": "volume_surge",
             "severity": "critical" if volume_ratio >= 3.0 else "warning",
-            "message": f"거래량 {volume_ratio:.1f}倍 급증",
+            "message": f"거래량 {volume_ratio:.1f}배 급증",
             "volume_ratio": round(volume_ratio, 2),
             "current_volume": current_volume,
             "avg_volume": round(avg_volume)
@@ -247,7 +247,7 @@ def detect_volume_surge(code, current_volume):
         signals.append({
             "type": "volume_drop",
             "severity": "info",
-            "message": f"거래량 {volume_ratio:.1f}倍 감소",
+            "message": f"거래량 {volume_ratio:.1f}배 감소",
             "volume_ratio": round(volume_ratio, 2)
         })
     
@@ -991,15 +991,15 @@ def calc_tech_indicators(code: str) -> dict:
         if avg_vol_20 > 0 and current_vol > 0:
             vol_ratio = current_vol / avg_vol_20
             if vol_ratio >= 3.0:
-                signals.append(f"거래량 {vol_ratio:.1f}倍 폭증")
+                signals.append(f"거래량 {vol_ratio:.1f}배 폭증")
                 signal_score += 5 if current_close > candles[-2].get("close", current_close) else -5
             elif vol_ratio >= 2.0:
-                signals.append(f"거래량 {vol_ratio:.1f}倍 급증")
+                signals.append(f"거래량 {vol_ratio:.1f}배 급증")
                 signal_score += 3 if current_close > candles[-2].get("close", current_close) else -3
             elif vol_ratio <= 0.3:
-                signals.append(f"거래량 {vol_ratio:.1f}倍 급감")
+                signals.append(f"거래량 {vol_ratio:.1f}배 급감")
             elif vol_ratio <= 0.5:
-                signals.append(f"거래량 {vol_ratio:.1f}倍 감소")
+                signals.append(f"거래량 {vol_ratio:.1f}배 감소")
     
     # 8. 가격 vs 이동평균선 위치
     if current_ma20:

@@ -638,15 +638,15 @@ def calc_tech_indicators(code):
         if avg_vol_20 > 0 and current_vol > 0:
             vol_ratio = current_vol / avg_vol_20
             if vol_ratio >= 3.0:
-                signals.append(f"거래량 {vol_ratio:.1f}倍 폭증")
+                signals.append(f"거래량 {vol_ratio:.1f}배 폭증")
                 score += 5 if cur > (candles[-2].get("close", cur) if len(candles) >= 2 else cur) else -5
             elif vol_ratio >= 2.0:
-                signals.append(f"거래량 {vol_ratio:.1f}倍 급증")
+                signals.append(f"거래량 {vol_ratio:.1f}배 급증")
                 score += 3 if cur > (candles[-2].get("close", cur) if len(candles) >= 2 else cur) else -3
             elif vol_ratio <= 0.3:
-                signals.append(f"거래량 {vol_ratio:.1f}倍 급감")
+                signals.append(f"거래량 {vol_ratio:.1f}배 급감")
             elif vol_ratio <= 0.5:
-                signals.append(f"거래량 {vol_ratio:.1f}倍 감소")
+                signals.append(f"거래량 {vol_ratio:.1f}배 감소")
     if c_ma20:
         pvm = (cur - c_ma20) / c_ma20 * 100
         if pvm > 5:
