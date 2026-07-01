@@ -405,6 +405,270 @@ def fetch_chart_data(code, days=120):
     except Exception as exc:
         return {"code": code, "candles": [], "error": str(exc)}
 
+# ──────────────────────────────────────────
+# 기술적 지표 계산 함수
+# ──────────────────────────────────────────
+import statistics
+
+def calc_sma(data, period):
+    result = [None] * len(data)
+    for i in range(period - 1, len(data)):
+        result[i] = sum(data[i - period + 1:i + 1]) / period
+    return result
+
+def calc_ema(data, period):
+    result = [None] * len(data)
+    if len(data) < period:
+        return result
+    k = 2 / (period + 1)
+    result[period - 1] = sum(data[:period]) / period
+    for i in range(period, len(data)):
+        result[i] = data[i] * k + result[i - 1] * (1 - k)
+    return result
+
+def calc_rsi(closes, period=14):
+    result = [None] * len(closes)
+    if len(closes) < period + 1:
+        return result
+    gains = []
+    losses = []
+    for i in range(1, len(closes)):
+        diff = closes[i] - closes[i - 1]
+        gains.append(max(diff, 0))
+        losses.append(max(-diff, 0))
+    avg_gain = sum(gains[:period]) / period
+    avg_loss = sum(losses[:period]) / period
+    if avg_loss == 0:
+        result[period] = 100.0
+    else:
+        rs = avg_gain / avg_loss
+        result[period] = 100 - (100 / (1 + rs))
+    for i in range(period, len(gains)):
+        avg_gain = (avg_gain * (period - 1) + gains[i]) / period
+        avg_loss = (avg_loss * (period - 1) + losses[i]) / period
+        if avg_loss == 0:
+            result[i + 1] = 100.0
+        else:
+            rs = avg_gain / avg_loss
+            result[i + 1] = 100 - (100 / (1 + rs))
+    return result
+
+def calc_macd(closes, fast=12, slow=26, signal=9):
+    ema_fast = calc_ema(closes, fast)
+    ema_slow = calc_ema(closes, slow)
+    macd_line = [None] * len(closes)
+    for i in range(len(closes)):
+        if ema_fast[i] is not None and ema_slow[i] is not None:
+            macd_line[i] = ema_fast[i] - ema_slow[i]
+    valid_macd = [v for v in macd_line if v is not None]
+    signal_line = [None] * len(closes)
+    if len(valid_macd) >= signal:
+        start_idx = next(i for i, v in enumerate(macd_line) if v is not None)
+        ema_vals = calc_ema(valid_macd, signal)
+        for j, v in enumerate(ema_vals):
+            if v is not None:
+                signal_line[start_idx + j] = v
+    histogram = [None] * len(closes)
+    for i in range(len(closes)):
+        if macd_line[i] is not None and signal_line[i] is not None:
+            histogram[i] = macd_line[i] - signal_line[i]
+    return {"macd": macd_line, "signal": signal_line, "histogram": histogram}
+
+def calc_bollinger_bands(closes, period=20, num_std=2):
+    middle = calc_sma(closes, period)
+    upper = [None] * len(closes)
+    lower = [None] * len(closes)
+    for i in range(period - 1, len(closes)):
+        window = closes[i - period + 1:i + 1]
+        std = statistics.stdev(window) if len(window) > 1 else 0
+        upper[i] = middle[i] + num_std * std
+        lower[i] = middle[i] - num_std * std
+    return {"upper": upper, "middle": middle, "lower": lower}
+
+def calc_stochastic(highs, lows, closes, k_period=14, d_period=3):
+    k_values = [None] * len(closes)
+    for i in range(k_period - 1, len(closes)):
+        window_high = max(highs[i - k_period + 1:i + 1])
+        window_low = min(lows[i - k_period + 1:i + 1])
+        if window_high == window_low:
+            k_values[i] = 50.0
+        else:
+            k_values[i] = ((closes[i] - window_low) / (window_high - window_low)) * 100
+    d_values = [None] * len(closes)
+    for i in range(k_period - 1 + d_period - 1, len(closes)):
+        valid_k = [v for v in k_values[i - d_period + 1:i + 1] if v is not None]
+        if valid_k:
+            d_values[i] = sum(valid_k) / len(valid_k)
+    return {"k": k_values, "d": d_values}
+
+def calc_atr(highs, lows, closes, period=14):
+    result = [None] * len(closes)
+    if len(closes) < 2:
+        return result
+    tr_list = [highs[0] - lows[0]]
+    for i in range(1, len(closes)):
+        tr = max(highs[i] - lows[i], abs(highs[i] - closes[i-1]), abs(lows[i] - closes[i-1]))
+        tr_list.append(tr)
+    if len(tr_list) >= period:
+        result[period - 1] = sum(tr_list[:period]) / period
+        for i in range(period, len(tr_list)):
+            result[i] = (result[i-1] * (period - 1) + tr_list[i]) / period
+    return result
+
+_tech_cache = {}
+_tech_cache_time = {}
+TECH_CACHE_TTL = 300
+
+def calc_tech_indicators(code):
+    import time
+    now = time.time()
+    cached = _tech_cache.get(code)
+    if cached and now - _tech_cache_time.get(code, 0) < TECH_CACHE_TTL:
+        return cached
+    chart = fetch_chart_data(code, days=120)
+    candles = chart.get("candles", [])
+    if len(candles) < 30:
+        return {"indicators": {}, "signals": [], "signalScore": 0, "techSignal": "hold"}
+    closes = [c["close"] for c in candles]
+    highs = [c["high"] for c in candles]
+    lows = [c["low"] for c in candles]
+    ma5 = calc_sma(closes, 5)
+    ma20 = calc_sma(closes, 20)
+    ma60 = calc_sma(closes, 60)
+    ma120 = calc_sma(closes, 120) if len(closes) >= 120 else [None] * len(closes)
+    rsi14 = calc_rsi(closes, 14)
+    macd_data = calc_macd(closes, 12, 26, 9)
+    bb = calc_bollinger_bands(closes, 20, 2.0)
+    stoch = calc_stochastic(highs, lows, closes, 14, 3)
+    atr14 = calc_atr(highs, lows, closes, 14)
+    cur = closes[-1]
+    c_ma5, c_ma20, c_ma60 = ma5[-1], ma20[-1], ma60[-1]
+    c_ma120 = ma120[-1] if ma120 else None
+    c_rsi = rsi14[-1]
+    c_macd = macd_data["macd"][-1]
+    c_signal = macd_data["signal"][-1]
+    c_hist = macd_data["histogram"][-1]
+    c_bb_u = bb["upper"][-1]
+    c_bb_m = bb["middle"][-1]
+    c_bb_l = bb["lower"][-1]
+    c_stoch_k = stoch["k"][-1]
+    c_stoch_d = stoch["d"][-1]
+    c_atr = atr14[-1]
+    prev_macd = macd_data["macd"][-2] if len(macd_data["macd"]) > 1 else None
+    prev_signal = macd_data["signal"][-2] if len(macd_data["signal"]) > 1 else None
+    prev_stoch_k = stoch["k"][-2] if len(stoch["k"]) > 1 else None
+    prev_stoch_d = stoch["d"][-2] if len(stoch["d"]) > 1 else None
+    signals = []
+    score = 0
+    if c_ma5 and c_ma20 and c_ma60:
+        if c_ma5 > c_ma20 > c_ma60:
+            signals.append("정배열 (상승추세)")
+            score += 20
+        elif c_ma5 < c_ma20 < c_ma60:
+            signals.append("역배열 (하락추세)")
+            score -= 20
+    if c_ma5 and c_ma20 and ma5[-2] and ma20[-2]:
+        if ma5[-2] < ma20[-2] and c_ma5 > c_ma20:
+            signals.append("MA5/20 골든크로스")
+            score += 15
+        elif ma5[-2] > ma20[-2] and c_ma5 < c_ma20:
+            signals.append("MA5/20 데드크로스")
+            score -= 15
+    if c_rsi is not None:
+        if c_rsi > 70:
+            signals.append(f"RSI 과매수 ({c_rsi:.1f})")
+            score -= 15
+        elif c_rsi < 30:
+            signals.append(f"RSI 과매도 ({c_rsi:.1f})")
+            score += 15
+        elif c_rsi > 60:
+            signals.append(f"RSI 강세 ({c_rsi:.1f})")
+            score += 5
+        elif c_rsi < 40:
+            signals.append(f"RSI 약세 ({c_rsi:.1f})")
+            score -= 5
+    if c_macd is not None and c_signal is not None:
+        if prev_macd is not None and prev_signal is not None:
+            if prev_macd < prev_signal and c_macd > c_signal:
+                signals.append("MACD 골든크로스")
+                score += 20
+            elif prev_macd > prev_signal and c_macd < c_signal:
+                signals.append("MACD 데드크로스")
+                score -= 20
+        if c_hist is not None:
+            if c_hist > 0:
+                signals.append("MACD 히스토그램 양전환")
+                score += 5
+            else:
+                signals.append("MACD 히스토그램 음전환")
+                score -= 5
+    if c_bb_u and c_bb_l:
+        bb_pos = (cur - c_bb_l) / (c_bb_u - c_bb_l) * 100
+        if cur > c_bb_u:
+            signals.append("볼린저 상단 돌파")
+            score -= 10
+        elif cur < c_bb_l:
+            signals.append("볼린저 하단 이탈")
+            score += 10
+        elif bb_pos > 80:
+            signals.append(f"볼린저 상단 접근 ({bb_pos:.0f}%)")
+            score -= 5
+        elif bb_pos < 20:
+            signals.append(f"볼린저 하단 접근 ({bb_pos:.0f}%)")
+            score += 5
+    if c_stoch_k is not None and c_stoch_d is not None:
+        if c_stoch_k > 80:
+            signals.append(f"스토캐스틱 과매수 ({c_stoch_k:.1f})")
+            score -= 10
+        elif c_stoch_k < 20:
+            signals.append(f"스토캐스틱 과매도 ({c_stoch_k:.1f})")
+            score += 10
+        if prev_stoch_k is not None and prev_stoch_d is not None:
+            if prev_stoch_k < prev_stoch_d and c_stoch_k > c_stoch_d:
+                signals.append("스토캐스틱 골든크로스")
+                score += 10
+            elif prev_stoch_k > prev_stoch_d and c_stoch_k < c_stoch_d:
+                signals.append("스토캐스틱 데드크로스")
+                score -= 10
+    if c_ma20:
+        pvm = (cur - c_ma20) / c_ma20 * 100
+        if pvm > 5:
+            signals.append(f"MA20 대비 +{pvm:.1f}% (과열)")
+            score -= 5
+        elif pvm < -5:
+            signals.append(f"MA20 대비 {pvm:.1f}% (과침)")
+            score += 5
+    tech_signal = "hold"
+    if score >= 30:
+        tech_signal = "strong_buy"
+    elif score >= 15:
+        tech_signal = "buy"
+    elif score <= -30:
+        tech_signal = "strong_sell"
+    elif score <= -15:
+        tech_signal = "sell"
+    result = {
+        "indicators": {
+            "ma5": round(c_ma5, 0) if c_ma5 else None,
+            "ma20": round(c_ma20, 0) if c_ma20 else None,
+            "ma60": round(c_ma60, 0) if c_ma60 else None,
+            "ma120": round(c_ma120, 0) if c_ma120 else None,
+            "rsi14": round(c_rsi, 2) if c_rsi else None,
+            "macd": {"macd": round(c_macd, 2) if c_macd else None, "signal": round(c_signal, 2) if c_signal else None, "histogram": round(c_hist, 2) if c_hist else None},
+            "bollinger": {"upper": round(c_bb_u, 0) if c_bb_u else None, "middle": round(c_bb_m, 0) if c_bb_m else None, "lower": round(c_bb_l, 0) if c_bb_l else None},
+            "stochastic": {"k": round(c_stoch_k, 2) if c_stoch_k else None, "d": round(c_stoch_d, 2) if c_stoch_d else None},
+            "atr14": round(c_atr, 0) if c_atr else None,
+        },
+        "signals": signals,
+        "signalScore": score,
+        "techSignal": tech_signal,
+        "currentPrice": cur,
+        "dataPoints": len(candles),
+    }
+    _tech_cache[code] = result
+    _tech_cache_time[code] = now
+    return result
+
 def signal_from_zai(name, code, quote, articles):
     titles = "\n".join(a.get("title", "") for a in articles[:6])
     cp = quote.get("currentPrice")
@@ -854,8 +1118,29 @@ def api_chart():
     code = request.args.get("code")
     if not code:
         return Response(json.dumps({"error": "code parameter required"}), status=400, mimetype="application/json")
+    chart_data = fetch_chart_data(code)
+    try:
+        tech = calc_tech_indicators(code)
+        chart_data["techIndicators"] = tech.get("indicators", {})
+        chart_data["techSignals"] = tech.get("signals", [])
+        chart_data["techSignalScore"] = tech.get("signalScore", 0)
+        chart_data["techSignal"] = tech.get("techSignal", "hold")
+    except Exception as e:
+        chart_data["techIndicators"] = {}
+        chart_data["techSignals"] = []
+        chart_data["techSignalScore"] = 0
+        chart_data["techSignal"] = "hold"
+    candles = chart_data.get("candles", [])
+    if len(candles) >= 5:
+        closes = [c["close"] for c in candles]
+        chart_data["maArrays"] = {
+            "ma5": calc_sma(closes, 5),
+            "ma20": calc_sma(closes, 20),
+            "ma60": calc_sma(closes, 60),
+            "ma120": calc_sma(closes, 120) if len(closes) >= 120 else [None] * len(candles),
+        }
     return Response(
-        json.dumps(fetch_chart_data(code), ensure_ascii=False),
+        json.dumps(chart_data, ensure_ascii=False),
         mimetype="application/json",
         headers={"Cache-Control": "no-store", "Access-Control-Allow-Origin": "*"},
     )
