@@ -718,7 +718,6 @@ def signal_from_zai(name, code, quote, articles):
     payload = {
         "model": "glm-5",
         "messages": [{"role": "user", "content": prompt}],
-        "thinking": {"type": "disabled"},
         "temperature": 0.3,
         "max_tokens": 600,
     }
@@ -737,11 +736,7 @@ def signal_from_zai(name, code, quote, articles):
         with urllib.request.urlopen(req, timeout=15) as resp:
             raw = resp.read().decode("utf-8")
         result = json.loads(raw)
-        msg = result["choices"][0]["message"]
-        content = msg.get("content", "") or ""
-        reasoning = msg.get("reasoning_content", "") or ""
-        if reasoning:
-            print(f"[signal_from_zai] GLM-5 reasoning_content detected ({len(reasoning)} chars), ignoring", flush=True)
+        content = result["choices"][0]["message"]["content"]
         match = re.search(r"\{.*\}", content, re.DOTALL)
         if match:
             parsed = json.loads(match.group())
@@ -1913,7 +1908,6 @@ def chat_from_zai(messages):
     payload = {
         "model": "glm-5",
         "messages": messages,
-        "thinking": {"type": "disabled"},
         "temperature": 0.7,
         "max_tokens": 2000,
     }
@@ -1932,11 +1926,7 @@ def chat_from_zai(messages):
         with urllib.request.urlopen(req, timeout=30) as resp:
             raw = resp.read().decode("utf-8")
         result = json.loads(raw)
-        msg = result["choices"][0]["message"]
-        content = msg.get("content", "") or ""
-        reasoning = msg.get("reasoning_content", "") or ""
-        if reasoning:
-            print(f"[chat_from_zai] GLM-5 reasoning_content detected ({len(reasoning)} chars), ignoring", flush=True)
+        content = result["choices"][0]["message"]["content"]
         return {"reply": content.strip(), "_source": "zai"}
     except urllib.error.HTTPError as exc:
         if exc.code in (429, 401, 403):
@@ -2286,11 +2276,6 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
 
     # 프롬프트: 구체적이고 기술적인 답변을 위한 규칙
     system_prompt = f"Stock Manager AI. 오늘 {today_str} {now_kst.strftime('%H:%M')}.\n"
-    system_prompt += "[절대 규칙] 다음과 같은 표현을 절대 출력하지 마라:\n"
-    system_prompt += "- '사용자가 ~을 물어봤으니', '먼저 ~을 확인해보자', '~해야지', '~해야 해'\n"
-    system_prompt += "- '먼저 ~부터', '그 다음 ~', 'wait', '아 맞아'\n"
-    system_prompt += "- 내부 사고 과정, 분석 과정, 논리적 추론 과정\n"
-    system_prompt += "- 결과만 깔끔하게 출력하라. 과정을 설명하지 마라.\n\n"
     # 사용자가 언급한 종목 뉴스를 프롬프트 가장 앞쪽에 배치
     if mentioned_stock_news:
         system_prompt += f"[중요] 사용자가 질문한 종목의 최신 뉴스입니다:\n{mentioned_stock_news}\n"
@@ -2310,38 +2295,15 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
     system_prompt += "- 결론은 2~3문단으로 작성하고, 각 문단마다 다른 관점(기술적/뉴스/시장심리)에서 분석할 것\n"
     system_prompt += "- 매매 시그널(매수/매도/관망)을 명확히 제시하고, 목표가와 손절가를 수치로 제시할 것\n"
     system_prompt += "- 불확실성은 '~할 수 있습니다', '~가능성이 있습니다'와 같이 표현할 것\n"
-    system_prompt += "- 한문단으로 끝내지 말고, 구조화된 답변(기술적 분석, 뉴스 영향, 시장 심리, 종합 판단)을 제공할 것\n"
-    system_prompt += "- 절대 논리적 추론과정, 사고 과정을 출력하지 마. 결과만 출력할 것\n"
+    system_prompt += "- 한문단으로 끝내지 말고, 구조화된 답변(기술적 분석, 뉴스 영향, 시장 심리, 종합 판단)을 제공할 것\n\n"
 
     messages = [{"role": "system", "content": system_prompt}]
     sliced = history[-5:] if history else []
     for h in sliced:
-        # assistant 답변만 포함 (사용자 질문은 제외 - AI 혼동 방지)
-        if h.get("role") == "assistant":
-            messages.append({"role": "assistant", "content": h["content"][:300]})
+        messages.append({"role": h["role"], "content": h["content"][:150]})
     messages.append({"role": "user", "content": user_message})
     result = call_llm(messages)
     reply = result["reply"]
-    # 추론 과정 필터링 - 다양한 패턴 제거
-    reply = re.sub(r'<think>[\s\S]*?</think>', '', reply)
-    reply = re.sub(r'<think>.*$', '', reply, flags=re.DOTALL)
-    reply = re.sub(r'<thinking>[\s\S]*?</thinking>', '', reply)
-    # 한국어 추론 패턴 필터링
-    reply = re.sub(r'사용자가.*?물어봤어.*?\n', '', reply, flags=re.DOTALL)
-    reply = re.sub(r'사용자가.*?물어봤으니.*?\n', '', reply, flags=re.DOTALL)
-    reply = re.sub(r'먼저.*?확인해보자\.', '', reply, flags=re.DOTALL)
-    reply = re.sub(r'먼저.*?정리하자면:', '', reply, flags=re.DOTALL)
-    reply = re.sub(r'아.*?맞아.*?\n', '', reply, flags=re.DOTALL)
-    reply = re.sub(r'Wait,.*?\n', '', reply, flags=re.DOTALL)
-    reply = re.sub(r'wait,.*?\n', '', reply, flags=re.DOTALL)
-    reply = re.sub(r'그 다음.*?작성해야 해.*?\n', '', reply, flags=re.DOTALL)
-    reply = re.sub(r'그 다음.*?해야지.*?\n', '', reply, flags=re.DOTALL)
-    reply = re.sub(r'~을 물어봤으니.*?\n', '', reply, flags=re.DOTALL)
-    reply = re.sub(r'~을 물어봤어.*?\n', '', reply, flags=re.DOTALL)
-    reply = re.sub(r'먼저.*?부터.*?\n', '', reply, flags=re.DOTALL)
-    reply = re.sub(r'다시 정리해보자:', '', reply, flags=re.DOTALL)
-    reply = re.sub(r'작성해보자:', '', reply, flags=re.DOTALL)
-    reply = re.sub(r'주어진 데이터를 기반으로.*?\n', '', reply, flags=re.DOTALL)
     reply = re.sub(r'\n{3,}', '\n\n', reply)
     reply = re.sub(r'\n*📚\s*출처[:：][\s\S]*$', '', reply).rstrip()
     h_refs = re.findall(r'\[H(\d+)\]', reply) if sliced else []

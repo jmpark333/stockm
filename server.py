@@ -1091,7 +1091,6 @@ def signal_from_zai(name, code, quote, articles):
     payload = {
         "model": "glm-5",
         "messages": [{"role": "user", "content": prompt}],
-        "thinking": {"type": "disabled"},
         "temperature": 0.3,
         "max_tokens": 600,
     }
@@ -1109,11 +1108,7 @@ def signal_from_zai(name, code, quote, articles):
         with urllib.request.urlopen(req, timeout=20) as resp:
             raw = resp.read().decode("utf-8")
         result = json.loads(raw)
-        msg = result["choices"][0]["message"]
-        content = msg.get("content", "") or ""
-        reasoning = msg.get("reasoning_content", "") or ""
-        if reasoning:
-            print(f"[signal_from_zai] GLM-5 reasoning_content detected ({len(reasoning)} chars), ignoring", flush=True)
+        content = result["choices"][0]["message"]["content"]
         match = re.search(r"\{.*\}", content, re.DOTALL)
         if match:
             parsed = json.loads(match.group())
@@ -1767,7 +1762,6 @@ def chat_from_zai(messages):
     payload = {
         "model": "glm-5",
         "messages": messages,
-        "thinking": {"type": "disabled"},
         "temperature": 0.7,
         "max_tokens": 2000,
     }
@@ -1785,11 +1779,7 @@ def chat_from_zai(messages):
         with urllib.request.urlopen(req, timeout=30) as resp:
             raw = resp.read().decode("utf-8")
         result = json.loads(raw)
-        msg = result["choices"][0]["message"]
-        content = msg.get("content", "") or ""
-        reasoning = msg.get("reasoning_content", "") or ""
-        if reasoning:
-            print(f"[chat_from_zai] GLM-5 reasoning_content detected ({len(reasoning)} chars), ignoring", flush=True)
+        content = result["choices"][0]["message"]["content"]
         return {"reply": content.strip(), "_source": "zai"}
     except urllib.error.HTTPError as exc:
         if exc.code in (429, 401, 403):
@@ -1872,7 +1862,6 @@ def call_llm(messages):
         payload = {
             "model": "glm-5",
             "messages": messages,
-            "thinking": {"type": "disabled"},
             "temperature": 0.7,
             "max_tokens": 2500,
         }
@@ -1890,11 +1879,7 @@ def call_llm(messages):
             with urllib.request.urlopen(req, timeout=60) as resp:
                 raw = resp.read().decode("utf-8")
             result = json.loads(raw)
-            msg = result["choices"][0]["message"]
-            content = msg.get("content", "") or ""
-            reasoning = msg.get("reasoning_content", "") or ""
-            if reasoning:
-                print(f"[call_llm] GLM-5 reasoning_content detected ({len(reasoning)} chars), ignoring", flush=True)
+            content = result["choices"][0]["message"]["content"]
             if content:
                 return {"reply": content.strip(), "_source": "zai"}
         except Exception:
@@ -2095,11 +2080,6 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
 
     # 프롬프트: 뉴스를 가장 먼저 배치
     system_prompt = f"오늘 {today_str} {now_kst.strftime('%H:%M')}. 위 데이터만 사용. 할루네이션 금지.\n\n"
-    system_prompt += "[절대 규칙] 다음과 같은 표현을 절대 출력하지 마라:\n"
-    system_prompt += "- '사용자가 ~을 물어봤으니', '먼저 ~을 확인해보자', '~해야지', '~해야 해'\n"
-    system_prompt += "- '먼저 ~부터', '그 다음 ~', 'wait', '아 맞아'\n"
-    system_prompt += "- 내부 사고 과정, 분석 과정, 논리적 추론 과정\n"
-    system_prompt += "- 결과만 깔끔하게 출력하라. 과정을 설명하지 마라.\n\n"
     system_prompt += "## 답변 스타일 규칙\n"
     system_prompt += "- 기술적 지표(RSI, MACD, 볼린저밴드, 스토캐스틱, 이동평균선 등)를 구체적인 수치와 함께 반드시 인용할 것\n"
     system_prompt += "- 현재가, 전일종가, 등락률, 거래량 등 수치 데이터를 근거로 제시할 것\n"
@@ -2126,32 +2106,10 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
     messages = [{"role": "system", "content": system_prompt}]
     sliced = history[-5:] if history else []
     for h in sliced:
-        # assistant 답변만 포함 (사용자 질문은 제외 - AI 혼동 방지)
-        if h.get("role") == "assistant":
-            messages.append({"role": "assistant", "content": h["content"][:300]})
+        messages.append({"role": h["role"], "content": h["content"][:150]})
     messages.append({"role": "user", "content": user_message})
     result = call_llm(messages)
     reply = result["reply"]
-    # 추론 과정 필터링 - 다양한 패턴 제거
-    reply = re.sub(r'<think>[\s\S]*?</think>', '', reply)
-    reply = re.sub(r'<think>.*$', '', reply, flags=re.DOTALL)
-    reply = re.sub(r'<thinking>[\s\S]*?</thinking>', '', reply)
-    # 한국어 추론 패턴 필터링
-    reply = re.sub(r'사용자가.*?물어봤어.*?\n', '', reply, flags=re.DOTALL)
-    reply = re.sub(r'사용자가.*?물어봤으니.*?\n', '', reply, flags=re.DOTALL)
-    reply = re.sub(r'먼저.*?확인해보자\.', '', reply, flags=re.DOTALL)
-    reply = re.sub(r'먼저.*?정리하자면:', '', reply, flags=re.DOTALL)
-    reply = re.sub(r'아.*?맞아.*?\n', '', reply, flags=re.DOTALL)
-    reply = re.sub(r'Wait,.*?\n', '', reply, flags=re.DOTALL)
-    reply = re.sub(r'wait,.*?\n', '', reply, flags=re.DOTALL)
-    reply = re.sub(r'그 다음.*?작성해야 해.*?\n', '', reply, flags=re.DOTALL)
-    reply = re.sub(r'그 다음.*?해야지.*?\n', '', reply, flags=re.DOTALL)
-    reply = re.sub(r'~을 물어봤으니.*?\n', '', reply, flags=re.DOTALL)
-    reply = re.sub(r'~을 물어봤어.*?\n', '', reply, flags=re.DOTALL)
-    reply = re.sub(r'먼저.*?부터.*?\n', '', reply, flags=re.DOTALL)
-    reply = re.sub(r'다시 정리해보자:', '', reply, flags=re.DOTALL)
-    reply = re.sub(r'작성해보자:', '', reply, flags=re.DOTALL)
-    reply = re.sub(r'주어진 데이터를 기반으로.*?\n', '', reply, flags=re.DOTALL)
     reply = re.sub(r'\n{3,}', '\n\n', reply)
     reply = re.sub(r'\n*📚\s*출처[:：][\s\S]*$', '', reply).rstrip()
     h_refs = re.findall(r'\[H(\d+)\]', reply) if sliced else []
