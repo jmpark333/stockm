@@ -1095,6 +1095,7 @@ def signal_from_zai(name, code, quote, articles):
     payload = {
         "model": "glm-5",
         "messages": [{"role": "user", "content": prompt}],
+        "stream": True,
         "temperature": 0.3,
         "max_tokens": 600,
     }
@@ -1109,10 +1110,20 @@ def signal_from_zai(name, code, quote, articles):
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=20) as resp:
+        with urllib.request.urlopen(req, timeout=30) as resp:
             raw = resp.read().decode("utf-8")
-        result = json.loads(raw)
-        content = result["choices"][0]["message"]["content"]
+        content = ""
+        for line in raw.split("\n"):
+            line = line.strip()
+            if not line.startswith("data: ") or line == "data: [DONE]":
+                continue
+            try:
+                chunk = json.loads(line[6:])
+                delta = chunk.get("choices", [{}])[0].get("delta", {})
+                if delta.get("content"):
+                    content += delta["content"]
+            except (json.JSONDecodeError, IndexError, KeyError):
+                continue
         match = re.search(r"\{.*\}", content, re.DOTALL)
         if match:
             parsed = json.loads(match.group())
@@ -1763,10 +1774,35 @@ def build_chat_context(portfolio, news):
     
     return "\n".join(lines)
 
+def _strip_thinking_artifacts(text):
+    """Remove model thinking/reasoning artifacts that leak into content."""
+    if not text:
+        return text
+    lines = text.split("\n")
+    cleaned = []
+    skip_patterns = (
+        "사용자가 ", "먼저 ", "아니, ", "그 다음 ", "Wait, ", "먼저 ",
+        "근데 ", "아, ", "음, ", "자, ", "그래서 ", "일단 ",
+        "이렇게?", "이렇게 구조화", "이렇게 해야지", "이렇게 하자",
+        "정리하면", "생각해보자", "분석해보니", "우선,",
+        "요약하면", "결론적으로", "핵심은",
+    )
+    for line in lines:
+        stripped = line.strip()
+        if any(stripped.startswith(p) for p in skip_patterns):
+            continue
+        cleaned.append(line)
+    result = "\n".join(cleaned).strip()
+    if not result:
+        return text
+    return result
+
+
 def chat_from_zai(messages):
     payload = {
         "model": "glm-5",
         "messages": messages,
+        "stream": True,
         "temperature": 0.7,
         "max_tokens": 2000,
     }
@@ -1781,15 +1817,20 @@ def chat_from_zai(messages):
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=60) as resp:
             raw = resp.read().decode("utf-8")
-        result = json.loads(raw)
-        msg = result["choices"][0]["message"]
-        content = msg.get("content") or ""
-        if not content:
-            reasoning = msg.get("reasoning_content") or ""
-            if reasoning:
-                content = reasoning
+        content = ""
+        for line in raw.split("\n"):
+            line = line.strip()
+            if not line.startswith("data: ") or line == "data: [DONE]":
+                continue
+            try:
+                chunk = json.loads(line[6:])
+                delta = chunk.get("choices", [{}])[0].get("delta", {})
+                if delta.get("content"):
+                    content += delta["content"]
+            except (json.JSONDecodeError, IndexError, KeyError):
+                continue
         return {"reply": content.strip(), "_source": "zai"}
     except urllib.error.HTTPError as exc:
         if exc.code in (429, 401, 403):
@@ -1829,7 +1870,7 @@ def chat_from_openrouter(messages, model=None):
         content = msg.get("content") or ""
         if not content:
             return {"error": "empty content"}
-        return {"reply": content.strip(), "_source": "openrouter"}
+        return {"reply": _strip_thinking_artifacts(content).strip(), "_source": "openrouter"}
     except Exception as exc:
         return {"error": str(exc)}
 
@@ -1862,7 +1903,7 @@ def chat_from_nous(messages, model=None):
         content = msg.get("content") or ""
         if not content:
             return {"error": "empty content"}
-        return {"reply": content.strip(), "_source": "nous"}
+        return {"reply": _strip_thinking_artifacts(content).strip(), "_source": "nous"}
     except Exception as exc:
         return {"error": str(exc)}
 
@@ -1872,6 +1913,7 @@ def chat_from_opencode(messages):
     payload = {
         "model": OPENCODE_MODEL,
         "messages": messages,
+        "stream": True,
         "temperature": 0.7,
         "max_tokens": 2500,
     }
@@ -1888,13 +1930,18 @@ def chat_from_opencode(messages):
     try:
         with urllib.request.urlopen(req, timeout=60) as resp:
             raw = resp.read().decode("utf-8")
-        result = json.loads(raw)
-        msg = result["choices"][0]["message"]
-        content = msg.get("content") or ""
-        if not content:
-            reasoning = msg.get("reasoning_content") or ""
-            if reasoning:
-                content = reasoning
+        content = ""
+        for line in raw.split("\n"):
+            line = line.strip()
+            if not line.startswith("data: ") or line == "data: [DONE]":
+                continue
+            try:
+                chunk = json.loads(line[6:])
+                delta = chunk.get("choices", [{}])[0].get("delta", {})
+                if delta.get("content"):
+                    content += delta["content"]
+            except (json.JSONDecodeError, IndexError, KeyError):
+                continue
         if not content:
             return {"error": "empty content"}
         return {"reply": content.strip(), "_source": "opencode"}
@@ -1912,6 +1959,7 @@ def call_llm(messages):
         payload = {
             "model": "glm-5",
             "messages": messages,
+            "stream": True,
             "temperature": 0.7,
             "max_tokens": 2500,
         }
@@ -1928,13 +1976,18 @@ def call_llm(messages):
         try:
             with urllib.request.urlopen(req, timeout=60) as resp:
                 raw = resp.read().decode("utf-8")
-            result = json.loads(raw)
-            msg = result["choices"][0]["message"]
-            content = msg.get("content") or ""
-            if not content:
-                reasoning = msg.get("reasoning_content") or ""
-                if reasoning:
-                    content = reasoning
+            content = ""
+            for line in raw.split("\n"):
+                line = line.strip()
+                if not line.startswith("data: ") or line == "data: [DONE]":
+                    continue
+                try:
+                    chunk = json.loads(line[6:])
+                    delta = chunk.get("choices", [{}])[0].get("delta", {})
+                    if delta.get("content"):
+                        content += delta["content"]
+                except (json.JSONDecodeError, IndexError, KeyError):
+                    continue
             if content:
                 return {"reply": content.strip(), "_source": "zai"}
         except Exception:
