@@ -42,6 +42,10 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 OPENROUTER_KEY = os.environ.get("OPENROUTER_KEY", "").strip()
 OPENROUTER_MODELS = ["nex-agi/nex-n2-pro:free", "openai/gpt-oss-120b:free"]
 
+OPENCODE_URL = "https://opencode.ai/zen/go/v1/chat/completions"
+OPENCODE_KEY = os.environ.get("OPENCODE_KEY", "").strip()
+OPENCODE_MODEL = "glm-5.1"
+
 ai_cache: dict[str, dict] = {}
 AI_CACHE_TTL = 300
 
@@ -1858,8 +1862,43 @@ def chat_from_nous(messages, model=None):
     except Exception as exc:
         return {"error": str(exc)}
 
+def chat_from_opencode(messages):
+    if not OPENCODE_KEY:
+        return {"error": "OPENCODE_KEY not set"}
+    payload = {
+        "model": OPENCODE_MODEL,
+        "messages": messages,
+        "temperature": 0.7,
+        "max_tokens": 2500,
+    }
+    headers = {
+        "Authorization": f"Bearer {OPENCODE_KEY}",
+        "Content-Type": "application/json",
+    }
+    req = urllib.request.Request(
+        OPENCODE_URL,
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers=headers,
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            raw = resp.read().decode("utf-8")
+        result = json.loads(raw)
+        content = result["choices"][0]["message"]["content"]
+        if not content:
+            return {"error": "empty content"}
+        return {"reply": content.strip(), "_source": "opencode"}
+    except Exception as exc:
+        return {"error": str(exc)}
+
 def call_llm(messages):
-    # zai glm-5 우선 사용
+    # OpenCode GLM-5.1 우선 사용 (JSON 응답)
+    if OPENCODE_KEY:
+        result = chat_from_opencode(messages)
+        if "error" not in result:
+            return result
+    # fallback: zai glm-5
     if ZAI_KEY:
         payload = {
             "model": "glm-5",
@@ -2088,6 +2127,10 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
     system_prompt += "- '그 다음 ~', 'wait', '아 맞아', '정리해보자', '다시 정리해보자'\n"
     system_prompt += "- 내부 사고 과정, 분석 과정, 논리적 추론 과정, 사고의 흐름\n"
     system_prompt += "- 결과만 깔끔하게 출력하라. 과정을 설명하지 마라.\n\n"
+    system_prompt += "[출력 형식] 반드시 JSON 객체로만 답변하라. 두 개의 필드만 허용한다:\n"
+    system_prompt += '- "final_answer": 사용자에게 보여줄 최종 답변 (마크다운 사용 가능)\n'
+    system_prompt += '- "reasoning": 모델이 사용한 근거, 계산, 중간추론을 간단한 목록으로 (UI에서 숨겨질 내용)\n'
+    system_prompt += '예시: {"final_answer": "SK하이닉스는 현재 RSI 65로...", "reasoning": ["RSI 65는 중립권", "MACD 골든크로스 확인"]}\n\n'
     system_prompt += "## 답변 스타일 규칙\n"
     system_prompt += "- 기술적 지표(RSI, MACD, 볼린저밴드, 스토캐스틱, 이동평균선 등)를 구체적인 수치와 함께 반드시 인용할 것\n"
     system_prompt += "- 현재가, 전일종가, 등락률, 거래량 등 수치 데이터를 근거로 제시할 것\n"
@@ -2118,6 +2161,16 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
     messages.append({"role": "user", "content": user_message})
     result = call_llm(messages)
     reply = result["reply"]
+    
+    # JSON 응답에서 final_answer 추출
+    try:
+        json_match = re.search(r'\{[\s\S]*"final_answer"[\s\S]*\}', reply)
+        if json_match:
+            parsed = json.loads(json_match.group())
+            reply = parsed.get("final_answer", reply)
+    except (json.JSONDecodeError, AttributeError):
+        pass  # JSON 파싱 실패 시 원본 응답 사용
+    
     reply = re.sub(r'\n{3,}', '\n\n', reply)
     reply = re.sub(r'\n*📚\s*출처[:：][\s\S]*$', '', reply).rstrip()
     h_refs = re.findall(r'\[H(\d+)\]', reply) if sliced else []
