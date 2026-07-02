@@ -1767,7 +1767,6 @@ def chat_from_zai(messages):
     payload = {
         "model": "glm-5",
         "messages": messages,
-        "thinking": {"type": "disabled"},
         "temperature": 0.7,
         "max_tokens": 2000,
     }
@@ -1785,7 +1784,12 @@ def chat_from_zai(messages):
         with urllib.request.urlopen(req, timeout=30) as resp:
             raw = resp.read().decode("utf-8")
         result = json.loads(raw)
-        content = result["choices"][0]["message"]["content"]
+        msg = result["choices"][0]["message"]
+        content = msg.get("content") or ""
+        if not content:
+            reasoning = msg.get("reasoning_content") or ""
+            if reasoning:
+                content = reasoning
         return {"reply": content.strip(), "_source": "zai"}
     except urllib.error.HTTPError as exc:
         if exc.code in (429, 401, 403):
@@ -1885,7 +1889,12 @@ def chat_from_opencode(messages):
         with urllib.request.urlopen(req, timeout=60) as resp:
             raw = resp.read().decode("utf-8")
         result = json.loads(raw)
-        content = result["choices"][0]["message"]["content"]
+        msg = result["choices"][0]["message"]
+        content = msg.get("content") or ""
+        if not content:
+            reasoning = msg.get("reasoning_content") or ""
+            if reasoning:
+                content = reasoning
         if not content:
             return {"error": "empty content"}
         return {"reply": content.strip(), "_source": "opencode"}
@@ -1903,7 +1912,6 @@ def call_llm(messages):
         payload = {
             "model": "glm-5",
             "messages": messages,
-            "thinking": {"type": "disabled"},
             "temperature": 0.7,
             "max_tokens": 2500,
         }
@@ -1921,7 +1929,12 @@ def call_llm(messages):
             with urllib.request.urlopen(req, timeout=60) as resp:
                 raw = resp.read().decode("utf-8")
             result = json.loads(raw)
-            content = result["choices"][0]["message"]["content"]
+            msg = result["choices"][0]["message"]
+            content = msg.get("content") or ""
+            if not content:
+                reasoning = msg.get("reasoning_content") or ""
+                if reasoning:
+                    content = reasoning
             if content:
                 return {"reply": content.strip(), "_source": "zai"}
         except Exception:
