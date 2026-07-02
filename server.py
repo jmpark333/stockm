@@ -44,7 +44,7 @@ OPENROUTER_MODELS = ["nex-agi/nex-n2-pro:free", "openai/gpt-oss-120b:free"]
 
 OPENCODE_URL = "https://opencode.ai/zen/go/v1/chat/completions"
 OPENCODE_KEY = os.environ.get("OPENCODE_KEY", "").strip()
-OPENCODE_MODEL = "glm-5.1"
+OPENCODE_MODEL = "glm-5.2"
 
 ai_cache: dict[str, dict] = {}
 AI_CACHE_TTL = 300
@@ -1961,9 +1961,11 @@ def chat_from_opencode(messages):
         with urllib.request.urlopen(req, timeout=60) as resp:
             raw = resp.read().decode("utf-8")
         result = json.loads(raw)
-        content = result["choices"][0]["message"].get("content") or ""
+        choice = result["choices"][0]
+        content = (choice.get("message") or {}).get("content") or ""
+        finish = choice.get("finish_reason")
         if not content:
-            return {"error": "empty content"}
+            return {"error": f"empty content (finish={finish})"}
         return {"reply": _strip_thinking_artifacts(content).strip(), "_source": "opencode"}
     except Exception as exc:
         return {"error": str(exc)}

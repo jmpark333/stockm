@@ -89,8 +89,8 @@ OPENROUTER_KEY = os.environ.get("OPENROUTER_KEY", "").strip()
 OPENROUTER_MODELS = ["nex-agi/nex-n2-pro:free", "openai/gpt-oss-120b:free"]
 
 OPENCODE_URL = "https://opencode.ai/zen/go/v1/chat/completions"
-OPENCODE_KEY = os.environ.get("OPENCODE_KEY", "sk-HVmrlvDtHt8CcgoQjboODaFkyj8PM38LDN85vJA2MSbn5HXhqmNXDQ88iapHmc9c").strip()
-OPENCODE_MODEL = "glm-5.1"
+OPENCODE_KEY = os.environ.get("OPENCODE_KEY", "").strip()
+OPENCODE_MODEL = "glm-5.2"
 
 ai_cache: dict[str, dict] = {}
 AI_CACHE_TTL = 300
@@ -2090,6 +2090,7 @@ def chat_from_opencode(messages):
         "messages": messages,
         "temperature": 0.7,
         "max_tokens": 2500,
+        "thinking": {"type": "disabled"},
     }
     headers = {
         "Authorization": f"Bearer {OPENCODE_KEY}",
@@ -2105,15 +2106,26 @@ def chat_from_opencode(messages):
         with urllib.request.urlopen(req, timeout=60) as resp:
             raw = resp.read().decode("utf-8")
         result = json.loads(raw)
-        content = result["choices"][0]["message"]["content"]
+        choice = result["choices"][0]
+        msg = choice.get("message") or {}
+        content = msg.get("content") or ""
+        finish = choice.get("finish_reason")
+        # GLM-5.2 sometimes emits only reasoning_content when reasoning isn't disabled.
+        # Never expose reasoning_content; require a real content payload.
         if not content:
-            return {"error": "empty content"}
+            return {"error": f"empty content (finish={finish})"}
         return {"reply": _strip_thinking_artifacts(content).strip(), "_source": "opencode"}
     except Exception as exc:
         return {"error": str(exc)}
 
 def call_llm(messages):
-    # Primary: zai glm-5 (현재 OpenCode가 403 Forbidden 발생하여 ZAI 우선)
+    # Primary: OpenCode GLM-5.2 (JSON 응답, thinking disabled)
+    if OPENCODE_KEY:
+        result = chat_from_opencode(messages)
+        if "error" not in result:
+            return result
+        print(f"[call_llm] opencode failed: {result.get('error')}", file=sys.stderr)
+    # fallback: zai glm-5
     if ZAI_KEY:
         payload = {
             "model": "glm-5",
