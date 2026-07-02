@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import sys
 import time
 from datetime import datetime, timezone, timedelta
 import urllib.error
@@ -2117,6 +2118,7 @@ def call_llm(messages):
         result = chat_from_opencode(messages)
         if "error" not in result:
             return result
+        print(f"[call_llm] opencode failed: {result.get('error')}", file=sys.stderr)
     # fallback: zai glm-5
     if ZAI_KEY:
         payload = {
@@ -2143,18 +2145,22 @@ def call_llm(messages):
             content = result["choices"][0]["message"]["content"]
             if content:
                 return {"reply": _strip_thinking_artifacts(content).strip(), "_source": "zai"}
-        except Exception:
-            pass
+            print("[call_llm] zai empty content", file=sys.stderr)
+        except Exception as exc:
+            print(f"[call_llm] zai failed: {exc}", file=sys.stderr)
     # fallback: nous
     for m in NOUS_MODELS:
         result = chat_from_nous(messages, model=m)
         if "error" not in result:
             return result
+        print(f"[call_llm] nous({m}) failed: {result.get('error')}", file=sys.stderr)
     if OPENROUTER_KEY:
         for m in OPENROUTER_MODELS:
             result = chat_from_openrouter(messages, model=m)
             if "error" not in result:
                 return result
+            print(f"[call_llm] openrouter({m}) failed: {result.get('error')}", file=sys.stderr)
+    print("[call_llm] all providers exhausted", file=sys.stderr)
     return {"reply": "죄송합니다. 현재 AI 서비스에 일시적인 문제가 있습니다. 잠시 후 다시 시도해 주세요.", "_source": "fallback"}
 
 MCP_SEARCH_URL = "https://api.z.ai/api/mcp/web_search_prime/mcp"
