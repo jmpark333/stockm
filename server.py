@@ -1311,6 +1311,7 @@ US_INDICES = [
     ("다우존스", "DJI@DJI"),
     ("S&P 500", "SPI@SPX"),
     ("나스닥", "NAS@IXIC"),
+    ("필라델피아 반도체", "SOX@SOX"),
 ]
 
 _us_analysis_cache = {"highlights": [], "summary": "", "_date": ""}
