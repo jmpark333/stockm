@@ -1910,6 +1910,78 @@ def build_chat_context(portfolio, news):
     
     return "\n".join(lines)
 
+
+def _strip_thinking_artifacts(text):
+    """Remove model thinking/reasoning artifacts that leak into content."""
+    if not text:
+        return text
+    lines = text.split("\n")
+    cleaned = []
+    skip_patterns = (
+        "사용자가 ", "먼저 ", "아니, ", "그 다음 ", "Wait, ", "먼저 ",
+        "근데 ", "아, ", "음, ", "자, ", "그래서 ", "일단 ",
+        "이렇게?", "이렇게 구조화", "이렇게 해야지", "이렇게 하자",
+        "정리하면", "생각해보자", "분석해보니", "우선,",
+        "요약하면", "결론적으로", "핵심은",
+    )
+    for line in lines:
+        stripped = line.strip()
+        if any(stripped.startswith(p) for p in skip_patterns):
+            continue
+        cleaned.append(line)
+    result = "\n".join(cleaned).strip()
+    if not result:
+        return text
+    return result
+
+
+def _extract_final_answer(reply):
+    """Extract final_answer from JSON-structured LLM response robustly.
+
+    Never returns reasoning/intermediate content to the user.
+    """
+    if not reply:
+        return ""
+
+    candidate = reply.strip()
+
+    # 1) Try parsing the whole reply as JSON (well-formed case).
+    try:
+        parsed = json.loads(candidate)
+        if isinstance(parsed, dict) and "final_answer" in parsed:
+            fa = parsed.get("final_answer")
+            if isinstance(fa, str) and fa.strip():
+                return _strip_thinking_artifacts(fa).strip()
+            if isinstance(fa, list):
+                return _strip_thinking_artifacts("\n".join(str(x) for x in fa)).strip()
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    # 2) Brace-matching scan for the outermost object with final_answer.
+    stack = []
+    for i, ch in enumerate(candidate):
+        if ch == "{":
+            stack.append(i)
+        elif ch == "}" and stack:
+            start = stack.pop()
+            if stack:
+                continue
+            block = candidate[start: i + 1]
+            try:
+                parsed = json.loads(block)
+            except (json.JSONDecodeError, ValueError):
+                continue
+            if isinstance(parsed, dict) and "final_answer" in parsed:
+                fa = parsed.get("final_answer")
+                if isinstance(fa, str) and fa.strip():
+                    return _strip_thinking_artifacts(fa).strip()
+                if isinstance(fa, list):
+                    return _strip_thinking_artifacts("\n".join(str(x) for x in fa)).strip()
+
+    # 3) Fallback: strip thinking artifacts from the raw reply.
+    return _strip_thinking_artifacts(reply).strip()
+
+
 def chat_from_zai(messages):
     payload = {
         "model": "glm-5",
@@ -1934,7 +2006,7 @@ def chat_from_zai(messages):
             raw = resp.read().decode("utf-8")
         result = json.loads(raw)
         content = result["choices"][0]["message"]["content"]
-        return {"reply": content.strip(), "_source": "zai"}
+        return {"reply": _strip_thinking_artifacts(content).strip(), "_source": "zai"}
     except urllib.error.HTTPError as exc:
         if exc.code in (429, 401, 403):
             return {"error": "rate_limited"}
@@ -1972,7 +2044,7 @@ def chat_from_openrouter(messages, model=None):
         content = result["choices"][0]["message"]["content"]
         if not content:
             return {"error": "empty content"}
-        return {"reply": content.strip(), "_source": "openrouter"}
+        return {"reply": _strip_thinking_artifacts(content).strip(), "_source": "openrouter"}
     except Exception as exc:
         return {"error": str(exc)}
 
@@ -2004,10 +2076,8 @@ def chat_from_nous(messages, model=None):
         msg = result["choices"][0]["message"]
         content = msg.get("content") or ""
         if not content:
-            content = msg.get("reasoning") or ""
-        if not content:
             return {"error": "empty content"}
-        return {"reply": content.strip(), "_source": "nous"}
+        return {"reply": _strip_thinking_artifacts(content).strip(), "_source": "nous"}
     except Exception as exc:
         return {"error": str(exc)}
 
@@ -2037,7 +2107,7 @@ def chat_from_opencode(messages):
         content = result["choices"][0]["message"]["content"]
         if not content:
             return {"error": "empty content"}
-        return {"reply": content.strip(), "_source": "opencode"}
+        return {"reply": _strip_thinking_artifacts(content).strip(), "_source": "opencode"}
     except Exception as exc:
         return {"error": str(exc)}
 
@@ -2072,7 +2142,7 @@ def call_llm(messages):
             result = json.loads(raw)
             content = result["choices"][0]["message"]["content"]
             if content:
-                return {"reply": content.strip(), "_source": "zai"}
+                return {"reply": _strip_thinking_artifacts(content).strip(), "_source": "zai"}
         except Exception:
             pass
     # fallback: nous
@@ -2383,17 +2453,11 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
         messages.append({"role": h["role"], "content": h["content"][:150]})
     messages.append({"role": "user", "content": user_message})
     result = call_llm(messages)
-    reply = result["reply"]
-    
-    # JSON 응답에서 final_answer 추출
-    try:
-        json_match = re.search(r'\{[\s\S]*"final_answer"[\s\S]*\}', reply)
-        if json_match:
-            parsed = json.loads(json_match.group())
-            reply = parsed.get("final_answer", reply)
-    except (json.JSONDecodeError, AttributeError):
-        pass  # JSON 파싱 실패 시 원본 응답 사용
-    
+    reply = result.get("reply") or ""
+
+    # JSON 응답에서 final_answer 추출 (reasoning 노출 방지)
+    reply = _extract_final_answer(reply)
+
     reply = re.sub(r'\n{3,}', '\n\n', reply)
     reply = re.sub(r'\n*📚\s*출처[:：][\s\S]*$', '', reply).rstrip()
     h_refs = re.findall(r'\[H(\d+)\]', reply) if sliced else []
