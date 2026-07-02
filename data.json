@@ -11,14 +11,14 @@
     {
       "code": "005380",
       "name": "현대차",
-      "quantity": 10,
-      "avgPrice": 554500
+      "quantity": 15,
+      "avgPrice": 526000
     },
     {
       "code": "005930",
       "name": "삼성전자",
-      "quantity": 10,
-      "avgPrice": 320750
+      "quantity": 30,
+      "avgPrice": 300250
     }
   ],
   "watchlist": [
