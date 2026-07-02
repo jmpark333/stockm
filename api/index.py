@@ -2113,13 +2113,7 @@ def chat_from_opencode(messages):
         return {"error": str(exc)}
 
 def call_llm(messages):
-    # OpenCode GLM-5.1 우선 사용 (JSON 응답)
-    if OPENCODE_KEY:
-        result = chat_from_opencode(messages)
-        if "error" not in result:
-            return result
-        print(f"[call_llm] opencode failed: {result.get('error')}", file=sys.stderr)
-    # fallback: zai glm-5
+    # Primary: zai glm-5 (현재 OpenCode가 403 Forbidden 발생하여 ZAI 우선)
     if ZAI_KEY:
         payload = {
             "model": "glm-5",
@@ -2148,6 +2142,12 @@ def call_llm(messages):
             print("[call_llm] zai empty content", file=sys.stderr)
         except Exception as exc:
             print(f"[call_llm] zai failed: {exc}", file=sys.stderr)
+    # Secondary: OpenCode GLM-5.1 (JSON 응답)
+    if OPENCODE_KEY:
+        result = chat_from_opencode(messages)
+        if "error" not in result:
+            return result
+        print(f"[call_llm] opencode failed: {result.get('error')}", file=sys.stderr)
     # fallback: nous
     for m in NOUS_MODELS:
         result = chat_from_nous(messages, model=m)
