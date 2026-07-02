@@ -29,6 +29,8 @@ const techDetailBody = document.querySelector('#techDetailBody');
 let autoTimer = null;
 let autoEnabled = true;
 let newsTimer = null;
+let lastSidebarRefresh = 0;
+const SIDEBAR_REFRESH_INTERVAL = 300000; // 5 minutes
 
 const aiResults = new Map();
 let profitHistory = [];
@@ -1750,6 +1752,17 @@ async function loadPortfolio() {
     renderWatchlist(data.watchlist);
     sourceText.textContent = `네이버 금융 polling API · ${data.refreshSeconds}초 자동 갱신`;
     statusPill.textContent = `정상 · ${new Date().toLocaleTimeString('ko-KR')}`;
+
+    // Refresh sidebar every 5 minutes
+    const now = Date.now();
+    if (now - lastSidebarRefresh > SIDEBAR_REFRESH_INTERVAL) {
+      lastSidebarRefresh = now;
+      loadKospiKosdaq();
+      loadUSMarket();
+      loadKrMarketNews();
+      loadUSMarketNews();
+      loadNews();
+    }
   } catch (error) {
     statusPill.textContent = '오류';
     setError(`데이터를 불러오지 못했습니다. 서버가 실행 중인지 확인하세요. ${error.message}`);
