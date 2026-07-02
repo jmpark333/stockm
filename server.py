@@ -1095,7 +1095,7 @@ def signal_from_zai(name, code, quote, articles):
     payload = {
         "model": "glm-5",
         "messages": [{"role": "user", "content": prompt}],
-        "stream": True,
+        "thinking": {"type": "disabled"},
         "temperature": 0.3,
         "max_tokens": 600,
     }
@@ -1110,20 +1110,10 @@ def signal_from_zai(name, code, quote, articles):
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=20) as resp:
             raw = resp.read().decode("utf-8")
-        content = ""
-        for line in raw.split("\n"):
-            line = line.strip()
-            if not line.startswith("data: ") or line == "data: [DONE]":
-                continue
-            try:
-                chunk = json.loads(line[6:])
-                delta = chunk.get("choices", [{}])[0].get("delta", {})
-                if delta.get("content"):
-                    content += delta["content"]
-            except (json.JSONDecodeError, IndexError, KeyError):
-                continue
+        result = json.loads(raw)
+        content = result["choices"][0]["message"].get("content") or ""
         match = re.search(r"\{.*\}", content, re.DOTALL)
         if match:
             parsed = json.loads(match.group())
@@ -1802,7 +1792,7 @@ def chat_from_zai(messages):
     payload = {
         "model": "glm-5",
         "messages": messages,
-        "stream": True,
+        "thinking": {"type": "disabled"},
         "temperature": 0.7,
         "max_tokens": 2000,
     }
@@ -1817,20 +1807,10 @@ def chat_from_zai(messages):
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        with urllib.request.urlopen(req, timeout=30) as resp:
             raw = resp.read().decode("utf-8")
-        content = ""
-        for line in raw.split("\n"):
-            line = line.strip()
-            if not line.startswith("data: ") or line == "data: [DONE]":
-                continue
-            try:
-                chunk = json.loads(line[6:])
-                delta = chunk.get("choices", [{}])[0].get("delta", {})
-                if delta.get("content"):
-                    content += delta["content"]
-            except (json.JSONDecodeError, IndexError, KeyError):
-                continue
+        result = json.loads(raw)
+        content = result["choices"][0]["message"].get("content") or ""
         return {"reply": content.strip(), "_source": "zai"}
     except urllib.error.HTTPError as exc:
         if exc.code in (429, 401, 403):
@@ -1913,7 +1893,7 @@ def chat_from_opencode(messages):
     payload = {
         "model": OPENCODE_MODEL,
         "messages": messages,
-        "stream": True,
+        "thinking": {"type": "disabled"},
         "temperature": 0.7,
         "max_tokens": 2500,
     }
@@ -1930,18 +1910,8 @@ def chat_from_opencode(messages):
     try:
         with urllib.request.urlopen(req, timeout=60) as resp:
             raw = resp.read().decode("utf-8")
-        content = ""
-        for line in raw.split("\n"):
-            line = line.strip()
-            if not line.startswith("data: ") or line == "data: [DONE]":
-                continue
-            try:
-                chunk = json.loads(line[6:])
-                delta = chunk.get("choices", [{}])[0].get("delta", {})
-                if delta.get("content"):
-                    content += delta["content"]
-            except (json.JSONDecodeError, IndexError, KeyError):
-                continue
+        result = json.loads(raw)
+        content = result["choices"][0]["message"].get("content") or ""
         if not content:
             return {"error": "empty content"}
         return {"reply": content.strip(), "_source": "opencode"}
@@ -1959,7 +1929,7 @@ def call_llm(messages):
         payload = {
             "model": "glm-5",
             "messages": messages,
-            "stream": True,
+            "thinking": {"type": "disabled"},
             "temperature": 0.7,
             "max_tokens": 2500,
         }
@@ -1976,18 +1946,8 @@ def call_llm(messages):
         try:
             with urllib.request.urlopen(req, timeout=60) as resp:
                 raw = resp.read().decode("utf-8")
-            content = ""
-            for line in raw.split("\n"):
-                line = line.strip()
-                if not line.startswith("data: ") or line == "data: [DONE]":
-                    continue
-                try:
-                    chunk = json.loads(line[6:])
-                    delta = chunk.get("choices", [{}])[0].get("delta", {})
-                    if delta.get("content"):
-                        content += delta["content"]
-                except (json.JSONDecodeError, IndexError, KeyError):
-                    continue
+            result = json.loads(raw)
+            content = result["choices"][0]["message"].get("content") or ""
             if content:
                 return {"reply": content.strip(), "_source": "zai"}
         except Exception:
