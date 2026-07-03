@@ -293,7 +293,7 @@ def build_portfolio():
         cost = avg_price * quantity
         profit = current_value - cost
         profit_rate = (profit / cost * 100) if cost else 0
-        sell_fee = current_value * 0.00015
+        sell_fee = current_value * 0.00215
         realized_profit = profit - sell_fee
         realized_profit_rate = (realized_profit / cost * 100) if cost else 0
         holdings_rows.append({
@@ -316,7 +316,7 @@ def build_portfolio():
     total_current = sum(row["currentValue"] for row in holdings_rows)
     total_profit = total_current - total_cost
     total_profit_rate = (total_profit / total_cost * 100) if total_cost else 0
-    total_sell_fee = total_current * 0.00015
+    total_sell_fee = total_current * 0.00215
     total_realized_profit = total_profit - total_sell_fee
     total_realized_profit_rate = (total_realized_profit / total_cost * 100) if total_cost else 0
     result = {
