@@ -432,6 +432,9 @@ def build_portfolio():
         cost = avg_price * quantity
         profit = current_value - cost
         profit_rate = (profit / cost * 100) if cost else 0
+        sell_fee = current_value * 0.00015
+        realized_profit = profit - sell_fee
+        realized_profit_rate = (realized_profit / cost * 100) if cost else 0
         holdings_rows.append({
             **build_item(quote),
             "quantity": quantity,
@@ -440,6 +443,8 @@ def build_portfolio():
             "currentValue": current_value,
             "profit": profit,
             "profitRate": profit_rate,
+            "realizedProfit": realized_profit,
+            "realizedProfitRate": realized_profit_rate,
         })
 
     watchlist_rows = []
@@ -451,6 +456,9 @@ def build_portfolio():
     total_current = sum(row["currentValue"] for row in holdings_rows)
     total_profit = total_current - total_cost
     total_profit_rate = (total_profit / total_cost * 100) if total_cost else 0
+    total_sell_fee = total_current * 0.00015
+    total_realized_profit = total_profit - total_sell_fee
+    total_realized_profit_rate = (total_realized_profit / total_cost * 100) if total_cost else 0
 
     return {
         "currency": config.get("currency", "KRW"),
@@ -461,6 +469,8 @@ def build_portfolio():
             "cost": total_cost,
             "profit": total_profit,
             "profitRate": total_profit_rate,
+            "realizedProfit": total_realized_profit,
+            "realizedProfitRate": total_realized_profit_rate,
         },
         "holdings": holdings_rows,
         "watchlist": watchlist_rows,

@@ -1402,8 +1402,8 @@ function renderHoldings(rows) {
       <td class="${row.change > 0 ? 'up' : row.change < 0 ? 'down' : 'neutral'}">${formatSignedMoney(row.change)} / ${formatPercent(row.changeRate)}</td>
       <td class="avg-price-cell" data-code="${row.code}" data-name="${row.name}" data-avg="${row.avgPrice}" data-qty="${row.quantity}" data-price="${row.currentPrice}">${formatMoney(row.avgPrice)}</td>
       <td>${formatMoney(row.currentValue)}</td>
-      <td class="${row.profit >= 0 ? 'up' : 'down'}">${formatPercent(row.profitRate)}</td>
-      <td class="${row.profit >= 0 ? 'up' : 'down'}">${formatSignedMoney(row.profit)}</td>
+      <td class="${row.realizedProfit >= 0 ? 'up' : 'down'}">${formatPercent(row.realizedProfitRate)}</td>
+      <td class="${row.realizedProfit >= 0 ? 'up' : 'down'}">${formatSignedMoney(row.realizedProfit)}</td>
       <td class="trend-cell trend-clickable" ${trendDataAttr}>${trendIcon(t.shortTrend)} ${trendText}</td>
       <td>${badgeHtml} ${aiBtnHtml}</td>
       <td>${row.session || row.error || '-'}${realtimeHtml}</td>
@@ -1477,12 +1477,12 @@ function renderSummary(summary) {
 
   totalValue.textContent = formatThousand(summary.currentValue);
   totalCost.textContent = formatThousand(summary.cost);
-  totalProfit.textContent = formatSignedThousand(summary.profit);
-  totalRate.textContent = formatPercent(summary.profitRate);
-  setSignedClass(totalProfit, summary.profit);
-  setSignedClass(totalRate, summary.profitRate);
+  totalProfit.textContent = formatSignedThousand(summary.realizedProfit);
+  totalRate.textContent = formatPercent(summary.realizedProfitRate);
+  setSignedClass(totalProfit, summary.realizedProfit);
+  setSignedClass(totalRate, summary.realizedProfitRate);
 
-  profitHistory.push(summary.profit);
+  profitHistory.push(summary.realizedProfit);
   if (profitHistory.length > 12) profitHistory.shift();
   let trend = 'flat';
   if (profitHistory.length >= 3) {
