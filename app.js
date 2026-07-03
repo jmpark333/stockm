@@ -1403,7 +1403,7 @@ function renderHoldings(rows) {
       <td class="avg-price-cell" data-code="${row.code}" data-name="${row.name}" data-avg="${row.avgPrice}" data-qty="${row.quantity}" data-price="${row.currentPrice}">${formatMoney(row.avgPrice)}</td>
       <td>${formatMoney(row.currentValue)}</td>
       <td class="${row.realizedProfit >= 0 ? 'up' : 'down'}">${formatPercent(row.realizedProfitRate)}</td>
-      <td class="${row.realizedProfit >= 0 ? 'up' : 'down'}">${formatSignedMoney(row.realizedProfit)}</td>
+      <td class="${row.realizedProfit >= 0 ? 'up' : 'down'}">${formatSignedMoney(row.realizedProfit)}<br><small style="opacity:0.6">(비용 ${formatMoney(Math.round(row.sellFee))})</small></td>
       <td class="trend-cell trend-clickable" ${trendDataAttr}>${trendIcon(t.shortTrend)} ${trendText}</td>
       <td>${badgeHtml} ${aiBtnHtml}</td>
       <td>${row.session || row.error || '-'}${realtimeHtml}</td>

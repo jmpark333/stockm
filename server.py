@@ -443,6 +443,7 @@ def build_portfolio():
             "currentValue": current_value,
             "profit": profit,
             "profitRate": profit_rate,
+            "sellFee": sell_fee,
             "realizedProfit": realized_profit,
             "realizedProfitRate": realized_profit_rate,
         })
