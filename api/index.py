@@ -328,6 +328,7 @@ def build_portfolio():
             "cost": total_cost,
             "profit": total_profit,
             "profitRate": total_profit_rate,
+            "sellFee": total_sell_fee,
             "realizedProfit": total_realized_profit,
             "realizedProfitRate": total_realized_profit_rate,
         },

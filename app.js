@@ -1477,7 +1477,7 @@ function renderSummary(summary) {
 
   totalValue.textContent = formatThousand(summary.currentValue);
   totalCost.textContent = formatThousand(summary.cost);
-  totalProfit.textContent = formatSignedThousand(summary.realizedProfit);
+  totalProfit.innerHTML = `${formatSignedThousand(summary.realizedProfit)}<br><small style="opacity:0.6">(비용 ${formatMoney(Math.round(summary.sellFee))})</small>`;
   totalRate.textContent = formatPercent(summary.realizedProfitRate);
   setSignedClass(totalProfit, summary.realizedProfit);
   setSignedClass(totalRate, summary.realizedProfitRate);
