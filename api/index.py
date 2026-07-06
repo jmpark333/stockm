@@ -78,13 +78,13 @@ history: dict[str, deque] = {}
 MAX_HISTORY = 12
 
 ZAI_URL = "https://api.z.ai/api/coding/paas/v4/chat/completions"
-ZAI_KEY = "136d90754ebd453999f4a4cc4547b638.LUXSKaxDozJgFHLQ"
+ZAI_KEY = os.environ.get("ZAI_KEY", "").strip()
 
 KRX_API_KEY = os.environ.get("KRX_API_KEY", "D3ABD30920534A2C9616A984AB6078D1C722F0BA").strip()
 
 NOUS_URL = "https://inference-api.nousresearch.com/v1/chat/completions"
 NOUS_KEY = os.environ.get("NOUS_KEY", "sk-nous-dueimEQDyVHzxeKCOolvFyx7e0DKZzBR").strip()
-NOUS_MODELS = ["stepfun/step-3.7-flash:free", "nex-agi/nex-n2-pro:free", "openai/gpt-oss-120b:free"]
+NOUS_MODELS = ["stepfun/step-3.7-flash:free"]
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 OPENROUTER_KEY = os.environ.get("OPENROUTER_KEY", "").strip()
@@ -2307,7 +2307,7 @@ def chat_from_nous(messages, model=None):
         "model": model,
         "messages": messages,
         "temperature": 0.7,
-        "max_tokens": 1500,
+        "max_tokens": 8000,
     }
     headers = {
         "Authorization": f"Bearer {NOUS_KEY}",
@@ -2320,11 +2320,13 @@ def chat_from_nous(messages, model=None):
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=120) as resp:
             raw = resp.read().decode("utf-8")
         result = json.loads(raw)
         msg = result["choices"][0]["message"]
         content = msg.get("content") or ""
+        if not content:
+            content = msg.get("reasoning") or ""
         if not content:
             return {"error": "empty content"}
         return {"reply": _strip_thinking_artifacts(content).strip(), "_source": "nous"}
@@ -2403,12 +2405,6 @@ def call_llm(messages):
             print("[call_llm] zai empty content", file=sys.stderr)
         except Exception as exc:
             print(f"[call_llm] zai failed: {exc}", file=sys.stderr)
-    # Secondary: OpenCode GLM-5.1 (JSON 응답)
-    if OPENCODE_KEY:
-        result = chat_from_opencode(messages)
-        if "error" not in result:
-            return result
-        print(f"[call_llm] opencode failed: {result.get('error')}", file=sys.stderr)
     # fallback: nous
     for m in NOUS_MODELS:
         result = chat_from_nous(messages, model=m)
