@@ -37,6 +37,28 @@ let profitHistory = [];
 
 let reorderLockUntil = 0;
 
+const HOLDINGS_ORDER_KEY = 'stock_holdings_order_v2';
+const WATCHLIST_ORDER_KEY = 'stock_watchlist_order_v2';
+
+function sortBySavedOrder(items, storageKey) {
+  const saved = localStorage.getItem(storageKey);
+  if (!saved) return items;
+  try {
+    const order = JSON.parse(saved);
+    if (!Array.isArray(order) || order.length === 0) return items;
+    const map = new Map(items.map(i => [i.code, i]));
+    const result = [];
+    for (const code of order) {
+      if (map.has(code)) {
+        result.push(map.get(code));
+        map.delete(code);
+      }
+    }
+    map.forEach(v => result.push(v));
+    return result;
+  } catch { return items; }
+}
+
 /* Sidebar Resize */
 const sidebar = document.querySelector('#sidebar');
 const resizeHandle = document.querySelector('#resizeHandle');
@@ -1529,6 +1551,9 @@ function makeDraggable(tr, tbody) {
       return nameEl?.dataset?.code || '';
     }).filter(Boolean);
 
+    const storageKey = section === 'holdings' ? HOLDINGS_ORDER_KEY : WATCHLIST_ORDER_KEY;
+    localStorage.setItem(storageKey, JSON.stringify(codes));
+
     fetch('/api/reorder', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -1821,8 +1846,8 @@ async function loadPortfolio() {
     if (Date.now() < reorderLockUntil) {
       statusPill.textContent = `정상 · ${new Date().toLocaleTimeString('ko-KR')}`;
     } else {
-      renderHoldings(data.holdings);
-      renderWatchlist(data.watchlist);
+      renderHoldings(sortBySavedOrder(data.holdings, HOLDINGS_ORDER_KEY));
+      renderWatchlist(sortBySavedOrder(data.watchlist, WATCHLIST_ORDER_KEY));
     }
     sourceText.textContent = `네이버 금융 polling API · ${data.refreshSeconds}초 자동 갱신`;
     statusPill.textContent = `정상 · ${new Date().toLocaleTimeString('ko-KR')}`;
