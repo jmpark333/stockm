@@ -1724,12 +1724,12 @@ def fetch_trader_flow(code: str) -> dict:
 
     rows = []
     table_match = re.search(
-        r'<table[^>]*summary="외국인[^"]*일별 매매[^"]*"[^>]*>(.*?)</table>',
+        r'<table[^>]*summary="외국인[^"]*매매[^"]*"[^>]*>(.*?)</table>',
         html, re.DOTALL
     )
     if not table_match:
         table_match = re.search(
-            r'<table[^>]*class="type2"[^>]*>(.*?)</table>',
+            r'<table[^>]*class="type2"[^>]*summary="외국인[^"]*"[^>]*>(.*?)</table>',
             html, re.DOTALL
         )
 
