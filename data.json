@@ -13,10 +13,15 @@
       "name": "삼성전자",
       "quantity": 30,
       "avgPrice": 300250
+    },
+    {
+      "code": "009150",
+      "name": "삼성전기",
+      "quantity": 1,
+      "avgPrice": 1795000
     }
   ],
   "watchlist": [
-    { "code": "009150", "name": "삼성전기" },
     { "code": "005930", "name": "삼성전자" },
     { "code": "005380", "name": "현대차" },
     { "code": "454910", "name": "두산로보틱스" },
@@ -28,6 +33,7 @@
   "trades": [
     { "date": "2026-06-25", "type": "sell", "code": "000660", "name": "SK하이닉스", "price": 2859000, "quantity": 5, "note": "아침 장중 매도" },
     { "date": "2026-06-25", "type": "sell", "code": "000660", "name": "SK하이닉스", "price": 2860000, "quantity": 9, "note": "아침 장중 매도" },
-    { "date": "2026-06-26", "type": "buy", "code": "402340", "name": "SK스퀘어", "price": 1723000, "quantity": 1, "note": "관심종목 매수" }
+    { "date": "2026-06-26", "type": "buy", "code": "402340", "name": "SK스퀘어", "price": 1723000, "quantity": 1, "note": "관심종목 매수" },
+    { "date": "2026-07-06", "type": "buy", "code": "009150", "name": "삼성전기", "price": 1795000, "quantity": 1, "note": "관심종목 매수" }
   ]
 }
