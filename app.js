@@ -1762,6 +1762,7 @@ async function loadPortfolio() {
       loadKrMarketNews();
       loadUSMarketNews();
       loadNews();
+      loadTraderFlow();
     }
   } catch (error) {
     statusPill.textContent = '오류';
@@ -1825,6 +1826,148 @@ function setupNewsRefresh() {
   newsTimer = setInterval(loadNews, 600000);
   newsRefreshBtn.addEventListener('click', () => { loadKospiKosdaq(); loadUSMarket(); loadKrMarketNews(); loadUSMarketNews(); });
 }
+
+/* ────────────────────────────────────────── */
+/* 외국인·기관 매매현황                        */
+/* ────────────────────────────────────────── */
+const traderFlowBody = document.querySelector('#traderFlowBody');
+const traderFlowUpdatedAt = document.querySelector('#traderFlowUpdatedAt');
+const traderFlowRefreshBtn = document.querySelector('#traderFlowRefreshBtn');
+
+function formatNet(value) {
+  if (value === null || value === undefined) return '-';
+  const abs = Math.abs(Math.round(value));
+  const formatted = abs >= 10000 ? (abs / 10000).toFixed(0) + '만' : money.format(abs);
+  return (value > 0 ? '+' : value < 0 ? '-' : '') + formatted + '주';
+}
+
+function renderTraderFlowCard(item) {
+  const name = item.name || item.code;
+  const s = item.summary || {};
+  const inst1d = s.instNet1d;
+  const frgn1d = s.frgnNet1d;
+  const inst5d = s.instNet5d;
+  const frgn5d = s.frgnNet5d;
+  const frgnRatio = s.frgnRatio;
+  const trend = s.trend || '';
+
+  let trendCls = 'mixed';
+  if (trend.includes('동반매수')) trendCls = 'both-buy';
+  else if (trend.includes('동반매도')) trendCls = 'both-sell';
+
+  const recentRows = (item.rows || []).slice(0, 5);
+
+  return `
+    <div class="trader-flow-card" data-code="${item.code}">
+      <div class="trader-flow-card-head">
+        <span class="stock-name">${name} <small style="color:var(--muted);font-weight:400">${item.code}</small></span>
+        ${trend ? `<span class="trend-badge ${trendCls}">${trend}</span>` : ''}
+      </div>
+      <div class="trader-flow-summary">
+        <div class="summary-item">
+          <div class="summary-label">기관 1일</div>
+          <div class="summary-value ${inst1d > 0 ? 'up' : inst1d < 0 ? 'down' : ''}">${formatNet(inst1d)}</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">외국인 1일</div>
+          <div class="summary-value ${frgn1d > 0 ? 'up' : frgn1d < 0 ? 'down' : ''}">${formatNet(frgn1d)}</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">기관 5일</div>
+          <div class="summary-value ${inst5d > 0 ? 'up' : inst5d < 0 ? 'down' : ''}">${formatNet(inst5d)}</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">외국인 5일</div>
+          <div class="summary-value ${frgn5d > 0 ? 'up' : frgn5d < 0 ? 'down' : ''}">${formatNet(frgn5d)}</div>
+        </div>
+      </div>
+      <div class="trader-flow-detail" id="trader-detail-${item.code}">
+        <table>
+          <thead>
+            <tr>
+              <th>날짜</th>
+              <th>종가</th>
+              <th>기관 순매매</th>
+              <th>외국인 순매매</th>
+              <th>외국인 비중</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${recentRows.map(r => `
+              <tr>
+                <td>${r.date}</td>
+                <td>${r.close ? money.format(Math.round(r.close)) + '원' : '-'}</td>
+                <td class="${r.instNet > 0 ? 'up' : r.instNet < 0 ? 'down' : ''}">${formatNet(r.instNet)}</td>
+                <td class="${r.frgnNet > 0 ? 'up' : r.frgnNet < 0 ? 'down' : ''}">${formatNet(r.frgnNet)}</td>
+                <td>${r.frgnRatio != null ? r.frgnRatio.toFixed(1) + '%' : '-'}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function renderTraderFlow(items) {
+  if (!items || !items.length) {
+    traderFlowBody.innerHTML = '<p class="muted">데이터가 없습니다.</p>';
+    return;
+  }
+  traderFlowBody.innerHTML = items.map(renderTraderFlowCard).join('');
+
+  traderFlowBody.querySelectorAll('.trader-flow-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const code = card.dataset.code;
+      const detail = document.getElementById(`trader-detail-${code}`);
+      if (detail) detail.classList.toggle('open');
+    });
+  });
+
+  traderFlowUpdatedAt.textContent = new Date().toLocaleTimeString('ko-KR');
+}
+
+async function loadTraderFlow() {
+  try {
+    const portfolioRes = await fetch('/api/portfolio', { cache: 'no-store' });
+    if (!portfolioRes.ok) return;
+    const portfolio = await portfolioRes.json();
+
+    const codes = new Set();
+    (portfolio.holdings || []).forEach(h => codes.add(h.code));
+    (portfolio.watchlist || []).forEach(w => codes.add(w.code));
+
+    const nameMap = {};
+    (portfolio.holdings || []).forEach(h => nameMap[h.code] = h.name);
+    (portfolio.watchlist || []).forEach(w => nameMap[w.code] = w.name);
+
+    const results = [];
+    const fetches = [...codes].map(code =>
+      fetch(`/api/trader-flow?code=${code}`, { cache: 'no-store' })
+        .then(r => r.json())
+        .then(data => {
+          data.name = nameMap[code] || code;
+          results.push(data);
+        })
+        .catch(() => {})
+    );
+    await Promise.all(fetches);
+
+    results.sort((a, b) => {
+      const ai = a.summary?.instNet5d || 0;
+      const bi = b.summary?.instNet5d || 0;
+      const af = a.summary?.frgnNet5d || 0;
+      const bf = b.summary?.frgnNet5d || 0;
+      return (bi + bf) - (ai + af);
+    });
+
+    renderTraderFlow(results);
+  } catch (err) {
+    traderFlowBody.innerHTML = `<p class="muted">매매동향을 불러오지 못했습니다: ${err.message}</p>`;
+  }
+}
+
+traderFlowRefreshBtn.addEventListener('click', loadTraderFlow);
 
 refreshBtn.addEventListener('click', loadPortfolio);
 autoBtn.addEventListener('click', () => setAutoRefresh(!autoEnabled));
@@ -1916,6 +2059,7 @@ loadKospiKosdaq();
 loadUSMarket();
 loadKrMarketNews();
 loadUSMarketNews();
+loadTraderFlow();
 setAutoRefresh(true);
 setupNewsRefresh();
 

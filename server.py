@@ -1509,6 +1509,111 @@ def load_us_market():
     except Exception:
         return {"marketStatus": "closed"}
 
+_trader_flow_cache: dict[str, dict] = {}
+_trader_flow_cache_time: dict[str, float] = {}
+TRADER_FLOW_CACHE_TTL = 300  # 5분 캐시
+
+def fetch_trader_flow(code: str) -> dict:
+    """네이버 금융에서 외국인/기관 일별 매매 데이터를 스크래핑한다."""
+    now = time.time()
+    cached = _trader_flow_cache.get(code)
+    if cached and now - _trader_flow_cache_time.get(code, 0) < TRADER_FLOW_CACHE_TTL:
+        return cached
+
+    url = f"https://finance.naver.com/item/frgn.naver?code={code}"
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            raw = resp.read()
+        html = _decode_naver_response(raw)
+    except Exception as exc:
+        return {"code": code, "rows": [], "summary": {}, "error": str(exc)}
+
+    rows = []
+    table_match = re.search(
+        r'<table[^>]*summary="외국인[^"]*매매[^"]*"[^>]*>(.*?)</table>',
+        html, re.DOTALL
+    )
+    if not table_match:
+        table_match = re.search(
+            r'<table[^>]*class="type2"[^>]*summary="외국인[^"]*"[^>]*>(.*?)</table>',
+            html, re.DOTALL
+        )
+
+    if table_match:
+        table_html = table_match.group(1)
+        tr_blocks = re.split(r'<tr\b', table_html)
+        for tr_html in tr_blocks:
+            td_matches = re.findall(r'<td[^>]*>(.*?)</td>', tr_html, re.DOTALL)
+            if len(td_matches) < 9:
+                continue
+            date_m = re.search(r'gray03[^>]*>([\d.]+)', td_matches[0])
+            if not date_m:
+                continue
+            date_str = date_m.group(1)
+
+            def parse_num(html_fragment: str) -> int | float | None:
+                val_match = re.search(r'>\s*([\d,.\-+%]+)\s*<', html_fragment)
+                if not val_match:
+                    return None
+                s = val_match.group(1).replace(',', '').replace('%', '')
+                has_minus = '-' in s
+                s = s.replace('+', '').replace('-', '')
+                try:
+                    v = float(s)
+                    return -v if has_minus else v
+                except ValueError:
+                    return None
+
+            close_price = parse_num(td_matches[1])
+            change = parse_num(td_matches[2])
+            change_rate = parse_num(td_matches[3])
+            volume = parse_num(td_matches[4])
+            inst_net = parse_num(td_matches[5])
+            frgn_net = parse_num(td_matches[6])
+            frgn_holding = parse_num(td_matches[7])
+            frgn_ratio = parse_num(td_matches[8])
+
+            rows.append({
+                "date": date_str,
+                "close": close_price,
+                "change": change,
+                "changeRate": change_rate,
+                "volume": volume,
+                "instNet": inst_net,
+                "frgnNet": frgn_net,
+                "frgnHolding": frgn_holding,
+                "frgnRatio": frgn_ratio,
+            })
+
+    summary = {}
+    if rows:
+        recent5 = rows[:5]
+        inst5 = sum(r["instNet"] for r in recent5 if r["instNet"] is not None)
+        frgn5 = sum(r["frgnNet"] for r in recent5 if r["frgnNet"] is not None)
+        if inst5 > 0 and frgn5 > 0:
+            trend = "기관+외국인 동반매수"
+        elif inst5 < 0 and frgn5 < 0:
+            trend = "기관+외국인 동반매도"
+        elif inst5 > 0:
+            trend = "기관매수/외국인매도"
+        else:
+            trend = "기관매도/외국인매수"
+        summary = {
+            "instNet5d": inst5,
+            "frgnNet5d": frgn5,
+            "instNet1d": rows[0]["instNet"],
+            "frgnNet1d": rows[0]["frgnNet"],
+            "frgnRatio": rows[0]["frgnRatio"],
+            "frgnHolding": rows[0]["frgnHolding"],
+            "trend": trend,
+        }
+
+    result = {"code": code, "rows": rows[:10], "summary": summary}
+    _trader_flow_cache[code] = result
+    _trader_flow_cache_time[code] = now
+    return result
+
 KOSPI_INDEX_URL = "https://finance.naver.com/sise/sise_index.naver?code=KOSPI"
 KOSDAQ_INDEX_URL = "https://finance.naver.com/sise/sise_index.naver?code=KOSDAQ"
 
@@ -2339,6 +2444,14 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if p == "/api/kr-market-news":
             self.send_json({"articles": get_kr_market_news()})
+            return
+        if p == "/api/trader-flow":
+            qs = urllib.parse.parse_qs(parsed.query)
+            code = qs.get("code", [None])[0]
+            if not code:
+                self.send_json({"error": "code parameter required"})
+                return
+            self.send_json(fetch_trader_flow(code))
             return
         if p == "/api/chat/history":
             self.send_json({"history": load_chat_history()})

@@ -1171,6 +1171,21 @@ def api_kr_market_news():
         headers={"Cache-Control": "no-store", "Access-Control-Allow-Origin": "*"},
     )
 
+@app.route("/api/trader-flow")
+def api_trader_flow():
+    code = request.args.get("code", "")
+    if not code:
+        return Response(
+            json.dumps({"error": "code parameter required"}, ensure_ascii=False),
+            mimetype="application/json",
+            status=400,
+        )
+    return Response(
+        json.dumps(fetch_trader_flow(code), ensure_ascii=False),
+        mimetype="application/json",
+        headers={"Cache-Control": "no-store", "Access-Control-Allow-Origin": "*"},
+    )
+
 @app.route("/api/news")
 def api_news():
     return Response(
@@ -1679,6 +1694,115 @@ def get_kr_market_news():
 
 KOSPI_INDEX_URL = "https://finance.naver.com/sise/sise_index.naver?code=KOSPI"
 KOSDAQ_INDEX_URL = "https://finance.naver.com/sise/sise_index.naver?code=KOSDAQ"
+
+_trader_flow_cache: dict = {}
+_trader_flow_cache_time: dict = {}
+TRADER_FLOW_CACHE_TTL = 300
+
+def fetch_trader_flow(code: str) -> dict:
+    """네이버 금융에서 외국인/기관 일별 매매 데이터를 스크래핑한다."""
+    now = time.time()
+    cached = _trader_flow_cache.get(code)
+    if cached and now - _trader_flow_cache_time.get(code, 0) < TRADER_FLOW_CACHE_TTL:
+        return cached
+
+    url = f"https://finance.naver.com/item/frgn.naver?code={code}"
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            raw = resp.read()
+        for enc in ("utf-8", "euc-kr", "cp949"):
+            try:
+                html = raw.decode(enc)
+                break
+            except UnicodeDecodeError:
+                continue
+        else:
+            html = raw.decode("utf-8", errors="replace")
+    except Exception as exc:
+        return {"code": code, "rows": [], "summary": {}, "error": str(exc)}
+
+    rows = []
+    table_match = re.search(
+        r'<table[^>]*summary="외국인[^"]*일별 매매[^"]*"[^>]*>(.*?)</table>',
+        html, re.DOTALL
+    )
+    if not table_match:
+        table_match = re.search(
+            r'<table[^>]*class="type2"[^>]*>(.*?)</table>',
+            html, re.DOTALL
+        )
+
+    if table_match:
+        table_html = table_match.group(1)
+        tr_blocks = re.split(r'<tr\b', table_html)
+        for tr_html in tr_blocks:
+            td_matches = re.findall(r'<td[^>]*>(.*?)</td>', tr_html, re.DOTALL)
+            if len(td_matches) < 9:
+                continue
+            date_m = re.search(r'gray03[^>]*>([\d.]+)', td_matches[0])
+            if not date_m:
+                continue
+            date_str = date_m.group(1)
+
+            def parse_num(html_fragment):
+                val_match = re.search(r'>\s*([\d,.\-+%]+)\s*<', html_fragment)
+                if not val_match:
+                    return None
+                s = val_match.group(1).replace(',', '').replace('%', '')
+                has_minus = '-' in s
+                s = s.replace('+', '').replace('-', '')
+                try:
+                    v = float(s)
+                    return -v if has_minus else v
+                except ValueError:
+                    return None
+
+            close_price = parse_num(td_matches[1])
+            change = parse_num(td_matches[2])
+            change_rate = parse_num(td_matches[3])
+            volume = parse_num(td_matches[4])
+            inst_net = parse_num(td_matches[5])
+            frgn_net = parse_num(td_matches[6])
+            frgn_holding = parse_num(td_matches[7])
+            frgn_ratio = parse_num(td_matches[8])
+
+            rows.append({
+                "date": date_str,
+                "close": close_price,
+                "change": change,
+                "changeRate": change_rate,
+                "volume": volume,
+                "instNet": inst_net,
+                "frgnNet": frgn_net,
+                "frgnHolding": frgn_holding,
+                "frgnRatio": frgn_ratio,
+            })
+
+    summary = {}
+    if rows:
+        recent5 = rows[:5]
+        inst5 = sum(r["instNet"] for r in recent5 if r["instNet"] is not None)
+        frgn5 = sum(r["frgnNet"] for r in recent5 if r["frgnNet"] is not None)
+        summary = {
+            "instNet5d": inst5,
+            "frgnNet5d": frgn5,
+            "instNet1d": rows[0]["instNet"],
+            "frgnNet1d": rows[0]["frgnNet"],
+            "frgnRatio": rows[0]["frgnRatio"],
+            "frgnHolding": rows[0]["frgnHolding"],
+            "trend": (
+                "기관+외국인 동반매수" if inst5 > 0 and frgn5 > 0
+                else "기관+외국인 동반매도" if inst5 < 0 and frgn5 < 0
+                else "기관매수/외국인매도" if inst5 > 0
+                else "기관매도/외국인매수"
+            ),
+        }
+
+    result = {"code": code, "rows": rows[:10], "summary": summary}
+    _trader_flow_cache[code] = result
+    _trader_flow_cache_time[code] = now
+    return result
 
 def fetch_kospi_kosdaq():
     """네이버 금융에서 코스피/코스닥 실시간 지수를 가져온다."""
