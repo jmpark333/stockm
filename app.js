@@ -35,6 +35,9 @@ const SIDEBAR_REFRESH_INTERVAL = 300000; // 5 minutes
 const aiResults = new Map();
 let profitHistory = [];
 
+const HOLDINGS_ORDER_KEY = 'stock_holdings_order';
+const WATCHLIST_ORDER_KEY = 'stock_watchlist_order';
+
 /* Sidebar Resize */
 const sidebar = document.querySelector('#sidebar');
 const resizeHandle = document.querySelector('#resizeHandle');
@@ -1527,6 +1530,12 @@ function makeDraggable(tr, tbody) {
       return nameEl?.dataset?.code || '';
     }).filter(Boolean);
 
+    if (section === 'holdings') {
+      localStorage.setItem(HOLDINGS_ORDER_KEY, JSON.stringify(codes));
+    } else {
+      localStorage.setItem(WATCHLIST_ORDER_KEY, JSON.stringify(codes));
+    }
+
     fetch('/api/reorder', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -1806,6 +1815,29 @@ function updateSignalBadge(code) {
   });
 }
 
+function sortBySavedOrder(items, storageKey) {
+  const saved = localStorage.getItem(storageKey);
+  if (!saved) return items;
+  try {
+    const order = JSON.parse(saved);
+    if (!Array.isArray(order) || order.length === 0) return items;
+    const map = new Map(items.map(i => [i.code, i]));
+    const result = [];
+    for (const code of order) {
+      if (map.has(code)) {
+        result.push(map.get(code));
+        map.delete(code);
+      }
+    }
+    map.forEach(v => result.push(v));
+    return result;
+  } catch { return items; }
+}
+
+function saveOrderToStorage(items, storageKey) {
+  localStorage.setItem(storageKey, JSON.stringify(items.map(i => i.code)));
+}
+
 async function loadPortfolio() {
   refreshBtn.disabled = true;
   statusPill.textContent = '갱신 중';
@@ -1815,8 +1847,8 @@ async function loadPortfolio() {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     renderSummary(data.summary);
-    renderHoldings(data.holdings);
-    renderWatchlist(data.watchlist);
+    renderHoldings(sortBySavedOrder(data.holdings, HOLDINGS_ORDER_KEY));
+    renderWatchlist(sortBySavedOrder(data.watchlist, WATCHLIST_ORDER_KEY));
     sourceText.textContent = `네이버 금융 polling API · ${data.refreshSeconds}초 자동 갱신`;
     statusPill.textContent = `정상 · ${new Date().toLocaleTimeString('ko-KR')}`;
 
