@@ -80,6 +80,8 @@ MAX_HISTORY = 12
 ZAI_URL = "https://api.z.ai/api/coding/paas/v4/chat/completions"
 ZAI_KEY = "136d90754ebd453999f4a4cc4547b638.LUXSKaxDozJgFHLQ"
 
+KRX_API_KEY = os.environ.get("KRX_API_KEY", "D3ABD30920534A2C9616A984AB6078D1C722F0BA").strip()
+
 NOUS_URL = "https://inference-api.nousresearch.com/v1/chat/completions"
 NOUS_KEY = os.environ.get("NOUS_KEY", "sk-nous-dueimEQDyVHzxeKCOolvFyx7e0DKZzBR").strip()
 NOUS_MODELS = ["stepfun/step-3.7-flash:free", "nex-agi/nex-n2-pro:free", "openai/gpt-oss-120b:free"]
@@ -1186,6 +1188,20 @@ def api_trader_flow():
         headers={"Cache-Control": "no-store", "Access-Control-Allow-Origin": "*"},
     )
 
+@app.route("/api/krx-daily")
+def api_krx_daily():
+    code = request.args.get("code", "")
+    bas_dd = request.args.get("date", "")
+    if code:
+        result = get_krx_stock(code, bas_dd) or {"error": "not found"}
+    else:
+        result = fetch_krx_daily(bas_dd)
+    return Response(
+        json.dumps(result, ensure_ascii=False),
+        mimetype="application/json",
+        headers={"Cache-Control": "no-store", "Access-Control-Allow-Origin": "*"},
+    )
+
 @app.route("/api/news")
 def api_news():
     return Response(
@@ -1691,6 +1707,62 @@ def get_kr_market_news():
     _kr_market_news_cache = fetch_kr_market_news(limit=5)
     _kr_market_news_cache_time = now
     return _kr_market_news_cache
+
+_krx_daily_cache: dict = {}
+_krx_daily_cache_time: float = 0
+KRX_DAILY_CACHE_TTL = 600
+
+def fetch_krx_daily(bas_dd: str) -> dict:
+    global _krx_daily_cache, _krx_daily_cache_time
+    now = time.time()
+    if _krx_daily_cache and now - _krx_daily_cache_time < KRX_DAILY_CACHE_TTL:
+        return _krx_daily_cache
+
+    all_rows = []
+    for market, ep in [("KOSPI", "stk_bydd_trd"), ("KOSDAQ", "ksq_bydd_trd")]:
+        url = f"https://data-dbg.krx.co.kr/svc/apis/sto/{ep}?basDd={bas_dd}"
+        req = urllib.request.Request(url, headers={
+            "AUTH_KEY": KRX_API_KEY,
+            "User-Agent": "Mozilla/5.0",
+        })
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                rows = data.get("OutBlock_1", [])
+                for r in rows:
+                    r["_market"] = market
+                all_rows.extend(rows)
+        except Exception as exc:
+            print(f"[fetch_krx_daily] {market} error: {exc}", flush=True)
+
+    result = {"basDd": bas_dd, "rows": all_rows}
+    _krx_daily_cache = result
+    _krx_daily_cache_time = now
+    return result
+
+def get_krx_stock(code: str, bas_dd: str = None) -> dict | None:
+    if not bas_dd:
+        kst = timezone(timedelta(hours=9))
+        bas_dd = datetime.now(kst).strftime("%Y%m%d")
+    data = fetch_krx_daily(bas_dd)
+    for row in data.get("rows", []):
+        if row.get("ISU_CD") == code:
+            return {
+                "code": row["ISU_CD"],
+                "name": row["ISU_NM"],
+                "market": row.get("_market", ""),
+                "close": int(row.get("TDD_CLSPRC", "0") or "0"),
+                "change": int(row.get("CMPPREVDD_PRC", "0") or "0"),
+                "changeRate": float(row.get("FLUC_RT", "0") or "0"),
+                "open": int(row.get("TDD_OPNPRC", "0") or "0"),
+                "high": int(row.get("TDD_HGPRC", "0") or "0"),
+                "low": int(row.get("TDD_LWPRC", "0") or "0"),
+                "volume": int(row.get("ACC_TRDVOL", "0") or "0"),
+                "tradeValue": int(row.get("ACC_TRDVAL", "0") or "0"),
+                "marketCap": int(row.get("MKTCAP", "0") or "0"),
+                "listedShares": int(row.get("LIST_SHRS", "0") or "0"),
+            }
+    return None
 
 KOSPI_INDEX_URL = "https://finance.naver.com/sise/sise_index.naver?code=KOSPI"
 KOSDAQ_INDEX_URL = "https://finance.naver.com/sise/sise_index.naver?code=KOSDAQ"
