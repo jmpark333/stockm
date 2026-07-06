@@ -1969,6 +1969,23 @@ async function loadTraderFlow() {
 
 traderFlowRefreshBtn.addEventListener('click', loadTraderFlow);
 
+/* 장중 자동 갱신 (1분) */
+let traderFlowTimer = null;
+function setupTraderFlowAutoRefresh() {
+  if (traderFlowTimer) clearInterval(traderFlowTimer);
+  traderFlowTimer = setInterval(() => {
+    const now = new Date();
+    const hour = now.getHours();
+    const min = now.getMinutes();
+    const day = now.getDay();
+    const isWeekday = day >= 1 && day <= 5;
+    const isMarketOpen = isWeekday && ((hour === 9 && min >= 0) || (hour >= 10 && hour < 15) || (hour === 15 && min <= 30));
+    if (isMarketOpen) {
+      loadTraderFlow();
+    }
+  }, 60000);
+}
+
 refreshBtn.addEventListener('click', loadPortfolio);
 autoBtn.addEventListener('click', () => setAutoRefresh(!autoEnabled));
 
@@ -2062,6 +2079,7 @@ loadUSMarketNews();
 loadTraderFlow();
 setAutoRefresh(true);
 setupNewsRefresh();
+setupTraderFlowAutoRefresh();
 
 /* ──────────────────────────────────────────
    Stock Manager AI Chat

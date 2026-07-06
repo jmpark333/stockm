@@ -1698,12 +1698,23 @@ KOSDAQ_INDEX_URL = "https://finance.naver.com/sise/sise_index.naver?code=KOSDAQ"
 _trader_flow_cache: dict = {}
 _trader_flow_cache_time: dict = {}
 TRADER_FLOW_CACHE_TTL = 300
+TRADER_FLOW_CACHE_TTL_MARKET = 60
+
+def _is_market_open() -> bool:
+    """장중 여부 확인 (한국시간 09:00~15:30, 주말 제외)"""
+    kst = timezone(timedelta(hours=9))
+    now = datetime.now(kst)
+    if now.weekday() >= 5:
+        return False
+    hhmm = now.hour * 60 + now.minute
+    return 9 * 60 <= hhmm <= 15 * 60 + 30
 
 def fetch_trader_flow(code: str) -> dict:
     """네이버 금융에서 외국인/기관 일별 매매 데이터를 스크래핑한다."""
     now = time.time()
     cached = _trader_flow_cache.get(code)
-    if cached and now - _trader_flow_cache_time.get(code, 0) < TRADER_FLOW_CACHE_TTL:
+    ttl = TRADER_FLOW_CACHE_TTL_MARKET if _is_market_open() else TRADER_FLOW_CACHE_TTL
+    if cached and now - _trader_flow_cache_time.get(code, 0) < ttl:
         return cached
 
     url = f"https://finance.naver.com/item/frgn.naver?code={code}"
