@@ -1202,6 +1202,27 @@ def api_krx_daily():
         headers={"Cache-Control": "no-store", "Access-Control-Allow-Origin": "*"},
     )
 
+@app.route("/api/reorder", methods=["PUT"])
+def api_reorder():
+    data = request.get_json(force=True)
+    section = data.get("section", "")
+    codes = data.get("codes", [])
+    if not section or not codes:
+        return Response(json.dumps({"error": "section and codes required"}, ensure_ascii=False), mimetype="application/json", status=400)
+    with DATA_FILE.open("r", encoding="utf-8") as f:
+        config = json.load(f)
+    if section == "holdings":
+        code_map = {h["code"]: h for h in config["holdings"]}
+        config["holdings"] = [code_map[c] for c in codes if c in code_map]
+    elif section == "watchlist":
+        code_map = {w["code"]: w for w in config.get("watchlist", [])}
+        config["watchlist"] = [code_map[c] for c in codes if c in code_map]
+    else:
+        return Response(json.dumps({"error": "invalid section"}, ensure_ascii=False), mimetype="application/json", status=400)
+    with DATA_FILE.open("w", encoding="utf-8") as f:
+        json.dump(config, f, ensure_ascii=False, indent=2)
+    return Response(json.dumps({"ok": True}, ensure_ascii=False), mimetype="application/json", headers={"Access-Control-Allow-Origin": "*"})
+
 @app.route("/api/news")
 def api_news():
     return Response(

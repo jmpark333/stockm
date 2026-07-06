@@ -2600,6 +2600,38 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
 
+    def do_PUT(self):
+        content_length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(content_length) if content_length else b""
+        parsed = urllib.parse.urlparse(self.path)
+        p = parsed.path
+        if p == "/api/reorder":
+            try:
+                data = json.loads(body) if body else {}
+            except json.JSONDecodeError:
+                self.send_json({"error": "invalid JSON"})
+                return
+            section = data.get("section", "")
+            codes = data.get("codes", [])
+            if not section or not codes:
+                self.send_json({"error": "section and codes required"})
+                return
+            config = load_config()
+            if section == "holdings":
+                code_map = {h["code"]: h for h in config["holdings"]}
+                config["holdings"] = [code_map[c] for c in codes if c in code_map]
+            elif section == "watchlist":
+                code_map = {w["code"]: w for w in config.get("watchlist", [])}
+                config["watchlist"] = [code_map[c] for c in codes if c in code_map]
+            else:
+                self.send_json({"error": "invalid section"})
+                return
+            with DATA_FILE.open("w", encoding="utf-8") as f:
+                json.dump(config, f, ensure_ascii=False, indent=2)
+            self.send_json({"ok": True})
+            return
+        self.send_error(404, "Not Found")
+
     def send_json(self, payload):
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(200)

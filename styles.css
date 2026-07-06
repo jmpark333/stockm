@@ -2258,3 +2258,17 @@ td {
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+/* 드래그 앤 드롭 */
+tr.dragging {
+  opacity: 0.4;
+  background: rgba(96, 165, 250, 0.1);
+}
+
+tr.drag-over {
+  border-top: 2px solid var(--accent);
+}
+
+tr[draggable="true"]:hover {
+  background: rgba(148, 163, 184, 0.08);
+}

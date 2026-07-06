@@ -1409,6 +1409,7 @@ function renderHoldings(rows) {
       <td>${row.session || row.error || '-'}${realtimeHtml}</td>
     `;
     holdingsBody.appendChild(tr);
+    makeDraggable(tr, holdingsBody);
   });
   attachSignalHandlers(holdingsBody);
   attachAIHandlers(holdingsBody);
@@ -1461,11 +1462,77 @@ function renderWatchlist(rows) {
       <td>${row.session || row.error || '-'}${realtimeHtml}</td>
     `;
     watchlistBody.appendChild(tr);
+    makeDraggable(tr, watchlistBody);
   });
   attachSignalHandlers(watchlistBody);
   attachAIHandlers(watchlistBody);
   attachChartHandlers(watchlistBody);
   attachTrendHandlers(watchlistBody);
+}
+
+/* ────────────────────────────────────────── */
+/* 드래그 앤 드롭 순서 조정                     */
+/* ────────────────────────────────────────── */
+let dragSrcRow = null;
+let dragSrcBody = null;
+
+function makeDraggable(tr, tbody) {
+  tr.draggable = true;
+  tr.style.cursor = 'grab';
+
+  tr.addEventListener('dragstart', (e) => {
+    dragSrcRow = tr;
+    dragSrcBody = tbody;
+    tr.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', '');
+  });
+
+  tr.addEventListener('dragend', () => {
+    tr.classList.remove('dragging');
+    document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+    dragSrcRow = null;
+    dragSrcBody = null;
+  });
+
+  tr.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragSrcBody === tbody) {
+      tr.classList.add('drag-over');
+    }
+  });
+
+  tr.addEventListener('dragleave', () => {
+    tr.classList.remove('drag-over');
+  });
+
+  tr.addEventListener('drop', (e) => {
+    e.preventDefault();
+    tr.classList.remove('drag-over');
+    if (!dragSrcRow || dragSrcBody !== tbody || dragSrcRow === tr) return;
+
+    const rows = [...tbody.querySelectorAll('tr')];
+    const fromIdx = rows.indexOf(dragSrcRow);
+    const toIdx = rows.indexOf(tr);
+    if (fromIdx < toIdx) {
+      tbody.insertBefore(dragSrcRow, tr.nextSibling);
+    } else {
+      tbody.insertBefore(dragSrcRow, tr);
+    }
+
+    const section = tbody.id === 'holdingsBody' ? 'holdings' : 'watchlist';
+    const codes = [...tbody.querySelectorAll('tr')].map(r => {
+      const nameEl = r.querySelector('.name-cell strong') || r.querySelector('strong');
+      return nameEl?.dataset?.code || '';
+    }).filter(Boolean);
+
+    fetch('/api/reorder', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ section, codes }),
+    }).catch(() => {});
+  });
 }
 
 function renderSummary(summary) {
