@@ -1227,6 +1227,9 @@ def api_reorder():
     else:
         return Response(json.dumps({"error": "invalid section"}, ensure_ascii=False), mimetype="application/json", status=400)
     save_config(config)
+    global _PORTFOLIO_CACHE, _PORTFOLIO_CACHE_TS
+    _PORTFOLIO_CACHE = None
+    _PORTFOLIO_CACHE_TS = 0.0
     return Response(json.dumps({"ok": True}, ensure_ascii=False), mimetype="application/json", headers={"Access-Control-Allow-Origin": "*"})
 
 @app.route("/api/news")
