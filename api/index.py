@@ -98,8 +98,16 @@ ai_cache: dict[str, dict] = {}
 AI_CACHE_TTL = 300
 
 def load_config():
+    saved = kv_get("stock_dashboard:config")
+    if saved:
+        return saved
     with DATA_FILE.open("r", encoding="utf-8") as f:
         return json.load(f)
+
+def save_config(config):
+    with DATA_FILE.open("w", encoding="utf-8") as f:
+        json.dump(config, f, ensure_ascii=False, indent=2)
+    kv_set("stock_dashboard:config", config)
 
 def fetch_previous_close(code):
     """네이버 증권 메인 페이지에서 정확한 전일 종가를 가져온다.
@@ -1209,8 +1217,7 @@ def api_reorder():
     codes = data.get("codes", [])
     if not section or not codes:
         return Response(json.dumps({"error": "section and codes required"}, ensure_ascii=False), mimetype="application/json", status=400)
-    with DATA_FILE.open("r", encoding="utf-8") as f:
-        config = json.load(f)
+    config = load_config()
     if section == "holdings":
         code_map = {h["code"]: h for h in config["holdings"]}
         config["holdings"] = [code_map[c] for c in codes if c in code_map]
@@ -1219,8 +1226,7 @@ def api_reorder():
         config["watchlist"] = [code_map[c] for c in codes if c in code_map]
     else:
         return Response(json.dumps({"error": "invalid section"}, ensure_ascii=False), mimetype="application/json", status=400)
-    with DATA_FILE.open("w", encoding="utf-8") as f:
-        json.dump(config, f, ensure_ascii=False, indent=2)
+    save_config(config)
     return Response(json.dumps({"ok": True}, ensure_ascii=False), mimetype="application/json", headers={"Access-Control-Allow-Origin": "*"})
 
 @app.route("/api/news")
