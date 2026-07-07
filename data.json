@@ -31,6 +31,12 @@
       "name": "LG이노텍",
       "quantity": 2,
       "avgPrice": 797000
+    },
+    {
+      "code": "000660",
+      "name": "SK하이닉스",
+      "quantity": 1,
+      "avgPrice": 2178000
     }
   ],
   "watchlist": [
