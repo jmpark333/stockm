@@ -37,6 +37,10 @@ let profitHistory = [];
 
 let reorderLockUntil = 0;
 
+let holdingsSort = { key: null, dir: 'asc' };
+let holdingsData = [];
+let lastHoldingsRows = null;
+
 const HOLDINGS_ORDER_KEY = 'stock_holdings_order_v2';
 const WATCHLIST_ORDER_KEY = 'stock_watchlist_order_v2';
 
@@ -1389,9 +1393,56 @@ function attachCalcHandlers(container) {
   });
 }
 
+function sortHoldingsData(data) {
+  if (!holdingsSort.key) return data;
+  
+  const sorted = [...data];
+  sorted.sort((a, b) => {
+    let valA, valB;
+    
+    switch (holdingsSort.key) {
+      case 'avgPrice':
+        valA = a.avgPrice || 0;
+        valB = b.avgPrice || 0;
+        break;
+      case 'currentValue':
+        valA = a.currentValue || 0;
+        valB = b.currentValue || 0;
+        break;
+      case 'profitRate':
+        valA = a.realizedProfitRate || 0;
+        valB = b.realizedProfitRate || 0;
+        break;
+      case 'profit':
+        valA = a.realizedProfit || 0;
+        valB = b.realizedProfit || 0;
+        break;
+      default:
+        return 0;
+    }
+    
+    if (valA < valB) return holdingsSort.dir === 'asc' ? -1 : 1;
+    if (valA > valB) return holdingsSort.dir === 'asc' ? 1 : -1;
+    return 0;
+  });
+  
+  return sorted;
+}
+
+function updateSortIcons() {
+  document.querySelectorAll('#holdingsTable th.sortable').forEach(th => {
+    th.classList.remove('sort-asc', 'sort-desc');
+    if (th.dataset.sort === holdingsSort.key) {
+      th.classList.add(holdingsSort.dir === 'asc' ? 'sort-asc' : 'sort-desc');
+    }
+  });
+}
+
 function renderHoldings(rows) {
+  lastHoldingsRows = rows;
+  const sortedRows = sortHoldingsData(rows);
   holdingsBody.innerHTML = '';
-  rows.forEach(row => {
+  sortedRows.forEach(row => {
     const tr = document.createElement('tr');
     const cached = aiResults.get(row.code);
     const badgeHtml = cached
@@ -1440,6 +1491,7 @@ function renderHoldings(rows) {
   attachChartHandlers(holdingsBody);
   attachCalcHandlers(holdingsBody);
   attachTrendHandlers(holdingsBody);
+  updateSortIcons();
 }
 
 function renderWatchlist(rows) {
@@ -2169,6 +2221,20 @@ function renderUSMarketNews(data) {
 }
 
 initResize();
+
+document.querySelectorAll('#holdingsTable th.sortable').forEach(th => {
+  th.addEventListener('click', () => {
+    const key = th.dataset.sort;
+    if (holdingsSort.key === key) {
+      holdingsSort.dir = holdingsSort.dir === 'asc' ? 'desc' : 'asc';
+    } else {
+      holdingsSort.key = key;
+      holdingsSort.dir = 'asc';
+    }
+    if (lastHoldingsRows) renderHoldings(lastHoldingsRows);
+  });
+});
+
 loadPortfolio();
 loadNews();
 loadKospiKosdaq();

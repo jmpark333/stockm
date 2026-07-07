@@ -117,17 +117,17 @@
           </div>
         </div>
         <div class="table-wrap">
-          <table>
+          <table id="holdingsTable">
             <thead>
               <tr>
                 <th>종목명</th>
                 <th>보유</th>
                 <th>현재가</th>
                 <th>전일비</th>
-                <th>평균단가</th>
-                <th>평가금액</th>
-                <th>수익률</th>
-                <th>수익금</th>
+                <th data-sort="avgPrice" class="sortable">평균단가 <span class="sort-icon"></span></th>
+                <th data-sort="currentValue" class="sortable">평가금액 <span class="sort-icon"></span></th>
+                <th data-sort="profitRate" class="sortable">수익률 <span class="sort-icon"></span></th>
+                <th data-sort="profit" class="sortable">수익금 <span class="sort-icon"></span></th>
                 <th>단기추세</th>
                 <th>시그널</th>
                 <th>상태</th>

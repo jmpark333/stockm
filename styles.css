@@ -204,6 +204,28 @@ th {
   font-weight: 700;
 }
 
+th.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+th.sortable:hover {
+  color: var(--text);
+}
+
+th.sortable .sort-icon {
+  font-size: 10px;
+  margin-left: 4px;
+}
+
+th.sortable.sort-asc .sort-icon::after {
+  content: '▲';
+}
+
+th.sortable.sort-desc .sort-icon::after {
+  content: '▼';
+}
+
 td {
   font-weight: 700;
 }
