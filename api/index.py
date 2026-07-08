@@ -195,90 +195,80 @@ def fetch_quote(code):
         return {"code": code, "error": str(exc)}
 
 def detect_trend_phase(code, current_price, previous_close, open_price):
-    """추세 전환 단계를 감지한다. 한국 시장 특성에 맞는 임계값 적용."""
+    """추세 전환 단계를 감지한다. 실시간 가격 변화 기반."""
     reasons = []
     
     if current_price is None or previous_close is None or previous_close == 0:
         return "보합", 0, ["데이터 부족"]
     
-    day_chg = (current_price - previous_close) / previous_close * 100
-    
-    # 종목별 적응형 임계값 (한국 시장 평균 일일 변동폭 2-3% 기반)
-    # 소형주는 변동성이 크고, 대형주는 작음
-    # 50만원 이상 고가주: 1% 기준, 그 외: 1.5% 기준
-    if current_price >= 500000:
-        small_threshold = 1.0   # 고가주: 1% 이상
-        large_threshold = 3.0   # 강한 반전: 3% 이상
-    elif current_price >= 100000:
-        small_threshold = 1.5   # 중형주: 1.5% 이상
-        large_threshold = 4.0   # 강한 반전: 4% 이상
-    else:
-        small_threshold = 2.0   # 저가주: 2% 이상
-        large_threshold = 5.0   # 강한 반전: 5% 이상
-    
-    # Redis에서 이전 추세 로드
+    # Redis에서 이전 데이터 로드
     prev_key = f"trend_phase:{code}"
     prev_data = kv_get(prev_key)
     prev_phase = prev_data.get("phase") if prev_data else None
+    prev_price = prev_data.get("price", 0) if prev_data else 0
+    prev_consec = prev_data.get("consec", 1) if prev_data else 1
     
-    # 장중 흐름 분석
-    is_down = day_chg < -small_threshold
-    is_up = day_chg > small_threshold
-    is_strong_down = day_chg < -large_threshold
-    is_strong_up = day_chg > large_threshold
+    # 실시간 가격 변화 (이전 요청 대비)
+    if prev_price > 0:
+        price_chg = ((current_price - prev_price) / prev_price * 100)
+    else:
+        price_chg = 0
     
-    # 장중 반등/조정 감지 (시가 대비 현재가)
-    intraday_chg = 0
-    if open_price and open_price > 0:
-        intraday_chg = ((cp - open_price) / open_price * 100) if cp else 0
+    # 전일 대비 변화
+    day_chg = ((current_price - previous_close) / previous_close * 100)
     
-    # 장중 저점 대비 반등 감지 (현재가 > 저가의 50% 지점)
-    intraday_recovery = False
-    if cp and hv and lv and hv != lv:
-        low_to_high = (cp - lv) / (hv - lv) * 100
-        if low_to_high > 50:  # 저점 대비 50% 이상 반등
-            intraday_recovery = True
+    # ── 실시간 추세 판단 ──
     
-    # ── 추세 판단 (우선순위 순) ──
+    # 이전 가격이 없으면 전일 대비로 판단 (첫 요청)
+    if prev_price == 0:
+        if day_chg > 2:
+            return "상승시작", 50, [f"오늘 +{day_chg:.1f}% 상승"]
+        elif day_chg < -2:
+            return "하락시작", 50, [f"오늘 {day_chg:.1f}% 하락"]
+        elif day_chg > 0.5:
+            return "상승세약화", 40, [f"오늘 +{day_chg:.1f}% 상승"]
+        elif day_chg < -0.5:
+            return "하락세약화", 40, [f"오늘 {day_chg:.1f}% 하락"]
+        else:
+            return "보합", 30, [f"오늘 보합 ({day_chg:+.1f}%)"]
     
-    # 1. 바닥반등: 이전 하락 중 + 오늘 강한 반등
-    if is_strong_up and prev_phase in ("하락시작", "하락지속"):
-        return "바닥반등", 75, [f"하락 후 강한 반등 (+{day_chg:.1f}%)"]
+    # 이전 가격이 있으면 실시간 변화로 판단
+    is_rising = price_chg > 0.05   # 0.05% 이상 상승
+    is_falling = price_chg < -0.05  # 0.05% 이상 하락
+    is_strong_rising = price_chg > 0.5
+    is_strong_falling = price_chg < -0.5
     
-    # 2. 천장반락: 이전 상승 중 + 오늘 강한 조정
-    if is_strong_down and prev_phase in ("상승시작", "상승지속"):
-        return "천장반락", 75, [f"상승 후 강한 조정 ({day_chg:.1f}%)"]
+    # 1. 바닥반등: 하락 중 + 강한 반등
+    if is_strong_rising and prev_phase in ("하락시작", "하락지속", "하락세약화"):
+        return "바닥반등", 75, [f"반등 (+{price_chg:.2f}%)"]
     
-    # 3. 하락지속: 이전 하락 중 + 오늘도 하락 + 장중 반등 없음
-    if day_chg < 0 and prev_phase in ("하락시작", "하락지속"):
-        # 장중 반등이 있으면 하락세약화
-        if intraday_recovery or intraday_chg > 0:
-            return "하락세약화", 60, [f"하락 중 장중 반등 ({day_chg:+.1f}%, 장중 {intraday_chg:+.1f}%)"]
-        consec = prev_data.get("consec", 1) if prev_data else 1
-        return "하락지속", 70, [f"{consec + 1}회 연속 하락 ({day_chg:+.1f}%)"]
+    # 2. 천장반락: 상승 중 + 강한 조정
+    if is_strong_falling and prev_phase in ("상승시작", "상승지속", "상승세약화"):
+        return "천장반락", 75, [f"조정 ({price_chg:+.2f}%)"]
     
-    # 4. 상승지속: 이전 상승 중 + 오늘도 상승
-    if day_chg > 0 and prev_phase in ("상승시작", "상승지속"):
-        consec = prev_data.get("consec", 1) if prev_data else 1
-        return "상승지속", 70, [f"{consec + 1}회 연속 상승 ({day_chg:+.1f}%)"]
+    # 3. 하락지속: 하락 중 + 계속 하락
+    if is_falling and prev_phase in ("하락시작", "하락지속"):
+        return "하락지속", 70, [f"{prev_consec + 1}회 연속 하락 ({price_chg:+.2f}%)"]
     
-    # 5. 하락세약화: 이전 하락 중 + 오늘 보합/반등
-    if day_chg >= 0 and prev_phase in ("하락시작", "하락지속"):
-        return "하락세약화", 55, [f"하락 중 하락 멈춤 ({day_chg:+.1f}%)"]
+    # 4. 상승지속: 상승 중 + 계속 상승
+    if is_rising and prev_phase in ("상승시작", "상승지속"):
+        return "상승지속", 70, [f"{prev_consec + 1}회 연속 상승 ({price_chg:+.2f}%)"]
     
-    # 6. 상승세약화: 이전 상승 중 + 오늘 보합/조정
-    if day_chg <= 0 and prev_phase in ("상승시작", "상승지속"):
-        return "상승세약화", 55, [f"상승 중 상승 멈춤 ({day_chg:+.1f}%)"]
+    # 5. 하락세약화: 하락 중 + 하락 멈춤/반등
+    if not is_falling and prev_phase in ("하락시작", "하락지속"):
+        return "하락세약화", 55, [f"하락 멈춤 ({price_chg:+.2f}%)"]
     
-    # 7. 하락시작: 오늘 하락
-    if is_down:
-        return "하락시작", 50, [f"오늘 {day_chg:+.1f}% 하락"]
+    # 6. 상승세약화: 상승 중 + 상승 멈춤/조정
+    if not is_rising and prev_phase in ("상승시작", "상승지속"):
+        return "상승세약화", 55, [f"상승 멈춤 ({price_chg:+.2f}%)"]
     
-    # 8. 상승시작: 오늘 상승
-    if is_up:
-        return "상승시작", 50, [f"오늘 +{day_chg:.1f}% 상승"]
+    # 7. 새로운 추세 시작
+    if is_rising:
+        return "상승시작", 50, [f"상승 (+{price_chg:.2f}%)"]
+    elif is_falling:
+        return "하락시작", 50, [f"하락 ({price_chg:+.2f}%)"]
     
-    return "보합", 30, [f"오늘 보합 ({day_chg:+.1f}%)"]
+    return "보합", 30, [f"보합 ({price_chg:+.2f}%)"]
 
 
 # 요청 내 추세 캐시 (같은 종목은 같은 추세 보장)
@@ -388,6 +378,7 @@ def calc_trend(quote):
             "day_chg": round(day_chg, 2),
             "consec": consec,
             "ts": now_ts,
+            "price": cp,
         })
     
     # 추세 단계를 short_trend로 변환
