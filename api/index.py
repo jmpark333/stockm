@@ -456,18 +456,30 @@ def calc_trend(quote):
     }
 
 def build_item(quote):
+    cp = quote.get("currentPrice")
+    hv = quote.get("high")
+    lv = quote.get("low")
+    amp = quote.get("afterMarketPrice")
+    
+    # 애프터마켓 가격이 있으면 고가/저가에 반영
+    if amp and amp > 0:
+        if hv is None or amp > hv:
+            hv = amp
+        if lv is None or amp < lv:
+            lv = amp
+    
     return {
         "code": quote.get("code"),
         "name": quote.get("name"),
-        "currentPrice": quote.get("currentPrice"),
+        "currentPrice": cp,
         "previousClose": quote.get("previousClose"),
         "change": quote.get("change"),
         "changeRate": quote.get("changeRate"),
         "session": quote.get("session"),
-        "high": quote.get("high"),
-        "low": quote.get("low"),
+        "high": hv,
+        "low": lv,
         "open": quote.get("open"),
-        "afterMarketPrice": quote.get("afterMarketPrice"),
+        "afterMarketPrice": amp,
         "updatedAt": quote.get("updatedAt"),
         "error": quote.get("error"),
         "trend": calc_trend(quote),
