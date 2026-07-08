@@ -1286,17 +1286,17 @@ function renderTechDetailContent(name, code, trendData, chartData) {
   html += '<div class="tech-detail-indicators">';
   html += '<div class="tech-detail-indicator-title">추세 판단 근거</div>';
   
-  const indicators = trendData.techIndicators || {};
-  const signalScore = trendData.techSignalScore || 0;
+  const trendIndicators = trendData.techIndicators || {};
+  const trendSignalScore = trendData.techSignalScore || 0;
   
   // 이동평균선 상태
-  if (indicators.ma5 && indicators.ma20 && indicators.ma60) {
-    const maStatus = indicators.ma5 > indicators.ma20 && indicators.ma20 > indicators.ma60 
+  if (trendIndicators.ma5 && trendIndicators.ma20 && trendIndicators.ma60) {
+    const maStatus = trendIndicators.ma5 > trendIndicators.ma20 && trendIndicators.ma20 > trendIndicators.ma60 
       ? '정배열 (상승추세)' 
-      : indicators.ma5 < indicators.ma20 && indicators.ma20 < indicators.ma60 
+      : trendIndicators.ma5 < trendIndicators.ma20 && trendIndicators.ma20 < trendIndicators.ma60 
         ? '역배열 (하락추세)' 
         : '혼조';
-    const maClass = indicators.ma5 > indicators.ma20 ? 'positive' : 'negative';
+    const maClass = trendIndicators.ma5 > trendIndicators.ma20 ? 'positive' : 'negative';
     html += `<div class="tech-detail-indicator-row">
       <span class="tech-detail-indicator-label">이동평균선 배열</span>
       <span class="tech-detail-indicator-value ${maClass}">${maStatus}</span>
@@ -1304,19 +1304,19 @@ function renderTechDetailContent(name, code, trendData, chartData) {
   }
   
   // RSI 상태
-  if (indicators.rsi14 !== null && indicators.rsi14 !== undefined) {
-    const rsiClass = indicators.rsi14 > 60 ? 'positive' : indicators.rsi14 < 40 ? 'negative' : 'neutral';
-    const rsiStatus = indicators.rsi14 > 60 ? '강세' : indicators.rsi14 < 40 ? '약세' : '중립';
+  if (trendIndicators.rsi14 !== null && trendIndicators.rsi14 !== undefined) {
+    const rsiClass = trendIndicators.rsi14 > 60 ? 'positive' : trendIndicators.rsi14 < 40 ? 'negative' : 'neutral';
+    const rsiStatus = trendIndicators.rsi14 > 60 ? '강세' : trendIndicators.rsi14 < 40 ? '약세' : '중립';
     html += `<div class="tech-detail-indicator-row">
       <span class="tech-detail-indicator-label">RSI(14)</span>
-      <span class="tech-detail-indicator-value ${rsiClass}">${indicators.rsi14.toFixed(1)} (${rsiStatus})</span>
+      <span class="tech-detail-indicator-value ${rsiClass}">${trendIndicators.rsi14.toFixed(1)} (${rsiStatus})</span>
     </div>`;
   }
   
   // MACD 상태
-  if (indicators.macd && indicators.macd.macd !== null && indicators.macd.signal !== null) {
-    const macdClass = indicators.macd.macd > indicators.macd.signal ? 'positive' : 'negative';
-    const macdStatus = indicators.macd.macd > indicators.macd.signal ? '상승 모멘텀' : '하락 모멘텀';
+  if (trendIndicators.macd && trendIndicators.macd.macd !== null && trendIndicators.macd.signal !== null) {
+    const macdClass = trendIndicators.macd.macd > trendIndicators.macd.signal ? 'positive' : 'negative';
+    const macdStatus = trendIndicators.macd.macd > trendIndicators.macd.signal ? '상승 모멘텀' : '하락 모멘텀';
     html += `<div class="tech-detail-indicator-row">
       <span class="tech-detail-indicator-label">MACD</span>
       <span class="tech-detail-indicator-value ${macdClass}">${macdStatus}</span>
@@ -1324,11 +1324,11 @@ function renderTechDetailContent(name, code, trendData, chartData) {
   }
   
   // 기술적 시그널 점수
-  const scoreClass = signalScore > 0 ? 'positive' : signalScore < 0 ? 'negative' : 'neutral';
-  const scoreStatus = signalScore > 20 ? '강세' : signalScore < -20 ? '약세' : '중립';
+  const scoreClass = trendSignalScore > 0 ? 'positive' : trendSignalScore < 0 ? 'negative' : 'neutral';
+  const scoreStatus = trendSignalScore > 20 ? '강세' : trendSignalScore < -20 ? '약세' : '중립';
   html += `<div class="tech-detail-indicator-row">
     <span class="tech-detail-indicator-label">기술적 시그널 점수</span>
-    <span class="tech-detail-indicator-value ${scoreClass}">${signalScore > 0 ? '+' : ''}${signalScore} (${scoreStatus})</span>
+    <span class="tech-detail-indicator-value ${scoreClass}">${trendSignalScore > 0 ? '+' : ''}${trendSignalScore} (${scoreStatus})</span>
   </div>`;
   
   html += '</div></div>';
