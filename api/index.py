@@ -351,28 +351,28 @@ def calc_trend(quote):
         
         # 현재 추세를 Redis에 저장
         consec = 1
-        today = datetime.now().strftime("%Y-%m-%d")
+        now_ts = int(time.time())
         
         if trend_phase in ("하락시작", "하락지속", "상승시작", "상승지속"):
             prev_data = kv_get(f"trend_phase:{code}")
             if prev_data:
-                prev_date = prev_data.get("date", "")
                 prev_phase = prev_data.get("phase", "")
                 prev_consec = prev_data.get("consec", 1)
+                prev_ts = prev_data.get("ts", 0)
                 
-                # 같은 날이면 연속 횟수 유지, 다른 날이면 판단
-                if prev_date == today:
-                    consec = prev_consec
-                elif trend_phase in ("하락시작", "하락지속") and prev_phase in ("하락시작", "하락지속"):
-                    consec = prev_consec + 1
-                elif trend_phase in ("상승시작", "상승지속") and prev_phase in ("상승시작", "상승지속"):
+                # 같은 방향이면 +1, 방향 다르면 1부터 시작
+                same_direction = (
+                    (trend_phase in ("하락시작", "하락지속") and prev_phase in ("하락시작", "하락지속")) or
+                    (trend_phase in ("상승시작", "상승지속") and prev_phase in ("상승시작", "상승지속"))
+                )
+                if same_direction:
                     consec = prev_consec + 1
         
         kv_set(f"trend_phase:{code}", {
             "phase": trend_phase,
             "day_chg": round(day_chg, 2),
             "consec": consec,
-            "date": today,
+            "ts": now_ts,
         })
     
     # 추세 단계를 short_trend로 변환
