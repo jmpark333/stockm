@@ -458,6 +458,7 @@ def build_item(quote):
         "high": quote.get("high"),
         "low": quote.get("low"),
         "open": quote.get("open"),
+        "afterMarketPrice": quote.get("afterMarketPrice"),
         "updatedAt": quote.get("updatedAt"),
         "error": quote.get("error"),
         "trend": calc_trend(quote),
