@@ -146,96 +146,62 @@ def detect_trend_phase(code, current_price, previous_close, open_price):
     
     day_chg = (current_price - previous_close) / previous_close * 100
     
-    # 가격 이력 가져오기 (실시간 + 기록)
-    price_hist = []
-    if code in price_history:
-        price_hist = [(t, p) for t, p, v in price_history[code] if p is not None]
-    
-    hist = list(history.get(code, []))
-    
-    # ── 1단계: 실시간 이력 기반 (8개 이상) ──
-    if len(price_hist) >= 8:
-        recent_prices = [p for _, p in price_hist[-8:]]
-        changes = []
-        for i in range(1, len(recent_prices)):
-            if recent_prices[i-1] > 0:
-                chg = (recent_prices[i] - recent_prices[i-1]) / recent_prices[i-1] * 100
-                changes.append(chg)
-        
-        if changes:
-            up_count = sum(1 for c in changes if c > 0.05)
-            down_count = sum(1 for c in changes if c < -0.05)
-            total_flow = sum(changes)
-            
-            if total_flow < -0.5 and len(changes) >= 3 and all(c > 0.1 for c in changes[-2:]):
-                reasons.append(f"하락 흐름({total_flow:+.1f}%) 후 연속 반등")
-                if day_chg > 0: return "바닥반등", 75, reasons
-            
-            if total_flow > 0.5 and len(changes) >= 3 and all(c < -0.1 for c in changes[-2:]):
-                reasons.append(f"상승 흐름({total_flow:+.1f}%) 후 연속 조정")
-                if day_chg < 0: return "천장반락", 75, reasons
-            
-            if total_flow > 1.0 and up_count >= 5:
-                reasons.append(f"연속 상승 ({up_count}회, 흐름 {total_flow:+.1f}%)")
-                return "상승지속", 80, reasons
-            
-            if total_flow < -1.0 and down_count >= 5:
-                reasons.append(f"연속 하락 ({down_count}회, 흐름 {total_flow:+.1f}%)")
-                return "하락지속", 80, reasons
-    
-    # ── 2단계: 기록 이력(history) 기반 (3개 이상) ──
-    if len(hist) >= 2:
-        hist_changes = []
-        for i in range(1, len(hist)):
-            if hist[i-1] > 0:
-                chg = (hist[i] - hist[i-1]) / hist[i-1] * 100
-                hist_changes.append(chg)
-        
-        if hist_changes:
-            h_total = sum(hist_changes)
-            
-            # 연속 하락/상승 횟수 계산 (뒤에서부터)
-            consec_down = 0
-            for c in reversed(hist_changes):
-                if c < -0.1:
-                    consec_down += 1
-                else:
-                    break
-            
-            consec_up = 0
-            for c in reversed(hist_changes):
-                if c > 0.1:
-                    consec_up += 1
-                else:
-                    break
-            
-            # 연속 하락: 마지막 변화가 음수이고 오늘도 하락
-            if hist_changes[-1] < -0.1 and day_chg < 0:
-                return "하락지속", 70, [f"{consec_down + 1}회 연속 하락 ({h_total:+.1f}%)"]
-            
-            # 연속 상승: 마지막 변화가 양수이고 오늘도 상승
-            if hist_changes[-1] > 0.1 and day_chg > 0:
-                return "상승지속", 70, [f"{consec_up + 1}회 연속 상승 ({h_total:+.1f}%)"]
-            
-            # 바닥 반등: 하락 후 반등
-            if h_total < -0.5 and hist_changes[-1] > 0:
-                return "바닥반등", 65, [f"하락({h_total:+.1f}%) 후 반등"]
-            
-            # 천장 반락: 상승 후 조정
-            if h_total > 0.5 and hist_changes[-1] < 0:
-                return "천장반락", 65, [f"상승({h_total:+.1f}%) 후 조정"]
-    
-    # ── 3단계: 오늘 가격 변동만으로 판단 ──
-    if day_chg > 2:
-        return "상승시작", 50, [f"오늘 +{day_chg:.1f}% 급등"]
-    elif day_chg < -2:
-        return "하락시작", 50, [f"오늘 {day_chg:.1f}% 급락"]
-    elif day_chg > 0.5:
-        return "상승세약화", 40, [f"오늘 +{day_chg:.1f}% 상승"]
-    elif day_chg < -0.5:
-        return "하락세약화", 40, [f"오늘 {day_chg:.1f}% 하락"]
+    # 종목별 적응형 임계값
+    if current_price >= 500000:
+        small_threshold = 1.0
+        large_threshold = 3.0
+    elif current_price >= 100000:
+        small_threshold = 1.5
+        large_threshold = 4.0
     else:
-        return "보합", 30, [f"오늘 보합 ({day_chg:+.1f}%)"]
+        small_threshold = 2.0
+        large_threshold = 5.0
+    
+    # Redis에서 이전 추세 로드
+    prev_key = f"trend_phase:{code}"
+    prev_data = kv_get(prev_key)
+    prev_phase = prev_data.get("phase") if prev_data else None
+    
+    is_down = day_chg < -small_threshold
+    is_up = day_chg > small_threshold
+    is_strong_down = day_chg < -large_threshold
+    is_strong_up = day_chg > large_threshold
+    
+    # 1. 바닥반등
+    if is_strong_up and prev_phase in ("하락시작", "하락지속"):
+        return "바닥반등", 75, [f"하락 후 강한 반등 (+{day_chg:.1f}%)"]
+    
+    # 2. 천장반락
+    if is_strong_down and prev_phase in ("상승시작", "상승지속"):
+        return "천장반락", 75, [f"상승 후 강한 조정 ({day_chg:.1f}%)"]
+    
+    # 3. 하락지속
+    if day_chg < 0 and prev_phase in ("하락시작", "하락지속"):
+        consec = prev_data.get("consec", 1) if prev_data else 1
+        return "하락지속", 70, [f"{consec + 1}회 연속 하락 ({day_chg:+.1f}%)"]
+    
+    # 4. 상승지속
+    if day_chg > 0 and prev_phase in ("상승시작", "상승지속"):
+        consec = prev_data.get("consec", 1) if prev_data else 1
+        return "상승지속", 70, [f"{consec + 1}회 연속 상승 ({day_chg:+.1f}%)"]
+    
+    # 5. 하락세약화 (하락 중 하락 멈춤)
+    if day_chg >= 0 and prev_phase in ("하락시작", "하락지속"):
+        return "하락세약화", 55, [f"하락 중 하락 멈춤 ({day_chg:+.1f}%)"]
+    
+    # 6. 상승세약화 (상승 중 상승 멈춤)
+    if day_chg <= 0 and prev_phase in ("상승시작", "상승지속"):
+        return "상승세약화", 55, [f"상승 중 상승 멈춤 ({day_chg:+.1f}%)"]
+    
+    # 7. 하락시작
+    if is_down:
+        return "하락시작", 50, [f"오늘 {day_chg:+.1f}% 하락"]
+    
+    # 8. 상승시작
+    if is_up:
+        return "상승시작", 50, [f"오늘 +{day_chg:.1f}% 상승"]
+    
+    return "보합", 30, [f"오늘 보합 ({day_chg:+.1f}%)"]
 
 
 def track_history(code, current_price):

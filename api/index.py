@@ -238,22 +238,22 @@ def detect_trend_phase(code, current_price, previous_close, open_price):
         return "천장반락", 75, [f"상승 후 강한 조정 ({day_chg:.1f}%)"]
     
     # 3. 하락지속: 이전에도 하락 중 + 오늘도 하락
-    if is_down and prev_phase in ("하락시작", "하락지속"):
+    if day_chg < 0 and prev_phase in ("하락시작", "하락지속"):
         consec = prev_data.get("consec", 1) if prev_data else 1
         return "하락지속", 70, [f"{consec + 1}회 연속 하락 ({day_chg:+.1f}%)"]
     
     # 4. 상승지속: 이전에도 상승 중 + 오늘도 상승
-    if is_up and prev_phase in ("상승시작", "상승지속"):
+    if day_chg > 0 and prev_phase in ("상승시작", "상승지속"):
         consec = prev_data.get("consec", 1) if prev_data else 1
         return "상승지속", 70, [f"{consec + 1}회 연속 상승 ({day_chg:+.1f}%)"]
     
-    # 5. 하락세약화: 이전 하락 중 + 오늘 반등
-    if is_up and prev_phase in ("하락시작", "하락지속"):
-        return "하락세약화", 55, [f"하락 중 반등 ({day_chg:+.1f}%)"]
+    # 5. 하락세약화: 이전 하락 중 + 오늘 보합/반등 (하락 멈춤)
+    if day_chg >= 0 and prev_phase in ("하락시작", "하락지속"):
+        return "하락세약화", 55, [f"하락 중 하락 멈춤 ({day_chg:+.1f}%)"]
     
-    # 6. 상승세약화: 이전 상승 중 + 오늘 조정
-    if is_down and prev_phase in ("상승시작", "상승지속"):
-        return "상승세약화", 55, [f"상승 중 조정 ({day_chg:+.1f}%)"]
+    # 6. 상승세약화: 이전 상승 중 + 오늘 보합/조정 (상승 멈춤)
+    if day_chg <= 0 and prev_phase in ("상승시작", "상승지속"):
+        return "상승세약화", 55, [f"상승 중 상승 멈춤 ({day_chg:+.1f}%)"]
     
     # 7. 하락시작: 오늘 하락
     if is_down:
