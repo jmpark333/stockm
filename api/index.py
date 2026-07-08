@@ -302,7 +302,7 @@ def calc_trend(quote):
                     trend_reasons.append(f"RSI 과매도 ({rsi:.0f})")
 
     signal = "hold"
-    reasons = []
+    reasons = list(trend_reasons)  # 가격 기반 근거를 먼저 포함
     if cp and pc:
         if cp < pc * 0.97 and range_pos < 30 and short_trend != "down":
             signal = "buy"

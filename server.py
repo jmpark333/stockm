@@ -395,7 +395,7 @@ def calc_trend(quote):
 
     # 기본 시그널 (가격 기반)
     signal = "hold"
-    reasons = []
+    reasons = list(trend_reasons)  # 가격 기반 근거를 먼저 포함
     if cp and pc:
         if cp < pc * 0.97 and range_pos < 30 and short_trend != "down":
             signal = "buy"
