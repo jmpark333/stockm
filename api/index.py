@@ -349,20 +349,31 @@ def calc_trend(quote):
         trend_phase, trend_confidence, trend_reasons = detect_trend_phase(code, cp, pc, op)
         _trend_cache[code] = (trend_phase, trend_confidence, trend_reasons)
         
-        # 현재 추세를 Redis에 저장 (다음 요청에서 이전 추세로 사용)
+        # 현재 추세를 Redis에 저장
         consec = 1
-        if trend_phase in ("하락시작", "하락지속"):
-            prev_data = kv_get(f"trend_phase:{code}")
-            if prev_data and prev_data.get("phase") in ("하락시작", "하락지속"):
-                consec = prev_data.get("consec", 1) + 1
-            trend_reasons = [f"{consec}회 연속 하락 ({day_chg:+.1f}%)"] if consec > 1 and not trend_reasons else trend_reasons
-        elif trend_phase in ("상승시작", "상승지속"):
-            prev_data = kv_get(f"trend_phase:{code}")
-            if prev_data and prev_data.get("phase") in ("상승시작", "상승지속"):
-                consec = prev_data.get("consec", 1) + 1
-            trend_reasons = [f"{consec}회 연속 상승 ({day_chg:+.1f}%)"] if consec > 1 and not trend_reasons else trend_reasons
+        today = datetime.now().strftime("%Y-%m-%d")
         
-        kv_set(f"trend_phase:{code}", {"phase": trend_phase, "day_chg": round(day_chg, 2), "consec": consec})
+        if trend_phase in ("하락시작", "하락지속", "상승시작", "상승지속"):
+            prev_data = kv_get(f"trend_phase:{code}")
+            if prev_data:
+                prev_date = prev_data.get("date", "")
+                prev_phase = prev_data.get("phase", "")
+                prev_consec = prev_data.get("consec", 1)
+                
+                # 같은 날이면 연속 횟수 유지, 다른 날이면 판단
+                if prev_date == today:
+                    consec = prev_consec
+                elif trend_phase in ("하락시작", "하락지속") and prev_phase in ("하락시작", "하락지속"):
+                    consec = prev_consec + 1
+                elif trend_phase in ("상승시작", "상승지속") and prev_phase in ("상승시작", "상승지속"):
+                    consec = prev_consec + 1
+        
+        kv_set(f"trend_phase:{code}", {
+            "phase": trend_phase,
+            "day_chg": round(day_chg, 2),
+            "consec": consec,
+            "date": today,
+        })
     
     # 추세 단계를 short_trend로 변환
     if trend_phase in ("상승시작", "상승지속", "바닥반등"):
