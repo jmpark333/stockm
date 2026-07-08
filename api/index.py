@@ -195,31 +195,30 @@ def fetch_quote(code):
         return {"code": code, "error": str(exc)}
 
 def detect_trend_phase(code, current_price, previous_close, open_price):
-    """추세 전환 단계를 감지한다. 실시간 가격 변화 기반."""
-    reasons = []
+    """추세 전환 단계를 감지한다. 실시간 가격 변화 기반.
     
+    상태 머신:
+    - 하락시작 → 하락지속(n회) → 하락세약화(보합/반등) → (재하락시 하락지속 n+1회)
+    - 상승시작 → 상승지속(n회) → 상승세약화(보합/조정) → (재상승시 상승지속 n+1회)
+    - 바닥반등/천장반락은 전환 시그널
+    """
     if current_price is None or previous_close is None or previous_close == 0:
         return "보합", 0, ["데이터 부족"]
     
-    # Redis에서 이전 데이터 로드
     prev_key = f"trend_phase:{code}"
     prev_data = kv_get(prev_key)
     prev_phase = prev_data.get("phase") if prev_data else None
     prev_price = prev_data.get("price", 0) if prev_data else 0
     prev_consec = prev_data.get("consec", 1) if prev_data else 1
+    prev_direction = prev_data.get("direction")  # "up" or "down"
     
-    # 실시간 가격 변화 (이전 요청 대비)
     if prev_price > 0:
         price_chg = ((current_price - prev_price) / prev_price * 100)
     else:
         price_chg = 0
     
-    # 전일 대비 변화
     day_chg = ((current_price - previous_close) / previous_close * 100)
     
-    # ── 실시간 추세 판단 ──
-    
-    # 이전 가격이 없으면 전일 대비로 판단 (첫 요청)
     if prev_price == 0:
         if day_chg > 2:
             return "상승시작", 50, [f"오늘 +{day_chg:.1f}% 상승"]
@@ -232,47 +231,67 @@ def detect_trend_phase(code, current_price, previous_close, open_price):
         else:
             return "보합", 30, [f"오늘 보합 ({day_chg:+.1f}%)"]
     
-    # 이전 가격이 있으면 실시간 변화로 판단
-    is_rising = price_chg > 0.05   # 0.05% 이상 상승
-    is_falling = price_chg < -0.05  # 0.05% 이상 하락
+    is_rising = price_chg > 0.05
+    is_falling = price_chg < -0.05
     is_strong_rising = price_chg > 0.5
     is_strong_falling = price_chg < -0.5
     
-    # 1. 바닥반등: 하락 중 + 강한 반등
-    if is_strong_rising and prev_phase in ("하락시작", "하락지속", "하락세약화"):
-        return "바닥반등", 75, [f"반등 (+{price_chg:.2f}%)"]
+    # ── 하락 추세에서의 전환 ──
+    down_phases = ("하락시작", "하락지속", "하락세약화")
     
-    # 2. 천장반락: 상승 중 + 강한 조정
-    if is_strong_falling and prev_phase in ("상승시작", "상승지속", "상승세약화"):
-        return "천장반락", 75, [f"조정 ({price_chg:+.2f}%)"]
+    if prev_phase in down_phases:
+        if is_strong_rising:
+            return "바닥반등", 75, [f"반등 (+{price_chg:.2f}%)"]
+        
+        if is_falling:
+            if prev_phase == "하락세약화":
+                return "하락지속", 70, [f"반등 후 재하락 ({price_chg:+.2f}%)"]
+            else:
+                return "하락지속", 70, [f"{prev_consec + 1}회 연속 하락 ({price_chg:+.2f}%)"]
+        
+        if is_rising:
+            return "하락세약화", 60, [f"하락 중 반등 ({price_chg:+.2f}%)"]
+        
+        if not is_rising and not is_falling:
+            return "하락세약화", 50, [f"하락 후 보합 ({price_chg:+.2f}%)"]
     
-    # 3. 하락지속: 하락 중 + 계속 하락
-    if is_falling and prev_phase in ("하락시작", "하락지속", "하락세약화"):
-        return "하락지속", 70, [f"{prev_consec + 1}회 연속 하락 ({price_chg:+.2f}%)"]
+    # ── 상승 추세에서의 전환 ──
+    up_phases = ("상승시작", "상승지속", "상승세약화")
     
-    # 4. 상승지속: 상승 중 + 계속 상승
-    if is_rising and prev_phase in ("상승시작", "상승지속", "상승세약화"):
-        return "상승지속", 70, [f"{prev_consec + 1}회 연속 상승 ({price_chg:+.2f}%)"]
+    if prev_phase in up_phases:
+        if is_strong_falling:
+            return "천장반락", 75, [f"조정 ({price_chg:+.2f}%)"]
+        
+        if is_rising:
+            if prev_phase == "상승세약화":
+                return "상승지속", 70, [f"조정 후 재상승 ({price_chg:+.2f}%)"]
+            else:
+                return "상승지속", 70, [f"{prev_consec + 1}회 연속 상승 ({price_chg:+.2f}%)"]
+        
+        if is_falling:
+            return "상승세약화", 60, [f"상승 중 조정 ({price_chg:+.2f}%)"]
+        
+        if not is_rising and not is_falling:
+            return "상승세약화", 50, [f"상승 후 보합 ({price_chg:+.2f}%)"]
     
-    # 5. 하락세약화: 하락 중 + 반등 (가격 상승)
-    if is_rising and prev_phase in ("하락시작", "하락지속", "하락세약화"):
-        return "하락세약화", 60, [f"하락 중 반등 ({price_chg:+.2f}%)"]
+    # ── 바닥반등/천장반등에서의 전환 ──
+    if prev_phase == "바닥반등":
+        if is_rising:
+            return "상승시작", 55, [f"반등 후 상승 ({price_chg:+.2f}%)"]
+        if is_falling:
+            return "하락지속", 60, [f"반등 실패 재하락 ({price_chg:+.2f}%)"]
+        return "보합", 40, [f"반등 후 보합 ({price_chg:+.2f}%)"]
     
-    # 6. 상승세약화: 상승 중 + 조정 (가격 하락)
-    if is_falling and prev_phase in ("상승시작", "상승지속", "상승세약화"):
-        return "상승세약화", 60, [f"상승 중 조정 ({price_chg:+.2f}%)"]
+    if prev_phase == "천장반락":
+        if is_falling:
+            return "하락시작", 55, [f"조정 후 하락 ({price_chg:+.2f}%)"]
+        if is_rising:
+            return "상승지속", 60, [f"조정 후 재상승 ({price_chg:+.2f}%)"]
+        return "보합", 40, [f"조정 후 보합 ({price_chg:+.2f}%)"]
     
-    # 7. 하락세약화: 하락 중 + 보합 (변화 없음)
-    if not is_rising and not is_falling and prev_phase in ("하락시작", "하락지속", "하락세약화"):
-        return "하락세약화", 50, [f"하락 후 보합 ({price_chg:+.2f}%)"]
-    
-    # 8. 상승세약화: 상승 중 + 보합 (변화 없음)
-    if not is_rising and not is_falling and prev_phase in ("상승시작", "상승지속", "상승세약화"):
-        return "상승세약화", 50, [f"상승 후 보합 ({price_chg:+.2f}%)"]
-    
-    # 9. 새로운 추세 시작
+    # ── 보합/상승세약화/하락세약화에서의 추세 시작 ──
     if is_rising:
-        return "상승시작", 50, [f"상승 (+{price_chg:.2f}%)"]
+        return "상승시작", 50, [f"상승 ({price_chg:+.2f}%)"]
     elif is_falling:
         return "하락시작", 50, [f"하락 ({price_chg:+.2f}%)"]
     
@@ -366,21 +385,30 @@ def calc_trend(quote):
         # 현재 추세를 Redis에 저장
         consec = 1
         now_ts = int(time.time())
+        direction = None
         
-        if trend_phase in ("하락시작", "하락지속", "하락세약화", "상승시작", "상승지속", "상승세약화"):
-            prev_data = kv_get(f"trend_phase:{code}")
-            if prev_data:
-                prev_phase = prev_data.get("phase", "")
-                prev_consec = prev_data.get("consec", 1)
-                
-                # 같은 방향이면 +1, 방향 다르면 1부터 시작
-                # 하락세약화/상승세약화는 방향 전환으로 간주 (consec 리셋)
-                same_direction = (
-                    (trend_phase in ("하락시작", "하락지속") and prev_phase in ("하락시작", "하락지속")) or
-                    (trend_phase in ("상승시작", "상승지속") and prev_phase in ("상승시작", "상승지속"))
-                )
-                if same_direction:
-                    consec = prev_consec + 1
+        if trend_phase in ("하락시작", "하락지속", "하락세약화"):
+            direction = "down"
+        elif trend_phase in ("상승시작", "상승지속", "상승세약화"):
+            direction = "up"
+        
+        prev_data = kv_get(f"trend_phase:{code}")
+        if prev_data:
+            prev_phase = prev_data.get("phase", "")
+            prev_consec = prev_data.get("consec", 1)
+            prev_direction = prev_data.get("direction")
+            
+            # 하락세약화에서 하락지속으로 복귀 시 consec 유지
+            if trend_phase == "하락지속" and prev_phase == "하락세약화" and prev_direction == "down":
+                consec = prev_consec + 1
+            # 상승세약화에서 상승지속으로 복귀 시 consec 유지
+            elif trend_phase == "상승지속" and prev_phase == "상승세약화" and prev_direction == "up":
+                consec = prev_consec + 1
+            # 같은 방향이면 +1
+            elif direction == prev_direction and direction is not None:
+                consec = prev_consec + 1
+            else:
+                consec = 1
         
         kv_set(f"trend_phase:{code}", {
             "phase": trend_phase,
@@ -388,6 +416,7 @@ def calc_trend(quote):
             "consec": consec,
             "ts": now_ts,
             "price": cp,
+            "direction": direction,
         })
     
     # 추세 단계를 short_trend로 변환
