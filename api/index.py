@@ -195,7 +195,7 @@ def fetch_quote(code):
         return {"code": code, "error": str(exc)}
 
 def detect_trend_phase(code, current_price, previous_close, open_price):
-    """추세 전환 단계를 감지한다."""
+    """추세 전환 단계를 감지한다. 한국 시장 특성에 맞는 임계값 적용."""
     reasons = []
     
     if current_price is None or previous_close is None or previous_close == 0:
@@ -203,50 +203,63 @@ def detect_trend_phase(code, current_price, previous_close, open_price):
     
     day_chg = (current_price - previous_close) / previous_close * 100
     
+    # 종목별 적응형 임계값 (한국 시장 평균 일일 변동폭 2-3% 기반)
+    # 소형주는 변동성이 크고, 대형주는 작음
+    # 50만원 이상 고가주: 1% 기준, 그 외: 1.5% 기준
+    if current_price >= 500000:
+        small_threshold = 1.0   # 고가주: 1% 이상
+        large_threshold = 3.0   # 강한 반전: 3% 이상
+    elif current_price >= 100000:
+        small_threshold = 1.5   # 중형주: 1.5% 이상
+        large_threshold = 4.0   # 강한 반전: 4% 이상
+    else:
+        small_threshold = 2.0   # 저가주: 2% 이상
+        large_threshold = 5.0   # 강한 반전: 5% 이상
+    
     # Redis에서 이전 추세 로드
     prev_key = f"trend_phase:{code}"
     prev_data = kv_get(prev_key)
     prev_phase = prev_data.get("phase") if prev_data else None
-    prev_day_chg = prev_data.get("day_chg", 0) if prev_data else 0
     
-    # 오늘 하락 여부
-    is_down = day_chg < -0.3
-    is_up = day_chg > 0.3
+    # 오늘 하락/상승 여부 (임계값 적용)
+    is_down = day_chg < -small_threshold
+    is_up = day_chg > small_threshold
+    is_strong_down = day_chg < -large_threshold
+    is_strong_up = day_chg > large_threshold
     
-    # ── 추세 판단 ──
+    # ── 추세 판단 (우선순위 순) ──
     
-    # 하락지속: 이전에도 하락 중이었고 오늘도 하락
+    # 1. 바닥반등: 이전 하락 중 + 오늘 강한 반등
+    if is_strong_up and prev_phase in ("하락시작", "하락지속"):
+        return "바닥반등", 75, [f"하락 후 강한 반등 (+{day_chg:.1f}%)"]
+    
+    # 2. 천장반락: 이전 상승 중 + 오늘 강한 조정
+    if is_strong_down and prev_phase in ("상승시작", "상승지속"):
+        return "천장반락", 75, [f"상승 후 강한 조정 ({day_chg:.1f}%)"]
+    
+    # 3. 하락지속: 이전에도 하락 중 + 오늘도 하락
     if is_down and prev_phase in ("하락시작", "하락지속"):
-        # 연속 횟수 계산
         consec = prev_data.get("consec", 1) if prev_data else 1
         return "하락지속", 70, [f"{consec + 1}회 연속 하락 ({day_chg:+.1f}%)"]
     
-    # 상승지속: 이전에도 상승 중이었고 오늘도 상승
+    # 4. 상승지속: 이전에도 상승 중 + 오늘도 상승
     if is_up and prev_phase in ("상승시작", "상승지속"):
         consec = prev_data.get("consec", 1) if prev_data else 1
         return "상승지속", 70, [f"{consec + 1}회 연속 상승 ({day_chg:+.1f}%)"]
     
-    # 하락세약화: 이전 하락 중인데 오늘 반등
+    # 5. 하락세약화: 이전 하락 중 + 오늘 반등
     if is_up and prev_phase in ("하락시작", "하락지속"):
-        return "하락세약화", 50, [f"하락 중 반등 ({day_chg:+.1f}%)"]
+        return "하락세약화", 55, [f"하락 중 반등 ({day_chg:+.1f}%)"]
     
-    # 상승세약화: 이전 상승 중인데 오늘 조정
+    # 6. 상승세약화: 이전 상승 중 + 오늘 조정
     if is_down and prev_phase in ("상승시작", "상승지속"):
-        return "상승세약화", 50, [f"상승 중 조정 ({day_chg:+.1f}%)"]
+        return "상승세약화", 55, [f"상승 중 조정 ({day_chg:+.1f}%)"]
     
-    # 바닥반등: 이전 하락 중이었는데 오늘 강한 반등
-    if day_chg > 1.5 and prev_phase in ("하락시작", "하락지속"):
-        return "바닥반등", 65, [f"하락 후 반등 ({day_chg:+.1f}%)"]
-    
-    # 천장반락: 이전 상승 중이었는데 오늘 강한 조정
-    if day_chg < -1.5 and prev_phase in ("상승시작", "상승지속"):
-        return "천장반락", 65, [f"상승 후 조정 ({day_chg:+.1f}%)"]
-    
-    # 하락시작: 오늘 하락
+    # 7. 하락시작: 오늘 하락
     if is_down:
         return "하락시작", 50, [f"오늘 {day_chg:+.1f}% 하락"]
     
-    # 상승시작: 오늘 상승
+    # 8. 상승시작: 오늘 상승
     if is_up:
         return "상승시작", 50, [f"오늘 +{day_chg:.1f}% 상승"]
     
