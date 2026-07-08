@@ -2074,6 +2074,59 @@ td {
   text-align: right;
 }
 
+/* 기술적 지표 섹션 스타일 */
+.tech-detail-indicators {
+  margin-top: 12px;
+  padding: 12px;
+  background: rgba(15, 23, 42, 0.3);
+  border-radius: 8px;
+  border: 1px solid var(--line);
+}
+
+.tech-detail-indicator-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.tech-detail-indicator-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+}
+
+.tech-detail-indicator-row:last-child {
+  border-bottom: none;
+}
+
+.tech-detail-indicator-label {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.tech-detail-indicator-value {
+  font-size: 13px;
+  font-weight: 600;
+  font-family: 'SF Mono', 'Consolas', monospace;
+}
+
+.tech-detail-indicator-value.positive {
+  color: var(--up);
+}
+
+.tech-detail-indicator-value.negative {
+  color: var(--down);
+}
+
+.tech-detail-indicator-value.neutral {
+  color: var(--text);
+}
+
 /* 단기추세 클릭 가능 스타일 */
 .trend-clickable {
   cursor: pointer;

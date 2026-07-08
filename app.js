@@ -1271,19 +1271,67 @@ function renderTechDetailContent(name, code, trendData, chartData) {
   html += '<div class="tech-detail-section-title">📉 단기 추세 분석</div>';
   
   const trendLabels = {
-    'up': { text: '▲ 상승', cls: 'positive' },
-    'down': { text: '▼ 하락', cls: 'negative' },
-    'flat': { text: '― 보합', cls: 'neutral' }
+    'up': { text: '▲ 상승', cls: 'positive', desc: '기술적 지표 기반 상승 추세' },
+    'down': { text: '▼ 하락', cls: 'negative', desc: '기술적 지표 기반 하락 추세' },
+    'flat': { text: '― 보합', cls: 'neutral', desc: '뚜렷한 추세 방향 없음' }
   };
   const trendInfo = trendLabels[trendData.shortTrend] || trendLabels.flat;
   
   html += `<div class="tech-detail-signal">`;
   html += `<div class="tech-detail-signal-title ${trendInfo.cls}">${trendInfo.text}</div>`;
-  html += `<div class="tech-detail-signal-desc">일중 범위: ${trendData.rangePos?.toFixed(1) || 50}%</div>`;
-  html += `<div class="tech-detail-signal-desc">변동성: ${trendData.volatility || 0}%</div>`;
+  html += `<div class="tech-detail-signal-desc">${trendInfo.desc}</div>`;
   html += `</div>`;
   
-  html += '</div>';
+  // 추세 판단 근거 표시
+  html += '<div class="tech-detail-indicators">';
+  html += '<div class="tech-detail-indicator-title">추세 판단 근거</div>';
+  
+  const indicators = trendData.techIndicators || {};
+  const signalScore = trendData.techSignalScore || 0;
+  
+  // 이동평균선 상태
+  if (indicators.ma5 && indicators.ma20 && indicators.ma60) {
+    const maStatus = indicators.ma5 > indicators.ma20 && indicators.ma20 > indicators.ma60 
+      ? '정배열 (상승추세)' 
+      : indicators.ma5 < indicators.ma20 && indicators.ma20 < indicators.ma60 
+        ? '역배열 (하락추세)' 
+        : '혼조';
+    const maClass = indicators.ma5 > indicators.ma20 ? 'positive' : 'negative';
+    html += `<div class="tech-detail-indicator-row">
+      <span class="tech-detail-indicator-label">이동평균선 배열</span>
+      <span class="tech-detail-indicator-value ${maClass}">${maStatus}</span>
+    </div>`;
+  }
+  
+  // RSI 상태
+  if (indicators.rsi14 !== null && indicators.rsi14 !== undefined) {
+    const rsiClass = indicators.rsi14 > 60 ? 'positive' : indicators.rsi14 < 40 ? 'negative' : 'neutral';
+    const rsiStatus = indicators.rsi14 > 60 ? '강세' : indicators.rsi14 < 40 ? '약세' : '중립';
+    html += `<div class="tech-detail-indicator-row">
+      <span class="tech-detail-indicator-label">RSI(14)</span>
+      <span class="tech-detail-indicator-value ${rsiClass}">${indicators.rsi14.toFixed(1)} (${rsiStatus})</span>
+    </div>`;
+  }
+  
+  // MACD 상태
+  if (indicators.macd && indicators.macd.macd !== null && indicators.macd.signal !== null) {
+    const macdClass = indicators.macd.macd > indicators.macd.signal ? 'positive' : 'negative';
+    const macdStatus = indicators.macd.macd > indicators.macd.signal ? '상승 모멘텀' : '하락 모멘텀';
+    html += `<div class="tech-detail-indicator-row">
+      <span class="tech-detail-indicator-label">MACD</span>
+      <span class="tech-detail-indicator-value ${macdClass}">${macdStatus}</span>
+    </div>`;
+  }
+  
+  // 기술적 시그널 점수
+  const scoreClass = signalScore > 0 ? 'positive' : signalScore < 0 ? 'negative' : 'neutral';
+  const scoreStatus = signalScore > 20 ? '강세' : signalScore < -20 ? '약세' : '중립';
+  html += `<div class="tech-detail-indicator-row">
+    <span class="tech-detail-indicator-label">기술적 시그널 점수</span>
+    <span class="tech-detail-indicator-value ${scoreClass}">${signalScore > 0 ? '+' : ''}${signalScore} (${scoreStatus})</span>
+  </div>`;
+  
+  html += '</div></div>';
   
   techDetailBody.innerHTML = html;
 }
@@ -1465,10 +1513,14 @@ function renderHoldings(rows) {
       realtimeHtml += '</div>';
     }
     
-    // 단기추세 (trend 데이터가 있다고 가정)
+    // 단기추세 (기술적 지표 기반 판단)
     const t = row.trend || {};
     const trendText = t.shortTrend === 'up' ? '상승' : t.shortTrend === 'down' ? '하락' : '보합';
     const trendDataAttr = `data-trend='${JSON.stringify(t)}'`;
+    
+    // 추세 근거 요약
+    const trendReasons = t.techSignals || [];
+    const trendSummary = trendReasons.length > 0 ? trendReasons[0] : '';
     
     tr.innerHTML = `
       <td><div class="name-cell"><strong class="clickable" data-code="${row.code}" data-name="${row.name}" data-avg="${row.avgPrice}">${row.name}</strong><small>${row.code}</small></div></td>
@@ -1479,7 +1531,7 @@ function renderHoldings(rows) {
       <td>${formatMoney(row.currentValue)}</td>
       <td class="${row.realizedProfit >= 0 ? 'up' : 'down'}">${formatPercent(row.realizedProfitRate)}</td>
       <td class="${row.realizedProfit >= 0 ? 'up' : 'down'}">${formatSignedMoney(row.realizedProfit)}<br><small style="opacity:0.6">(비용 ${formatMoney(Math.round(row.sellFee))})</small></td>
-      <td class="trend-cell trend-clickable" ${trendDataAttr}>${trendIcon(t.shortTrend)} ${trendText}</td>
+      <td class="trend-cell trend-clickable" ${trendDataAttr}>${trendIcon(t.shortTrend)} ${trendText}${trendSummary ? `<br><small style="opacity:0.6;font-size:11px">${trendSummary}</small>` : ''}</td>
       <td>${badgeHtml} ${aiBtnHtml}</td>
       <td>${row.session || row.error || '-'}${realtimeHtml}</td>
     `;
@@ -1523,9 +1575,13 @@ function renderWatchlist(rows) {
       realtimeHtml += '</div>';
     }
     
-    // 단기추세 클릭 가능하게
+    // 단기추세 (기술적 지표 기반 판단)
     const trendText = t.shortTrend === 'up' ? '상승' : t.shortTrend === 'down' ? '하락' : '보합';
     const trendDataAttr = `data-trend='${JSON.stringify(t)}'`;
+    
+    // 추세 근거 요약
+    const trendReasons = t.techSignals || [];
+    const trendSummary = trendReasons.length > 0 ? trendReasons[0] : '';
     
     tr.innerHTML = `
       <td><div class="name-cell"><strong class="clickable" data-code="${row.code}" data-name="${row.name}">${row.name}</strong><small>${row.code}</small></div></td>
@@ -1533,7 +1589,7 @@ function renderWatchlist(rows) {
       <td class="${row.change > 0 ? 'up' : row.change < 0 ? 'down' : 'neutral'}">${formatSignedMoney(row.change)} / ${formatPercent(row.changeRate)}</td>
       <td>${dayRange}<br>${rangeBar(t.rangePos)}</td>
       <td>${t.volatility}%</td>
-      <td class="trend-cell trend-clickable" ${trendDataAttr}>${trendIcon(t.shortTrend)} ${trendText}</td>
+      <td class="trend-cell trend-clickable" ${trendDataAttr}>${trendIcon(t.shortTrend)} ${trendText}${trendSummary ? `<br><small style="opacity:0.6;font-size:11px">${trendSummary}</small>` : ''}</td>
       <td>${badgeHtml} ${aiBtnHtml}</td>
       <td>${row.session || row.error || '-'}${realtimeHtml}</td>
     `;
