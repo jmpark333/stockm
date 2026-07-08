@@ -77,6 +77,10 @@ NAVER_REALTIME_URL = "https://polling.finance.naver.com/api/realtime?query=SERVI
 history: dict[str, deque] = {}
 MAX_HISTORY = 12
 
+# 실시간 급변 감지용 데이터
+price_history: dict[str, deque] = {}  # {code: deque([(timestamp, price, volume), ...])}
+PRICE_HISTORY_MAX = 60
+
 ZAI_URL = "https://api.z.ai/api/coding/paas/v4/chat/completions"
 ZAI_KEY = os.environ.get("ZAI_KEY", "").strip()
 
@@ -293,6 +297,15 @@ def track_history(code, current_price):
         history[code] = deque(maxlen=MAX_HISTORY)
     if current_price is not None:
         history[code].append(current_price)
+
+
+def track_price_volume(code, price, volume=None):
+    """실시간 가격과 거래량을 이력에 저장"""
+    if code not in price_history:
+        price_history[code] = deque(maxlen=PRICE_HISTORY_MAX)
+    timestamp = time.time()
+    price_history[code].append((timestamp, price, volume))
+
 
 def calc_trend(quote):
     cp = quote.get("currentPrice")
