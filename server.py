@@ -167,6 +167,17 @@ def detect_trend_phase(code, current_price, previous_close, open_price):
     is_strong_down = day_chg < -large_threshold
     is_strong_up = day_chg > large_threshold
     
+    # 장중 반등/조정 감지
+    intraday_chg = 0
+    if open_price and open_price > 0:
+        intraday_chg = ((current_price - open_price) / open_price * 100) if current_price else 0
+    
+    intraday_recovery = False
+    if current_price and hv and lv and hv != lv:
+        low_to_high = (current_price - lv) / (hv - lv) * 100
+        if low_to_high > 50:
+            intraday_recovery = True
+    
     # 1. 바닥반등
     if is_strong_up and prev_phase in ("하락시작", "하락지속"):
         return "바닥반등", 75, [f"하락 후 강한 반등 (+{day_chg:.1f}%)"]
@@ -175,8 +186,10 @@ def detect_trend_phase(code, current_price, previous_close, open_price):
     if is_strong_down and prev_phase in ("상승시작", "상승지속"):
         return "천장반락", 75, [f"상승 후 강한 조정 ({day_chg:.1f}%)"]
     
-    # 3. 하락지속
+    # 3. 하락지속 / 하락세약화
     if day_chg < 0 and prev_phase in ("하락시작", "하락지속"):
+        if intraday_recovery or intraday_chg > 0:
+            return "하락세약화", 60, [f"하락 중 장중 반등 ({day_chg:+.1f}%, 장중 {intraday_chg:+.1f}%)"]
         consec = prev_data.get("consec", 1) if prev_data else 1
         return "하락지속", 70, [f"{consec + 1}회 연속 하락 ({day_chg:+.1f}%)"]
     
@@ -185,11 +198,11 @@ def detect_trend_phase(code, current_price, previous_close, open_price):
         consec = prev_data.get("consec", 1) if prev_data else 1
         return "상승지속", 70, [f"{consec + 1}회 연속 상승 ({day_chg:+.1f}%)"]
     
-    # 5. 하락세약화 (하락 중 하락 멈춤)
+    # 5. 하락세약화 (하락 멈춤)
     if day_chg >= 0 and prev_phase in ("하락시작", "하락지속"):
         return "하락세약화", 55, [f"하락 중 하락 멈춤 ({day_chg:+.1f}%)"]
     
-    # 6. 상승세약화 (상승 중 상승 멈춤)
+    # 6. 상승세약화 (상승 멈춤)
     if day_chg <= 0 and prev_phase in ("상승시작", "상승지속"):
         return "상승세약화", 55, [f"상승 중 상승 멈춤 ({day_chg:+.1f}%)"]
     

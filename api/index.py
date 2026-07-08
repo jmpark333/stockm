@@ -221,11 +221,23 @@ def detect_trend_phase(code, current_price, previous_close, open_price):
     prev_data = kv_get(prev_key)
     prev_phase = prev_data.get("phase") if prev_data else None
     
-    # 오늘 하락/상승 여부 (임계값 적용)
+    # 장중 흐름 분석
     is_down = day_chg < -small_threshold
     is_up = day_chg > small_threshold
     is_strong_down = day_chg < -large_threshold
     is_strong_up = day_chg > large_threshold
+    
+    # 장중 반등/조정 감지 (시가 대비 현재가)
+    intraday_chg = 0
+    if open_price and open_price > 0:
+        intraday_chg = ((cp - open_price) / open_price * 100) if cp else 0
+    
+    # 장중 저점 대비 반등 감지 (현재가 > 저가의 50% 지점)
+    intraday_recovery = False
+    if cp and hv and lv and hv != lv:
+        low_to_high = (cp - lv) / (hv - lv) * 100
+        if low_to_high > 50:  # 저점 대비 50% 이상 반등
+            intraday_recovery = True
     
     # ── 추세 판단 (우선순위 순) ──
     
@@ -237,21 +249,24 @@ def detect_trend_phase(code, current_price, previous_close, open_price):
     if is_strong_down and prev_phase in ("상승시작", "상승지속"):
         return "천장반락", 75, [f"상승 후 강한 조정 ({day_chg:.1f}%)"]
     
-    # 3. 하락지속: 이전에도 하락 중 + 오늘도 하락
+    # 3. 하락지속: 이전 하락 중 + 오늘도 하락 + 장중 반등 없음
     if day_chg < 0 and prev_phase in ("하락시작", "하락지속"):
+        # 장중 반등이 있으면 하락세약화
+        if intraday_recovery or intraday_chg > 0:
+            return "하락세약화", 60, [f"하락 중 장중 반등 ({day_chg:+.1f}%, 장중 {intraday_chg:+.1f}%)"]
         consec = prev_data.get("consec", 1) if prev_data else 1
         return "하락지속", 70, [f"{consec + 1}회 연속 하락 ({day_chg:+.1f}%)"]
     
-    # 4. 상승지속: 이전에도 상승 중 + 오늘도 상승
+    # 4. 상승지속: 이전 상승 중 + 오늘도 상승
     if day_chg > 0 and prev_phase in ("상승시작", "상승지속"):
         consec = prev_data.get("consec", 1) if prev_data else 1
         return "상승지속", 70, [f"{consec + 1}회 연속 상승 ({day_chg:+.1f}%)"]
     
-    # 5. 하락세약화: 이전 하락 중 + 오늘 보합/반등 (하락 멈춤)
+    # 5. 하락세약화: 이전 하락 중 + 오늘 보합/반등
     if day_chg >= 0 and prev_phase in ("하락시작", "하락지속"):
         return "하락세약화", 55, [f"하락 중 하락 멈춤 ({day_chg:+.1f}%)"]
     
-    # 6. 상승세약화: 이전 상승 중 + 오늘 보합/조정 (상승 멈춤)
+    # 6. 상승세약화: 이전 상승 중 + 오늘 보합/조정
     if day_chg <= 0 and prev_phase in ("상승시작", "상승지속"):
         return "상승세약화", 55, [f"상승 중 상승 멈춤 ({day_chg:+.1f}%)"]
     
