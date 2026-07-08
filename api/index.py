@@ -232,80 +232,74 @@ def calc_trend(quote):
         signal_score = 0
         indicators = {}
 
-    # 기술적 지표 기반 단기추세 판단
+    # ── 단기추세 판단: 가격 기반 우선, 기술적 지표는 보조 확인 ──
     short_trend = "flat"
     trend_reasons = []
-    
-    ma5 = indicators.get("ma5")
-    ma20 = indicators.get("ma20")
-    ma60 = indicators.get("ma60")
-    
-    if ma5 and ma20 and ma60:
-        if ma5 > ma20 > ma60:
+
+    # 1) 오늘 가격 변동 (가장 중요한 단기 지표)
+    if cp and pc and pc > 0:
+        day_chg = (cp - pc) / pc * 100
+        if day_chg > 0.5:
             short_trend = "up"
-            trend_reasons.append("정배열 (MA5>MA20>MA60)")
-        elif ma5 < ma20 < ma60:
+            trend_reasons.append(f"오늘 +{day_chg:.1f}% 상승")
+        elif day_chg < -0.5:
             short_trend = "down"
-            trend_reasons.append("역배열 (MA5<MA20<MA60)")
-        elif ma5 > ma20 and ma5 > ma60:
+            trend_reasons.append(f"오늘 {day_chg:.1f}% 하락")
+        else:
+            trend_reasons.append(f"오늘 보합 ({day_chg:+.1f}%)")
+
+    # 2) 오늘 시가 대비 현재가 (장중 흐름)
+    if op and op > 0 and cp:
+        intraday = (cp - op) / op * 100
+        if intraday > 0.3 and short_trend != "down":
             short_trend = "up"
-            trend_reasons.append("단기 정배열 (MA5 최상위)")
-        elif ma5 < ma20 and ma5 < ma60:
+            trend_reasons.append(f"장중 +{intraday:.1f}%")
+        elif intraday < -0.3 and short_trend != "up":
             short_trend = "down"
-            trend_reasons.append("단기 역배열 (MA5 최하위)")
-    
-    rsi = indicators.get("rsi14")
-    if rsi is not None:
-        if rsi > 60:
-            if short_trend != "down":
-                short_trend = "up"
-                trend_reasons.append(f"RSI 강세 ({rsi:.1f})")
-        elif rsi < 40:
-            if short_trend != "up":
-                short_trend = "down"
-                trend_reasons.append(f"RSI 약세 ({rsi:.1f})")
-    
-    macd_data = indicators.get("macd")
-    if macd_data and macd_data.get("macd") is not None and macd_data.get("signal") is not None:
-        if macd_data["macd"] > macd_data["signal"]:
-            if short_trend != "down":
-                short_trend = "up"
-                trend_reasons.append("MACD 상승")
-        elif macd_data["macd"] < macd_data["signal"]:
-            if short_trend != "up":
-                short_trend = "down"
-                trend_reasons.append("MACD 하락")
-    
-    if signal_score > 20:
-        short_trend = "up"
-        trend_reasons.append(f"기술적 시그널 강세 ({signal_score})")
-    elif signal_score < -20:
-        short_trend = "down"
-        trend_reasons.append(f"기술적 시그널 약세 ({signal_score})")
-    
+            trend_reasons.append(f"장중 {intraday:.1f}%")
+
+    # 3) 실시간 가격 이력 (최근 흐름)
     hist = list(history.get(code, []))
     if len(hist) >= 3:
-        if ma5 and ma20:
-            if cp > ma5 and ma5 > ma20:
-                if short_trend != "down":
-                    short_trend = "up"
-                    trend_reasons.append("가격 > MA5 > MA20 (강한 상승)")
-            elif cp < ma5 and ma5 < ma20:
-                if short_trend != "up":
-                    short_trend = "down"
-                    trend_reasons.append("가격 < MA5 < MA20 (강한 하락)")
-    
-    # 기술적 지표가 없으면 가격 기반 판단 사용
-    if not indicators:
-        if len(hist) >= 3:
-            first = hist[0]
-            last = hist[-1]
-            if last > first * 1.001:
+        recent_first = hist[0]
+        recent_last = hist[-1]
+        if recent_first and recent_first > 0:
+            recent_chg = (recent_last - recent_first) / recent_first * 100
+            if recent_chg > 0.3 and short_trend != "down":
                 short_trend = "up"
-                trend_reasons.append("가격 상승 추세")
-            elif last < first * 0.999:
+                trend_reasons.append(f"최근 흐름 +{recent_chg:.1f}%")
+            elif recent_chg < -0.3 and short_trend != "up":
                 short_trend = "down"
-                trend_reasons.append("가격 하락 추세")
+                trend_reasons.append(f"최근 흐름 {recent_chg:.1f}%")
+
+    # 4) 기술적 지표는 보조 확인 (가격 기반과 일치할 때만 강화)
+    if indicators:
+        ma5 = indicators.get("ma5")
+        ma20 = indicators.get("ma20")
+        ma60 = indicators.get("ma60")
+
+        if ma5 and ma20 and ma60 and cp:
+            if cp > ma5 > ma20 > ma60:
+                if short_trend == "up":
+                    trend_reasons.append("MA 정배열 확인")
+                elif short_trend == "flat":
+                    short_trend = "up"
+                    trend_reasons.append("MA 정배열 (가격 상승 확인)")
+            elif cp < ma5 < ma20 < ma60:
+                if short_trend == "down":
+                    trend_reasons.append("MA 역배열 확인")
+                elif short_trend == "flat":
+                    short_trend = "down"
+                    trend_reasons.append("MA 역배열 (가격 하락 확인)")
+
+        rsi = indicators.get("rsi14")
+        if rsi is not None:
+            if rsi > 70:
+                if short_trend == "up":
+                    trend_reasons.append(f"RSI 과매수 주의 ({rsi:.0f})")
+            elif rsi < 30:
+                if short_trend == "down":
+                    trend_reasons.append(f"RSI 과매도 ({rsi:.0f})")
 
     signal = "hold"
     reasons = []
