@@ -158,151 +158,117 @@ def detect_trend_phase(code, current_price, previous_close, open_price):
     if code in price_history:
         price_hist = [(t, p) for t, p, v in price_history[code] if p is not None]
     
-    # 일중 데이터
-    intraday_chg = 0
-    if open_price and open_price > 0:
-        intraday_chg = (current_price - open_price) / open_price * 100
+    # ── 1단계: 실시간 이력 기반 패턴 감지 (가장 신뢰도 높음) ──
     
-    # ── 1단계: 최근 가격 변화 방향과 강도 분석 ──
-    
-    # 실시간 이력이 있으면 이를 활용
-    if len(price_hist) >= 5:
-        recent_5 = [p for _, p in price_hist[-5:]]
+    if len(price_hist) >= 8:
+        recent_prices = [p for _, p in price_hist[-8:]]
+        
         # 각 구간별 변화율 계산
         changes = []
-        for i in range(1, len(recent_5)):
-            if recent_5[i-1] > 0:
-                chg = (recent_5[i] - recent_5[i-1]) / recent_5[i-1] * 100
+        for i in range(1, len(recent_prices)):
+            if recent_prices[i-1] > 0:
+                chg = (recent_prices[i] - recent_prices[i-1]) / recent_prices[i-1] * 100
                 changes.append(chg)
         
         if changes:
-            # 연속 상승/하락 횟수
+            # 연속 상승/하락 횟수 (0.05% 이상만 카운트)
             up_count = sum(1 for c in changes if c > 0.05)
             down_count = sum(1 for c in changes if c < -0.05)
-            flat_count = len(changes) - up_count - down_count
             
-            # 변화 가속도 (최근 변화가 커지는지 작아지는지)
-            if len(changes) >= 3:
+            # 변화 가속도
+            if len(changes) >= 4:
                 first_half = sum(changes[:len(changes)//2])
                 second_half = sum(changes[len(changes)//2:])
                 acceleration = second_half - first_half
             else:
                 acceleration = 0
             
-            # ── 2단계: 추세 전환 패턴 감지 ──
+            # 전체 흐름 방향
+            total_flow = sum(changes)
             
-            # 바닥 반등: 하락 후 상승 전환
-            if down_count >= 2 and up_count >= 1:
-                if changes[-1] > 0.1 and changes[-2] < -0.05:
-                    reasons.append(f"최근 {down_count}회 하락 후 반등 시도")
+            # 바닥 반등: 하락 흐름 후 상승 전환 (강한 반전 필요)
+            if total_flow < -0.5 and len(changes) >= 3:
+                last_2 = changes[-2:]
+                if all(c > 0.1 for c in last_2):
+                    reasons.append(f"하락 흐름({total_flow:+.1f}%) 후 연속 반등")
                     if day_chg > 0:
-                        return "바닥반등", 70, reasons
-                    else:
-                        return "하락세약화", 50, reasons
+                        return "바닥반등", 75, reasons
             
-            # 천장 반락: 상승 후 하락 전환
-            if up_count >= 2 and down_count >= 1:
-                if changes[-1] < -0.1 and changes[-2] > 0.05:
-                    reasons.append(f"최근 {up_count}회 상승 후 조정 시도")
+            # 천장 반락: 상승 흐름 후 하락 전환 (강한 반전 필요)
+            if total_flow > 0.5 and len(changes) >= 3:
+                last_2 = changes[-2:]
+                if all(c < -0.1 for c in last_2):
+                    reasons.append(f"상승 흐름({total_flow:+.1f}%) 후 연속 조정")
                     if day_chg < 0:
-                        return "천장반락", 70, reasons
-                    else:
-                        return "상승세약화", 50, reasons
+                        return "천장반락", 75, reasons
             
-            # 상승 지속: 연속 상승
-            if up_count >= 3 and down_count == 0:
-                reasons.append(f"최근 {up_count}회 연속 상승")
-                if acceleration > 0:
+            # 상승 지속: 전체 흐름이 명확히 양수
+            if total_flow > 1.0 and up_count >= 5:
+                reasons.append(f"연속 상승 ({up_count}회, 흐름 {total_flow:+.1f}%)")
+                if acceleration >= 0:
                     return "상승지속", 80, reasons
                 else:
-                    return "상승세약화", 60, reasons
+                    return "상승세약화", 65, reasons
             
-            # 하락 지속: 연속 하락
-            if down_count >= 3 and up_count == 0:
-                reasons.append(f"최근 {down_count}회 연속 하락")
-                if acceleration < 0:
+            # 하락 지속: 전체 흐름이 명확히 음수
+            if total_flow < -1.0 and down_count >= 5:
+                reasons.append(f"연속 하락 ({down_count}회, 흐름 {total_flow:+.1f}%)")
+                if acceleration <= 0:
                     return "하락지속", 80, reasons
                 else:
-                    return "하락세약화", 60, reasons
+                    return "하락세약화", 65, reasons
             
-            # 상승 시작: 첫 상승
-            if up_count >= 1 and down_count == 0 and day_chg > 0:
-                reasons.append(f"최근 상승 전환 ({up_count}회)")
+            # 상승 시작: 흐름이 전환되고 오늘도 상승
+            if total_flow > 0 and up_count >= 3 and day_chg > 0.3:
+                reasons.append(f"상승 흐름 전환 ({up_count}회 상승)")
                 return "상승시작", 60, reasons
             
-            # 하락 시작: 첫 하락
-            if down_count >= 1 and up_count == 0 and day_chg < 0:
-                reasons.append(f"최근 하락 전환 ({down_count}회)")
+            # 하락 시작: 흐름이 전환되고 오늘도 하락
+            if total_flow < 0 and down_count >= 3 and day_chg < -0.3:
+                reasons.append(f"하락 흐름 전환 ({down_count}회 하락)")
                 return "하락시작", 60, reasons
+            
+            # 상승세/하락세 약화: 방향성 약할 때
+            if total_flow > 0.3 and day_chg < -0.3:
+                return "상승세약화", 45, [f"상승 흐름({total_flow:+.1f}%)이나 오늘 조정"]
+            if total_flow < -0.3 and day_chg > 0.3:
+                return "하락세약화", 45, [f"하락 흐름({total_flow:+.1f}%)이나 오늘 반등"]
     
-    # ── 3단계: 실시간 이력이 없으면 가격 데이터 기반 판단 ──
+    # ── 2단계: 기록 이력 기반 판단 ──
     
     hist = list(history.get(code, []))
-    
     if len(hist) >= 5:
-        # 최근 5개 데이터에서 방향성 분석
         ups = sum(1 for i in range(1, len(hist)) if hist[i] > hist[i-1])
         downs = sum(1 for i in range(1, len(hist)) if hist[i] < hist[i-1])
-        
-        # 변화 크기
         total_chg = (hist[-1] - hist[0]) / hist[0] * 100 if hist[0] > 0 else 0
         recent_chg = (hist[-1] - hist[-2]) / hist[-2] * 100 if len(hist) >= 2 and hist[-2] > 0 else 0
         
-        # 바닥 반등 패턴: 전체적으로 하락했으나 최근 반등
-        if total_chg < -1 and recent_chg > 0.3:
-            reasons.append(f"지난 흐름 {total_chg:+.1f}% 하락 후 반등")
-            return "바닥반등", 65, reasons
+        # 바닥 반등
+        if total_chg < -2 and recent_chg > 0.5:
+            return "바닥반등", 60, [f"흐름 {total_chg:+.1f}% 하락 후 반등"]
         
-        # 천장 반락 패턴: 전체적으로 상승했으나 최근 조정
-        if total_chg > 1 and recent_chg < -0.3:
-            reasons.append(f"지난 흐름 {total_chg:+.1f}% 상승 후 조정")
-            return "천장반락", 65, reasons
+        # 천장 반락
+        if total_chg > 2 and recent_chg < -0.5:
+            return "천장반락", 60, [f"흐름 {total_chg:+.1f}% 상승 후 조정"]
         
-        # 상승 지속
-        if ups >= 3 and downs == 0 and total_chg > 0.5:
-            reasons.append(f"최근 {ups}회 연속 상승 ({total_chg:+.1f}%)")
-            return "상승지속", 70, reasons
-        
-        # 하락 지속
-        if downs >= 3 and ups == 0 and total_chg < -0.5:
-            reasons.append(f"최근 {downs}회 연속 하락 ({total_chg:+.1f}%)")
-            return "하락지속", 70, reasons
-        
-        # 상승 시작
-        if ups >= 2 and downs <= 1 and day_chg > 0:
-            reasons.append(f"상승 전환 ({ups}회 상승)")
-            return "상승시작", 55, reasons
-        
-        # 하락 시작
-        if downs >= 2 and ups <= 1 and day_chg < 0:
-            reasons.append(f"하락 전환 ({downs}회 하락)")
-            return "하락시작", 55, reasons
-        
-        # 상승세/하락세 약화
-        if ups > downs and recent_chg < 0:
-            reasons.append("상승 중이나 최근 조정")
-            return "상승세약화", 45, reasons
-        if downs > ups and recent_chg > 0:
-            reasons.append("하락 중이나 최근 반등")
-            return "하락세약화", 45, reasons
+        # 상승/하락 지속
+        if ups >= 4 and total_chg > 1:
+            return "상승지속", 65, [f"기록 {ups}회 연속 상승 ({total_chg:+.1f}%)"]
+        if downs >= 4 and total_chg < -1:
+            return "하락지속", 65, [f"기록 {downs}회 연속 하락 ({total_chg:+.1f}%)"]
     
-    # ── 4단계: 최종 판단 (전일 대비 기반) ──
+    # ── 3단계: 오늘 가격 변동만으로 판단 (가장 단순) ──
     
-    if day_chg > 1:
-        reasons.append(f"오늘 +{day_chg:.1f}% 상승")
-        return "상승시작", 50, reasons
-    elif day_chg < -1:
-        reasons.append(f"오늘 {day_chg:.1f}% 하락")
-        return "하락시작", 50, reasons
-    elif day_chg > 0.3:
-        reasons.append(f"오늘 소폭 상승 ({day_chg:+.1f}%)")
-        return "상승세약화", 40, reasons
-    elif day_chg < -0.3:
-        reasons.append(f"오늘 소폭 하락 ({day_chg:+.1f}%)")
-        return "하락세약화", 40, reasons
+    if day_chg > 2:
+        return "상승시작", 50, [f"오늘 +{day_chg:.1f}% 급등"]
+    elif day_chg < -2:
+        return "하락시작", 50, [f"오늘 {day_chg:.1f}% 급락"]
+    elif day_chg > 0.5:
+        return "상승세약화", 40, [f"오늘 +{day_chg:.1f}% 상승"]
+    elif day_chg < -0.5:
+        return "하락세약화", 40, [f"오늘 {day_chg:.1f}% 하락"]
     else:
-        reasons.append(f"오늘 보합 ({day_chg:+.1f}%)")
-        return "보합", 30, reasons
+        return "보합", 30, [f"오늘 보합 ({day_chg:+.1f}%)"]
 
 
 def track_history(code, current_price):
