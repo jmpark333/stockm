@@ -209,6 +209,14 @@ def detect_trend_phase(code, current_price, previous_close, open_price):
     
     hist = list(history.get(code, []))
     
+    # 이력이 없으면 Redis에서 로드
+    if len(hist) < 2:
+        key = f"stock_history:{code}"
+        saved = kv_get(key)
+        if saved and isinstance(saved, list):
+            history[code] = deque(saved[-MAX_HISTORY:], maxlen=MAX_HISTORY)
+            hist = list(history[code])
+    
     if len(price_hist) >= 8:
         recent_prices = [p for _, p in price_hist[-8:]]
         changes = []
@@ -290,10 +298,21 @@ def detect_trend_phase(code, current_price, previous_close, open_price):
 
 
 def track_history(code, current_price):
-    if code not in history:
+    if current_price is None:
+        return
+    
+    # Redis에서 기존 이력 로드
+    key = f"stock_history:{code}"
+    saved = kv_get(key)
+    if saved and isinstance(saved, list):
+        history[code] = deque(saved[-MAX_HISTORY:], maxlen=MAX_HISTORY)
+    elif code not in history:
         history[code] = deque(maxlen=MAX_HISTORY)
-    if current_price is not None:
-        history[code].append(current_price)
+    
+    history[code].append(current_price)
+    
+    # Redis에 저장
+    kv_set(key, list(history[code]))
 
 
 def track_price_volume(code, price, volume=None):
