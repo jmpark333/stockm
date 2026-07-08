@@ -1510,6 +1510,29 @@ function updateSortIcons() {
   });
 }
 
+// 추세 시각화 전역 상수
+const PHASE_POSITIONS = {
+  '하락시작': 0.0, '하락지속': 0.15, '하락세약화': 0.35,
+  '보합': 0.5,
+  '상승시작': 0.65, '상승지속': 0.85, '상승세약화': 0.95,
+  '바닥반등': 0.35, '천장반락': 0.85
+};
+const PHASE_LABELS = {
+  '상승시작': '↗ 상승시작', '상승지속': '↑ 상승지속', '상승세약화': '⇀ 상승세약화',
+  '하락시작': '↘ 하락시작', '하락지속': '↓ 하락지속', '하락세약화': '⇀ 하락세약화',
+  '바닥반등': '⤴ 바닥반등', '천장반락': '⤵ 천장반락', '보합': '― 보합'
+};
+
+function makeWaveSvg(phase) {
+  const pos = PHASE_POSITIONS[phase] || 0.5;
+  const color = phase.includes('상승') ? '#22c55e' : phase.includes('하락') ? '#ef4444' : '#94a3b8';
+  const y = 10 - Math.sin(pos * Math.PI * 2) * 7;
+  return `<svg width="60" height="20" viewBox="0 0 60 20" style="display:block;margin:2px auto">
+    <path d="M0,10 C10,10 15,2 20,2 C25,2 25,18 30,18 C35,18 35,2 40,2 C45,2 50,18 60,10" fill="none" stroke="#475569" stroke-width="1.2"/>
+    <circle cx="${pos * 60}" cy="${y}" r="3.5" fill="${color}" stroke="white" stroke-width="1"/>
+  </svg>`;
+}
+
 function renderHoldings(rows) {
   lastHoldingsRows = rows;
   const sortedRows = sortHoldingsData(rows);
@@ -1541,27 +1564,8 @@ function renderHoldings(rows) {
     const t = row.trend || {};
     const trendPhase = t.trendPhase || '보합';
     const trendDataAttr = `data-trend='${JSON.stringify(t)}'`;
-    
-    // 싸인파 시각화 함수
-    const phasePositions = {
-      '하락시작': 0.0, '하락지속': 0.15, '하락세약화': 0.35,
-      '보합': 0.5,
-      '상승시작': 0.5, '상승지속': 0.7, '상승세약화': 0.85,
-      '바닥반등': 0.35, '천장반락': 0.85
-    };
-    const wavePos = phasePositions[trendPhase] || 0.5;
-    const waveSvg = `<svg width="60" height="20" viewBox="0 0 60 20" style="display:block;margin:2px auto">
-      <path d="M0,10 Q7.5,0 15,10 Q22.5,20 30,10 Q37.5,0 45,10 Q52.5,20 60,10" fill="none" stroke="#475569" stroke-width="1.5"/>
-      <circle cx="${wavePos * 60}" cy="${10 - Math.sin(wavePos * Math.PI * 2) * 8}" r="3.5" fill="${trendPhase.includes('상승') ? '#22c55e' : trendPhase.includes('하락') ? '#ef4444' : '#94a3b8'}" stroke="white" stroke-width="1"/>
-    </svg>`;
-    
-    // 추세 텍스트와 색상
-    const phaseLabels = {
-      '상승시작': '↗ 상승시작', '상승지속': '↑ 상승지속', '상승세약화': '⇀ 상승세약화',
-      '하락시작': '↘ 하락시작', '하락지속': '↓ 하락지속', '하락세약화': '⇀ 하락세약화',
-      '바닥반등': '⤴ 바닥반등', '천장반락': '⤵ 천장반락', '보합': '― 보합'
-    };
-    const trendLabel = phaseLabels[trendPhase] || trendPhase;
+    const trendLabel = PHASE_LABELS[trendPhase] || trendPhase;
+    const waveSvg = makeWaveSvg(trendPhase);
     
     // 추세 근거 요약
     const trendReasons = t.signalReasons || [];
@@ -1623,15 +1627,8 @@ function renderWatchlist(rows) {
     // 단기추세 (추세 전환 감지)
     const trendPhase = t.trendPhase || '보합';
     const trendDataAttr = `data-trend='${JSON.stringify(t)}'`;
-    
-    // 싸인파 시각화
-    const wavePos2 = (phasePositions[trendPhase] || 0.5);
-    const waveColor2 = trendPhase.includes('상승') ? '#22c55e' : trendPhase.includes('하락') ? '#ef4444' : '#94a3b8';
-    const waveSvg2 = `<svg width="60" height="20" viewBox="0 0 60 20" style="display:block;margin:2px auto">
-      <path d="M0,10 Q7.5,0 15,10 Q22.5,20 30,10 Q37.5,0 45,10 Q52.5,20 60,10" fill="none" stroke="#475569" stroke-width="1.5"/>
-      <circle cx="${wavePos2 * 60}" cy="${10 - Math.sin(wavePos2 * Math.PI * 2) * 8}" r="3.5" fill="${waveColor2}" stroke="white" stroke-width="1"/>
-    </svg>`;
-    const trendLabel2 = phaseLabels[trendPhase] || trendPhase;
+    const trendLabel2 = PHASE_LABELS[trendPhase] || trendPhase;
+    const waveSvg2 = makeWaveSvg(trendPhase);
     // 추세 근거 요약
     const trendReasons = t.signalReasons || [];
     const trendSummary = trendReasons.length > 0 ? trendReasons[0] : '';
