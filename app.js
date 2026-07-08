@@ -1532,11 +1532,24 @@ const PHASE_LABELS = {
 function makeWaveSvg(phase) {
   const pos = PHASE_POSITIONS[phase] || 0.5;
   const color = phase.includes('상승') ? '#22c55e' : phase.includes('하락') ? '#ef4444' : '#94a3b8';
-  const y = 10 - Math.sin(pos * Math.PI * 2) * 6;
-  // 1주기 사인 곡선 (매끄러운 베지어)
-  return `<svg width="60" height="22" viewBox="0 0 60 22" style="display:block;margin:2px auto">
-    <path d="M0,11 C8,11 12,2 18,2 C24,2 27,11 30,11 C33,11 36,20 42,20 C48,20 52,11 60,11" fill="none" stroke="#475569" stroke-width="1.5" stroke-linecap="round"/>
-    <circle cx="${pos * 60}" cy="${y + 1}" r="4" fill="${color}" stroke="white" stroke-width="1.5"/>
+  
+  // 1주기 사인 곡선 포인트 생성 (30개 포인트)
+  const points = [];
+  const w = 60, h = 20, amp = 7, cy = 10;
+  for (let i = 0; i <= 30; i++) {
+    const x = (i / 30) * w;
+    const y = cy - Math.sin((i / 30) * Math.PI * 2) * amp;
+    points.push(`${x.toFixed(1)},${y.toFixed(1)}`);
+  }
+  const pathD = 'M' + points.join(' L');
+  
+  // 점 위치
+  const dotX = pos * w;
+  const dotY = cy - Math.sin(pos * Math.PI * 2) * amp;
+  
+  return `<svg width="${w}" height="${h + 2}" viewBox="0 0 ${w} ${h + 2}" style="display:block;margin:2px auto">
+    <path d="${pathD}" fill="none" stroke="#475569" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="${dotX}" cy="${dotY + 1}" r="4" fill="${color}" stroke="white" stroke-width="1.5"/>
   </svg>`;
 }
 
