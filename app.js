@@ -1271,8 +1271,8 @@ function renderTechDetailContent(name, code, trendData, chartData) {
   html += '<div class="tech-detail-section-title">📉 단기 추세 분석</div>';
   
   const trendLabels = {
-    'up': { text: '▲ 상승', cls: 'positive', desc: '기술적 지표 기반 상승 추세' },
-    'down': { text: '▼ 하락', cls: 'negative', desc: '기술적 지표 기반 하락 추세' },
+    'up': { text: '▲ 상승', cls: 'positive', desc: '가격 기반 상승 추세' },
+    'down': { text: '▼ 하락', cls: 'negative', desc: '가격 기반 하락 추세' },
     'flat': { text: '― 보합', cls: 'neutral', desc: '뚜렷한 추세 방향 없음' }
   };
   const trendInfo = trendLabels[trendData.shortTrend] || trendLabels.flat;
@@ -1282,12 +1282,26 @@ function renderTechDetailContent(name, code, trendData, chartData) {
   html += `<div class="tech-detail-signal-desc">${trendInfo.desc}</div>`;
   html += `</div>`;
   
-  // 추세 판단 근거 표시
-  html += '<div class="tech-detail-indicators">';
-  html += '<div class="tech-detail-indicator-title">추세 판단 근거</div>';
+  // 추세 판단 근거 (signalReasons에서 가격 기반 이유 표시)
+  const signalReasons = trendData.signalReasons || [];
+  if (signalReasons.length > 0) {
+    html += '<div class="tech-detail-indicators">';
+    html += '<div class="tech-detail-indicator-title">추세 판단 근거</div>';
+    signalReasons.slice(0, 3).forEach(reason => {
+      html += `<div class="tech-detail-indicator-row">
+        <span class="tech-detail-indicator-label" style="font-size:12px">•</span>
+        <span class="tech-detail-indicator-value neutral" style="font-size:12px;font-weight:400">${reason}</span>
+      </div>`;
+    });
+    html += '</div>';
+  }
   
+  // 기술적 지표 상태 (보조 참고)
   const trendIndicators = trendData.techIndicators || {};
   const trendSignalScore = trendData.techSignalScore || 0;
+  
+  html += '<div class="tech-detail-indicators" style="margin-top:8px">';
+  html += '<div class="tech-detail-indicator-title">기술적 지표 (보조 참고)</div>';
   
   // 이동평균선 상태
   if (trendIndicators.ma5 && trendIndicators.ma20 && trendIndicators.ma60) {
