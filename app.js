@@ -2068,26 +2068,7 @@ async function loadNews() {
 }
 
 function refreshAISignals() {
-  aiResults.clear();
-  document.querySelectorAll('.ai-btn.done').forEach(btn => {
-    btn.textContent = 'AI';
-    btn.classList.remove('done');
-  });
-  document.querySelectorAll('.badge').forEach(badge => {
-    if (badge.dataset.ai) {
-      badge.textContent = 'AI 분석중';
-      badge.className = 'badge hold';
-      delete badge.dataset.signal;
-      delete badge.dataset.reasons;
-      delete badge.dataset.ai;
-    }
-  });
-  fetch('/api/portfolio', { cache: 'no-store' })
-    .then(res => res.json())
-    .then(data => {
-      analyzeAllStocks(data.holdings, data.watchlist);
-    })
-    .catch(() => {});
+  // AI 분석 비활성화
 }
 
 function setAutoRefresh(enabled) {
