@@ -1270,16 +1270,26 @@ function renderTechDetailContent(name, code, trendData, chartData) {
   html += '<div class="tech-detail-section">';
   html += '<div class="tech-detail-section-title">📉 단기 추세 분석</div>';
   
-  const trendLabels = {
-    'up': { text: '▲ 상승', cls: 'positive', desc: '가격 기반 상승 추세' },
-    'down': { text: '▼ 하락', cls: 'negative', desc: '가격 기반 하락 추세' },
-    'flat': { text: '― 보합', cls: 'neutral', desc: '뚜렷한 추세 방향 없음' }
+  // 추세 전환 단계별 표시
+  const trendPhase = trendData.trendPhase || '보합';
+  const trendConfidence = trendData.trendConfidence || 0;
+  const phaseLabels = {
+    '상승시작': { text: '🟢 상승시작', cls: 'positive', desc: '내리다가 이제 오르기 시작' },
+    '상승지속': { text: '🟢 상승지속', cls: 'positive', desc: '계속 올라가는 중' },
+    '상승세약화': { text: '🟡 상승세약화', cls: 'neutral', desc: '오르긴 하는데 속도 둔화' },
+    '하락시작': { text: '🔴 하락시작', cls: 'negative', desc: '오르다가 이제 내리기 시작' },
+    '하락지속': { text: '🔴 하락지속', cls: 'negative', desc: '계속 내려가는 중' },
+    '하락세약화': { text: '🟡 하락세약화', cls: 'neutral', desc: '내리긴 하는데 속도 둔화' },
+    '바닥반등': { text: '🔵 바닥반등', cls: 'positive', desc: '내려가다가 바닥 찍고 반등' },
+    '천장반락': { text: '🟠 천장반락', cls: 'negative', desc: '올라가다가 꼭짓점 찍고 조정' },
+    '보합': { text: '⚪ 보합', cls: 'neutral', desc: '뚜렷한 추세 방향 없음' },
   };
-  const trendInfo = trendLabels[trendData.shortTrend] || trendLabels.flat;
+  const phaseInfo = phaseLabels[trendPhase] || phaseLabels['보합'];
   
   html += `<div class="tech-detail-signal">`;
-  html += `<div class="tech-detail-signal-title ${trendInfo.cls}">${trendInfo.text}</div>`;
-  html += `<div class="tech-detail-signal-desc">${trendInfo.desc}</div>`;
+  html += `<div class="tech-detail-signal-title ${phaseInfo.cls}">${phaseInfo.text}</div>`;
+  html += `<div class="tech-detail-signal-desc">${phaseInfo.desc}</div>`;
+  html += `<div class="tech-detail-signal-desc" style="font-size:11px;color:var(--muted)">신뢰도: ${trendConfidence}%</div>`;
   html += `</div>`;
   
   // 추세 판단 근거 (signalReasons에서 가격 기반 이유 표시)
@@ -1527,13 +1537,14 @@ function renderHoldings(rows) {
       realtimeHtml += '</div>';
     }
     
-    // 단기추세 (기술적 지표 기반 판단)
+    // 단기추세 (추세 전환 감지)
     const t = row.trend || {};
-    const trendText = t.shortTrend === 'up' ? '상승' : t.shortTrend === 'down' ? '하락' : '보합';
+    const trendPhase = t.trendPhase || '보합';
+    const trendText = t.shortTrend === 'up' ? '▲' : t.shortTrend === 'down' ? '▼' : '―';
     const trendDataAttr = `data-trend='${JSON.stringify(t)}'`;
     
     // 추세 근거 요약
-    const trendReasons = t.techSignals || [];
+    const trendReasons = t.signalReasons || [];
     const trendSummary = trendReasons.length > 0 ? trendReasons[0] : '';
     
     tr.innerHTML = `
@@ -1545,7 +1556,7 @@ function renderHoldings(rows) {
       <td>${formatMoney(row.currentValue)}</td>
       <td class="${row.realizedProfit >= 0 ? 'up' : 'down'}">${formatPercent(row.realizedProfitRate)}</td>
       <td class="${row.realizedProfit >= 0 ? 'up' : 'down'}">${formatSignedMoney(row.realizedProfit)}<br><small style="opacity:0.6">(비용 ${formatMoney(Math.round(row.sellFee))})</small></td>
-      <td class="trend-cell trend-clickable" ${trendDataAttr}>${trendIcon(t.shortTrend)} ${trendText}${trendSummary ? `<br><small style="opacity:0.6;font-size:11px">${trendSummary}</small>` : ''}</td>
+      <td class="trend-cell trend-clickable" ${trendDataAttr}>${trendText} ${trendPhase}${trendSummary ? `<br><small style="opacity:0.6;font-size:11px">${trendSummary}</small>` : ''}</td>
       <td>${badgeHtml} ${aiBtnHtml}</td>
       <td>${row.session || row.error || '-'}${realtimeHtml}</td>
     `;
@@ -1589,12 +1600,13 @@ function renderWatchlist(rows) {
       realtimeHtml += '</div>';
     }
     
-    // 단기추세 (기술적 지표 기반 판단)
-    const trendText = t.shortTrend === 'up' ? '상승' : t.shortTrend === 'down' ? '하락' : '보합';
+    // 단기추세 (추세 전환 감지)
+    const trendPhase = t.trendPhase || '보합';
+    const trendText = t.shortTrend === 'up' ? '▲' : t.shortTrend === 'down' ? '▼' : '―';
     const trendDataAttr = `data-trend='${JSON.stringify(t)}'`;
     
     // 추세 근거 요약
-    const trendReasons = t.techSignals || [];
+    const trendReasons = t.signalReasons || [];
     const trendSummary = trendReasons.length > 0 ? trendReasons[0] : '';
     
     tr.innerHTML = `
@@ -1603,7 +1615,7 @@ function renderWatchlist(rows) {
       <td class="${row.change > 0 ? 'up' : row.change < 0 ? 'down' : 'neutral'}">${formatSignedMoney(row.change)} / ${formatPercent(row.changeRate)}</td>
       <td>${dayRange}<br>${rangeBar(t.rangePos)}</td>
       <td>${t.volatility}%</td>
-      <td class="trend-cell trend-clickable" ${trendDataAttr}>${trendIcon(t.shortTrend)} ${trendText}${trendSummary ? `<br><small style="opacity:0.6;font-size:11px">${trendSummary}</small>` : ''}</td>
+      <td class="trend-cell trend-clickable" ${trendDataAttr}>${trendText} ${trendPhase}${trendSummary ? `<br><small style="opacity:0.6;font-size:11px">${trendSummary}</small>` : ''}</td>
       <td>${badgeHtml} ${aiBtnHtml}</td>
       <td>${row.session || row.error || '-'}${realtimeHtml}</td>
     `;
