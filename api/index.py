@@ -247,11 +247,11 @@ def detect_trend_phase(code, current_price, previous_close, open_price):
         return "천장반락", 75, [f"조정 ({price_chg:+.2f}%)"]
     
     # 3. 하락지속: 하락 중 + 계속 하락
-    if is_falling and prev_phase in ("하락시작", "하락지속"):
+    if is_falling and prev_phase in ("하락시작", "하락지속", "하락세약화"):
         return "하락지속", 70, [f"{prev_consec + 1}회 연속 하락 ({price_chg:+.2f}%)"]
     
     # 4. 상승지속: 상승 중 + 계속 상승
-    if is_rising and prev_phase in ("상승시작", "상승지속"):
+    if is_rising and prev_phase in ("상승시작", "상승지속", "상승세약화"):
         return "상승지속", 70, [f"{prev_consec + 1}회 연속 상승 ({price_chg:+.2f}%)"]
     
     # 5. 하락세약화: 하락 중 + 반등 (가격 상승)
@@ -366,17 +366,16 @@ def calc_trend(quote):
         consec = 1
         now_ts = int(time.time())
         
-        if trend_phase in ("하락시작", "하락지속", "상승시작", "상승지속"):
+        if trend_phase in ("하락시작", "하락지속", "하락세약화", "상승시작", "상승지속", "상승세약화"):
             prev_data = kv_get(f"trend_phase:{code}")
             if prev_data:
                 prev_phase = prev_data.get("phase", "")
                 prev_consec = prev_data.get("consec", 1)
-                prev_ts = prev_data.get("ts", 0)
                 
                 # 같은 방향이면 +1, 방향 다르면 1부터 시작
                 same_direction = (
-                    (trend_phase in ("하락시작", "하락지속") and prev_phase in ("하락시작", "하락지속")) or
-                    (trend_phase in ("상승시작", "상승지속") and prev_phase in ("상승시작", "상승지속"))
+                    (trend_phase in ("하락시작", "하락지속", "하락세약화") and prev_phase in ("하락시작", "하락지속", "하락세약화")) or
+                    (trend_phase in ("상승시작", "상승지속", "상승세약화") and prev_phase in ("상승시작", "상승지속", "상승세약화"))
                 )
                 if same_direction:
                     consec = prev_consec + 1
