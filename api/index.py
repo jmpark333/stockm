@@ -244,19 +244,30 @@ def detect_trend_phase(code, current_price, previous_close, open_price):
                 hist_changes.append(chg)
         
         if hist_changes:
-            h_down = sum(1 for c in hist_changes if c < -0.1)
-            h_up = sum(1 for c in hist_changes if c > 0.1)
             h_total = sum(hist_changes)
+            
+            # 연속 하락/상승 횟수 계산 (뒤에서부터)
+            consec_down = 0
+            for c in reversed(hist_changes):
+                if c < -0.1:
+                    consec_down += 1
+                else:
+                    break
+            
+            consec_up = 0
+            for c in reversed(hist_changes):
+                if c > 0.1:
+                    consec_up += 1
+                else:
+                    break
             
             # 연속 하락: 마지막 변화가 음수이고 오늘도 하락
             if hist_changes[-1] < -0.1 and day_chg < 0:
-                reasons.append(f"연속 하락 ({h_total:+.1f}%)")
-                return "하락지속", 70, reasons
+                return "하락지속", 70, [f"{consec_down + 1}회 연속 하락 ({h_total:+.1f}%)"]
             
             # 연속 상승: 마지막 변화가 양수이고 오늘도 상승
             if hist_changes[-1] > 0.1 and day_chg > 0:
-                reasons.append(f"연속 상승 ({h_total:+.1f}%)")
-                return "상승지속", 70, reasons
+                return "상승지속", 70, [f"{consec_up + 1}회 연속 상승 ({h_total:+.1f}%)"]
             
             # 바닥 반등: 하락 후 반등
             if h_total < -0.5 and hist_changes[-1] > 0:
