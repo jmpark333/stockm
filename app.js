@@ -1532,12 +1532,11 @@ const PHASE_LABELS = {
 function makeWaveSvg(phase) {
   const pos = PHASE_POSITIONS[phase] || 0.5;
   const color = phase.includes('상승') ? '#22c55e' : phase.includes('하락') ? '#ef4444' : '#94a3b8';
-  // sin(x) 곡선: 0->중간, 0.25->최고, 0.5->중간, 0.75->최저, 1->중간
-  const y = 10 - Math.sin(pos * Math.PI * 2) * 7;
-  // 1주기 사인 곡선 (베지어 곡선으로 근사)
-  return `<svg width="60" height="24" viewBox="0 0 60 24" style="display:block;margin:2px auto">
-    <path d="M0,12 C5,12 7.5,3 15,3 C22.5,3 22.5,21 30,21 C37.5,21 37.5,3 45,3 C52.5,3 55,12 60,12" fill="none" stroke="#475569" stroke-width="1.2"/>
-    <circle cx="${pos * 60}" cy="${y}" r="4" fill="${color}" stroke="white" stroke-width="1.5"/>
+  const y = 10 - Math.sin(pos * Math.PI * 2) * 6;
+  // 1주기 사인 곡선 (매끄러운 베지어)
+  return `<svg width="60" height="22" viewBox="0 0 60 22" style="display:block;margin:2px auto">
+    <path d="M0,11 C8,11 12,2 18,2 C24,2 27,11 30,11 C33,11 36,20 42,20 C48,20 52,11 60,11" fill="none" stroke="#475569" stroke-width="1.5" stroke-linecap="round"/>
+    <circle cx="${pos * 60}" cy="${y + 1}" r="4" fill="${color}" stroke="white" stroke-width="1.5"/>
   </svg>`;
 }
 
