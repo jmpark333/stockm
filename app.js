@@ -1551,6 +1551,32 @@ function calcWavePos(trendPhase, rangePos) {
   return Math.max(0, Math.min(1, pos));
 }
 
+function makeLongTrendHtml(trendData) {
+  const longTrend = trendData.longTrend || '보합';
+  const confidence = trendData.longTrendConfidence || 0;
+  
+  const colorMap = {
+    '상승': '#22c55e',
+    '상승세': '#86efac',
+    '하락': '#ef4444',
+    '하락세': '#fca5a5',
+    '보합': '#94a3b8',
+  };
+  const color = colorMap[longTrend] || '#94a3b8';
+  
+  const iconMap = {
+    '상승': '▲',
+    '상승세': '△',
+    '하락': '▼',
+    '하락세': '▽',
+    '보합': '―',
+  };
+  const icon = iconMap[longTrend] || '―';
+  
+  return `<span style="font-size:11px;font-weight:600;color:${color}">${icon} ${longTrend}</span>
+    <br><small style="opacity:0.6;font-size:10px">신뢰도 ${confidence}%</small>`;
+}
+
 function makeWaveSvg(trendPhase, rangePos) {
   const pos = calcWavePos(trendPhase, rangePos);
   const color = trendPhase.includes('상승') ? '#22c55e' : trendPhase.includes('하락') ? '#ef4444' : '#94a3b8';
@@ -1616,7 +1642,7 @@ function renderHoldings(rows) {
       <td class="${row.realizedProfit >= 0 ? 'up' : 'down'}">${formatPercent(row.realizedProfitRate)}</td>
       <td class="${row.realizedProfit >= 0 ? 'up' : 'down'}">${formatSignedMoney(row.realizedProfit)}<br><small style="opacity:0.6">(비용 ${formatMoney(Math.round(row.sellFee))})</small></td>
       <td class="trend-cell trend-clickable" ${trendDataAttr}>${waveSvg}<span style="font-size:11px;font-weight:600;color:${trendColor}">${trendLabel}</span>${trendSummary ? `<br><small style="opacity:0.6;font-size:10px">${trendSummary}</small>` : ''}</td>
-      <td>${row.session || row.error || '-'}${realtimeHtml}</td>
+      <td>${makeLongTrendHtml(t)}</td>
     `;
     holdingsBody.appendChild(tr);
     makeDraggable(tr, holdingsBody);
@@ -1666,7 +1692,7 @@ function renderWatchlist(rows) {
       <td>${dayRange}<br>${rangeBar(t.rangePos)}</td>
       <td>${t.volatility}%</td>
       <td class="trend-cell trend-clickable" ${trendDataAttr}>${waveSvg2}<span style="font-size:11px;font-weight:600;color:${trendColor2}">${trendLabel2}</span>${trendSummary ? `<br><small style="opacity:0.6;font-size:10px">${trendSummary}</small>` : ''}</td>
-      <td>${row.session || row.error || '-'}${realtimeHtml}</td>
+      <td>${makeLongTrendHtml(t)}</td>
     `;
     watchlistBody.appendChild(tr);
     makeDraggable(tr, watchlistBody);

@@ -194,6 +194,60 @@ def fetch_quote(code):
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
         return {"code": code, "error": str(exc)}
 
+def detect_long_term_trend(code, current_price):
+    """장기 추세를 판단한다. 최근 10개 가격 이력 기반."""
+    if current_price is None or current_price <= 0:
+        return "보합", 0, []
+    
+    key = f"stock_history:{code}"
+    saved = kv_get(key)
+    if not saved or not isinstance(saved, list) or len(saved) < 3:
+        return "보합", 0, ["데이터 부족"]
+    
+    prices = saved[-10:]  # 최근 10개
+    if len(prices) < 3:
+        return "보합", 0, ["데이터 부족"]
+    
+    first_price = prices[0]
+    last_price = prices[-1]
+    
+    if first_price <= 0:
+        return "보합", 0, []
+    
+    total_change = ((last_price - first_price) / first_price) * 100
+    
+    # 구간별 변화율 계산
+    changes = []
+    for i in range(1, len(prices)):
+        if prices[i-1] > 0:
+            changes.append(((prices[i] - prices[i-1]) / prices[i-1]) * 100)
+    
+    avg_change = sum(changes) / len(changes) if changes else 0
+    
+    # 상승/하락 횟수
+    up_count = sum(1 for c in changes if c > 0.05)
+    down_count = sum(1 for c in changes if c < -0.05)
+    
+    reasons = []
+    
+    # 판단
+    if total_change > 1.5 and up_count >= down_count:
+        reasons.append(f"{len(prices)}개 구간 +{total_change:.1f}% 상승")
+        return "상승", 70, reasons
+    elif total_change > 0.5:
+        reasons.append(f"{len(prices)}개 구간 +{total_change:.1f}%")
+        return "상승세", 50, reasons
+    elif total_change < -1.5 and down_count >= up_count:
+        reasons.append(f"{len(prices)}개 구간 {total_change:.1f}% 하락")
+        return "하락", 70, reasons
+    elif total_change < -0.5:
+        reasons.append(f"{len(prices)}개 구간 {total_change:.1f}%")
+        return "하락세", 50, reasons
+    else:
+        reasons.append(f"{len(prices)}개 구간 보합 ({total_change:+.1f}%)")
+        return "보합", 30, reasons
+
+
 def detect_trend_phase(code, current_price, previous_close, open_price):
     """추세 전환 단계를 감지한다. 실시간 가격 변화 기반.
     
@@ -474,6 +528,11 @@ def calc_trend(quote):
             signal = "hold"
             reasons.append("기술적 지표 하락 신호로 매수 보류")
 
+    # 장기 추세 (최근 10개 가격 이력 기반)
+    long_trend_phase, long_trend_confidence, long_trend_reasons = detect_long_term_trend(code, cp)
+    if long_trend_reasons:
+        reasons.extend(long_trend_reasons)
+
     return {
         "rangePos": range_pos,
         "volatility": volatility,
@@ -482,6 +541,8 @@ def calc_trend(quote):
         "shortTrend": short_trend,
         "trendPhase": trend_phase,
         "trendConfidence": trend_confidence,
+        "longTrend": long_trend_phase,
+        "longTrendConfidence": long_trend_confidence,
         "signal": signal,
         "signalReasons": reasons,
         "techIndicators": indicators,
