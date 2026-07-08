@@ -1553,28 +1553,15 @@ function calcWavePos(trendPhase, rangePos) {
 
 function makeLongTrendHtml(trendData) {
   const longTrend = trendData.longTrend || '보합';
-  const confidence = trendData.longTrendConfidence || 0;
+  const longTrendConfidence = trendData.longTrendConfidence || 0;
+  const rangePos = trendData.rangePos || 50;
   
-  const colorMap = {
-    '상승': '#22c55e',
-    '상승세': '#86efac',
-    '하락': '#ef4444',
-    '하락세': '#fca5a5',
-    '보합': '#94a3b8',
-  };
-  const color = colorMap[longTrend] || '#94a3b8';
+  const trendLabel = PHASE_LABELS[longTrend] || longTrend;
+  const trendColor = PHASE_COLORS[longTrend] || '#94a3b8';
+  const waveSvg = makeWaveSvg(longTrend, rangePos);
   
-  const iconMap = {
-    '상승': '▲',
-    '상승세': '△',
-    '하락': '▼',
-    '하락세': '▽',
-    '보합': '―',
-  };
-  const icon = iconMap[longTrend] || '―';
-  
-  return `<span style="font-size:11px;font-weight:600;color:${color}">${icon} ${longTrend}</span>
-    <br><small style="opacity:0.6;font-size:10px">신뢰도 ${confidence}%</small>`;
+  return `${waveSvg}<span style="font-size:11px;font-weight:600;color:${trendColor}">${trendLabel}</span>
+    <br><small style="opacity:0.6;font-size:10px">신뢰도 ${longTrendConfidence}%</small>`;
 }
 
 function makeWaveSvg(trendPhase, rangePos) {

@@ -195,7 +195,10 @@ def fetch_quote(code):
         return {"code": code, "error": str(exc)}
 
 def detect_long_term_trend(code, current_price):
-    """장기 추세를 판단한다. 최근 10개 가격 이력 기반."""
+    """장기 추세를 판단한다. 최근 10개 가격 이력 기반.
+    
+    단기추세와 동일한 상태 머신 로직, 다만 수집 주기가 김.
+    """
     if current_price is None or current_price <= 0:
         return "보합", 0, []
     
@@ -208,44 +211,122 @@ def detect_long_term_trend(code, current_price):
     if len(prices) < 3:
         return "보합", 0, ["데이터 부족"]
     
-    first_price = prices[0]
-    last_price = prices[-1]
+    # Redis에서 이전 장기추세 상태 로드
+    prev_key = f"long_trend_phase:{code}"
+    prev_data = kv_get(prev_key)
+    prev_phase = prev_data.get("phase") if prev_data else None
+    prev_consec = prev_data.get("consec", 1) if prev_data else 1
     
-    if first_price <= 0:
+    # 이전 가격과 현재 가격 비교
+    prev_price = prices[-2] if len(prices) >= 2 else prices[0]
+    if prev_price <= 0:
         return "보합", 0, []
     
-    total_change = ((last_price - first_price) / first_price) * 100
+    price_chg = ((current_price - prev_price) / prev_price) * 100
     
-    # 구간별 변화율 계산
-    changes = []
-    for i in range(1, len(prices)):
-        if prices[i-1] > 0:
-            changes.append(((prices[i] - prices[i-1]) / prices[i-1]) * 100)
+    is_rising = price_chg > 0.05
+    is_falling = price_chg < -0.05
+    is_strong_rising = price_chg > 0.5
+    is_strong_falling = price_chg < -0.5
+    is_flat = not is_rising and not is_falling
     
-    avg_change = sum(changes) / len(changes) if changes else 0
+    consec = 1
+    now_ts = int(time.time())
+    direction = None
     
-    # 상승/하락 횟수
-    up_count = sum(1 for c in changes if c > 0.05)
-    down_count = sum(1 for c in changes if c < -0.05)
+    # ── 하락 추세에서의 전환 ──
+    down_phases = ("하락시작", "하락지속", "하락세약화")
     
-    reasons = []
+    if prev_phase in down_phases:
+        if is_strong_rising:
+            result = ("바닥반등", 75, [f"장기 반등 (+{price_chg:.2f}%)"])
+        elif is_rising:
+            if prev_phase == "하락세약화":
+                result = ("상승시작", 55, [f"장기 반등 후 상승 전환 ({price_chg:+.2f}%)"])
+            else:
+                result = ("상승시작", 50, [f"장기 하락→상승 전환 ({price_chg:+.2f}%)"])
+        elif is_falling:
+            if prev_phase == "하락세약화":
+                result = ("하락지속", 70, [f"장기 반등 실패 재하락 ({price_chg:+.2f}%)"])
+            else:
+                result = ("하락지속", 70, [f"장기 {prev_consec + 1}회 연속 하락 ({price_chg:+.2f}%)"])
+                consec = prev_consec + 1
+        else:
+            result = ("하락세약화", 50, [f"장기 하락 후 보합 ({price_chg:+.2f}%)"])
+        
+        # 결과 저장
+        if result[0] in down_phases:
+            direction = "down"
+            if result[0] == "하락지속" and prev_phase == "하락지속":
+                consec = prev_consec + 1
+        kv_set(prev_key, {"phase": result[0], "consec": consec, "ts": now_ts, "price": current_price, "direction": direction})
+        return result
     
-    # 판단
-    if total_change > 1.5 and up_count >= down_count:
-        reasons.append(f"{len(prices)}개 구간 +{total_change:.1f}% 상승")
-        return "상승", 70, reasons
-    elif total_change > 0.5:
-        reasons.append(f"{len(prices)}개 구간 +{total_change:.1f}%")
-        return "상승세", 50, reasons
-    elif total_change < -1.5 and down_count >= up_count:
-        reasons.append(f"{len(prices)}개 구간 {total_change:.1f}% 하락")
-        return "하락", 70, reasons
-    elif total_change < -0.5:
-        reasons.append(f"{len(prices)}개 구간 {total_change:.1f}%")
-        return "하락세", 50, reasons
+    # ── 상승 추세에서의 전환 ──
+    up_phases = ("상승시작", "상승지속", "상승세약화")
+    
+    if prev_phase in up_phases:
+        if is_strong_falling:
+            result = ("천장반락", 75, [f"장기 조정 ({price_chg:+.2f}%)"])
+        elif is_falling:
+            if prev_phase == "상승세약화":
+                result = ("하락시작", 55, [f"장기 조정 후 하락 전환 ({price_chg:+.2f}%)"])
+            else:
+                result = ("하락시작", 50, [f"장기 상승→하락 전환 ({price_chg:+.2f}%)"])
+        elif is_rising:
+            if prev_phase == "상승세약화":
+                result = ("상승지속", 70, [f"장기 조정 후 재상승 ({price_chg:+.2f}%)"])
+            else:
+                result = ("상승지속", 70, [f"장기 {prev_consec + 1}회 연속 상승 ({price_chg:+.2f}%)"])
+                consec = prev_consec + 1
+        else:
+            result = ("상승세약화", 50, [f"장기 상승 후 보합 ({price_chg:+.2f}%)"])
+        
+        # 결과 저장
+        if result[0] in up_phases:
+            direction = "up"
+            if result[0] == "상승지속" and prev_phase == "상승지속":
+                consec = prev_consec + 1
+        kv_set(prev_key, {"phase": result[0], "consec": consec, "ts": now_ts, "price": current_price, "direction": direction})
+        return result
+    
+    # ── 바닥반등/천장반락에서의 전환 ──
+    if prev_phase == "바닥반등":
+        if is_rising:
+            result = ("상승시작", 55, [f"장기 반등 후 상승 ({price_chg:+.2f}%)"])
+            direction = "up"
+        elif is_falling:
+            result = ("하락지속", 60, [f"장기 반등 실패 재하락 ({price_chg:+.2f}%)"])
+            direction = "down"
+        else:
+            result = ("보합", 40, [f"장기 반등 후 보합 ({price_chg:+.2f}%)"])
+        kv_set(prev_key, {"phase": result[0], "consec": consec, "ts": now_ts, "price": current_price, "direction": direction})
+        return result
+    
+    if prev_phase == "천장반락":
+        if is_falling:
+            result = ("하락시작", 55, [f"장기 조정 후 하락 ({price_chg:+.2f}%)"])
+            direction = "down"
+        elif is_rising:
+            result = ("상승지속", 60, [f"장기 조정 후 재상승 ({price_chg:+.2f}%)"])
+            direction = "up"
+        else:
+            result = ("보합", 40, [f"장기 조정 후 보합 ({price_chg:+.2f}%)"])
+        kv_set(prev_key, {"phase": result[0], "consec": consec, "ts": now_ts, "price": current_price, "direction": direction})
+        return result
+    
+    # ── 보합/신규 추세 시작 ──
+    if is_rising:
+        result = ("상승시작", 50, [f"장기 상승 ({price_chg:+.2f}%)"])
+        direction = "up"
+    elif is_falling:
+        result = ("하락시작", 50, [f"장기 하락 ({price_chg:+.2f}%)"])
+        direction = "down"
     else:
-        reasons.append(f"{len(prices)}개 구간 보합 ({total_change:+.1f}%)")
-        return "보합", 30, reasons
+        result = ("보합", 30, [f"장기 보합 ({price_chg:+.2f}%)"])
+    
+    kv_set(prev_key, {"phase": result[0], "consec": consec, "ts": now_ts, "price": current_price, "direction": direction})
+    return result
 
 
 def detect_trend_phase(code, current_price, previous_close, open_price):
