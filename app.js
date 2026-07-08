@@ -2071,6 +2071,25 @@ function refreshAISignals() {
   // AI 분석 비활성화
 }
 
+function isMarketOpen() {
+  const now = new Date();
+  const h = now.getHours();
+  const m = now.getMinutes();
+  const day = now.getDay();
+  const weekday = day >= 1 && day <= 5;
+  if (!weekday) return false;
+  const t = h * 60 + m;
+  return t >= 540 && t <= 930;  // 09:00 ~ 15:30
+}
+
+function isOffHours() {
+  const now = new Date();
+  const h = now.getHours();
+  const m = now.getMinutes();
+  const t = h * 60 + m;
+  return t >= 1205 || t < 475;  // 20:05 ~ 07:55
+}
+
 function setAutoRefresh(enabled) {
   autoEnabled = enabled;
   autoBtn.setAttribute('aria-pressed', String(enabled));
@@ -2080,13 +2099,24 @@ function setAutoRefresh(enabled) {
     autoTimer = null;
   }
   if (enabled) {
-    autoTimer = setInterval(loadPortfolio, 5000);
+    autoTimer = setInterval(() => {
+      if (isOffHours()) return;
+      loadPortfolio();
+    }, 5000);
   }
 }
 
 function setupNewsRefresh() {
   if (newsTimer) clearInterval(newsTimer);
-  newsTimer = setInterval(loadNews, 600000);
+  newsTimer = setInterval(() => {
+    if (isOffHours()) {
+      loadNews();
+      loadKospiKosdaq();
+      loadUSMarket();
+      loadKrMarketNews();
+      loadUSMarketNews();
+    }
+  }, 300000);  // 장 마감 시 5분마다 뉴스 갱신
   newsRefreshBtn.addEventListener('click', () => { loadKospiKosdaq(); loadUSMarket(); loadKrMarketNews(); loadUSMarketNews(); });
 }
 
