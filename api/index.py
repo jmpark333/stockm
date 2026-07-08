@@ -262,7 +262,15 @@ def detect_trend_phase(code, current_price, previous_close, open_price):
     if not is_rising and prev_phase in ("상승시작", "상승지속"):
         return "상승세약화", 55, [f"상승 멈춤 ({price_chg:+.2f}%)"]
     
-    # 7. 새로운 추세 시작
+    # 7. 하락 후 보합 (추세 약화)
+    if prev_phase in ("하락시작", "하락지속", "하락세약화"):
+        return "하락세약화", 50, [f"하락 후 보합 ({price_chg:+.2f}%)"]
+    
+    # 8. 상승 후 보합 (추세 약화)
+    if prev_phase in ("상승시작", "상승지속", "상승세약화"):
+        return "상승세약화", 50, [f"상승 후 보합 ({price_chg:+.2f}%)"]
+    
+    # 9. 새로운 추세 시작
     if is_rising:
         return "상승시작", 50, [f"상승 (+{price_chg:.2f}%)"]
     elif is_falling:
