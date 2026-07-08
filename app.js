@@ -32,6 +32,9 @@ let newsTimer = null;
 let lastSidebarRefresh = 0;
 const SIDEBAR_REFRESH_INTERVAL = 300000; // 5 minutes
 
+let watchlistExpanded = false;
+let watchlistLoaded = false;
+
 const aiResults = new Map();
 let profitHistory = [];
 
@@ -1577,13 +1580,6 @@ function renderHoldings(rows) {
   holdingsBody.innerHTML = '';
   sortedRows.forEach(row => {
     const tr = document.createElement('tr');
-    const cached = aiResults.get(row.code);
-    const badgeHtml = cached
-      ? signalBadge(cached.signal, cached.reasons, { isAI: true, newsSentiment: cached.newsSentiment })
-      : `<span class="badge hold">AI 분석중</span>`;
-    const aiBtnHtml = cached
-      ? `<button class="ai-btn done" data-code="${row.code}" data-name="${row.name}">✓</button>`
-      : `<button class="ai-btn" data-code="${row.code}" data-name="${row.name}" title="AI 뉴스 분석">AI</button>`;
     
     // 실시간 시그널 표시
     let realtimeHtml = '';
@@ -1620,14 +1616,11 @@ function renderHoldings(rows) {
       <td class="${row.realizedProfit >= 0 ? 'up' : 'down'}">${formatPercent(row.realizedProfitRate)}</td>
       <td class="${row.realizedProfit >= 0 ? 'up' : 'down'}">${formatSignedMoney(row.realizedProfit)}<br><small style="opacity:0.6">(비용 ${formatMoney(Math.round(row.sellFee))})</small></td>
       <td class="trend-cell trend-clickable" ${trendDataAttr}>${waveSvg}<span style="font-size:11px;font-weight:600;color:${trendColor}">${trendLabel}</span>${trendSummary ? `<br><small style="opacity:0.6;font-size:10px">${trendSummary}</small>` : ''}</td>
-      <td>${badgeHtml} ${aiBtnHtml}</td>
       <td>${row.session || row.error || '-'}${realtimeHtml}</td>
     `;
     holdingsBody.appendChild(tr);
     makeDraggable(tr, holdingsBody);
   });
-  attachSignalHandlers(holdingsBody);
-  attachAIHandlers(holdingsBody);
   attachChartHandlers(holdingsBody);
   attachCalcHandlers(holdingsBody);
   attachTrendHandlers(holdingsBody);
@@ -1642,13 +1635,6 @@ function renderWatchlist(rows) {
       ? `${formatMoney(row.low)} ~ ${formatMoney(row.high)}`
       : '-';
     const tr = document.createElement('tr');
-    const cached = aiResults.get(row.code);
-    const badgeHtml = cached
-      ? signalBadge(cached.signal, cached.reasons, { isAI: true, newsSentiment: cached.newsSentiment })
-      : `<span class="badge hold">AI 분석중</span>`;
-    const aiBtnHtml = cached
-      ? `<button class="ai-btn done" data-code="${row.code}" data-name="${row.name}">✓</button>`
-      : `<button class="ai-btn" data-code="${row.code}" data-name="${row.name}" title="AI 뉴스 분석">AI</button>`;
     
     // 실시간 시그널 표시
     let realtimeHtml = '';
@@ -1680,14 +1666,11 @@ function renderWatchlist(rows) {
       <td>${dayRange}<br>${rangeBar(t.rangePos)}</td>
       <td>${t.volatility}%</td>
       <td class="trend-cell trend-clickable" ${trendDataAttr}>${waveSvg2}<span style="font-size:11px;font-weight:600;color:${trendColor2}">${trendLabel2}</span>${trendSummary ? `<br><small style="opacity:0.6;font-size:10px">${trendSummary}</small>` : ''}</td>
-      <td>${badgeHtml} ${aiBtnHtml}</td>
       <td>${row.session || row.error || '-'}${realtimeHtml}</td>
     `;
     watchlistBody.appendChild(tr);
     makeDraggable(tr, watchlistBody);
   });
-  attachSignalHandlers(watchlistBody);
-  attachAIHandlers(watchlistBody);
   attachChartHandlers(watchlistBody);
   attachTrendHandlers(watchlistBody);
 }
@@ -2037,7 +2020,8 @@ async function loadPortfolio() {
   statusPill.textContent = '갱신 중';
   setError('');
   try {
-    const response = await fetch('/api/portfolio', { cache: 'no-store' });
+    const url = watchlistExpanded ? '/api/portfolio' : '/api/portfolio?section=holdings';
+    const response = await fetch(url, { cache: 'no-store' });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     renderSummary(data.summary);
@@ -2045,12 +2029,13 @@ async function loadPortfolio() {
       statusPill.textContent = `정상 · ${new Date().toLocaleTimeString('ko-KR')}`;
     } else {
       renderHoldings(sortBySavedOrder(data.holdings, HOLDINGS_ORDER_KEY));
-      renderWatchlist(sortBySavedOrder(data.watchlist, WATCHLIST_ORDER_KEY));
+      if (watchlistExpanded && data.watchlist) {
+        renderWatchlist(sortBySavedOrder(data.watchlist, WATCHLIST_ORDER_KEY));
+      }
     }
     sourceText.textContent = `네이버 금융 polling API · ${data.refreshSeconds}초 자동 갱신`;
     statusPill.textContent = `정상 · ${new Date().toLocaleTimeString('ko-KR')}`;
 
-    // Refresh sidebar every 5 minutes
     const now = Date.now();
     if (now - lastSidebarRefresh > SIDEBAR_REFRESH_INTERVAL) {
       lastSidebarRefresh = now;
@@ -2059,7 +2044,7 @@ async function loadPortfolio() {
       loadKrMarketNews();
       loadUSMarketNews();
       loadNews();
-      loadTraderFlow();
+      if (watchlistExpanded) loadTraderFlow();
     }
   } catch (error) {
     statusPill.textContent = '오류';
@@ -2114,7 +2099,7 @@ function setAutoRefresh(enabled) {
     autoTimer = null;
   }
   if (enabled) {
-    autoTimer = setInterval(loadPortfolio, 10000);
+    autoTimer = setInterval(loadPortfolio, 5000);
   }
 }
 
@@ -2286,6 +2271,28 @@ function setupTraderFlowAutoRefresh() {
 refreshBtn.addEventListener('click', loadPortfolio);
 autoBtn.addEventListener('click', () => setAutoRefresh(!autoEnabled));
 
+/* Watchlist toggle (lazy load) */
+const watchlistToggle = document.querySelector('#watchlistToggle');
+const watchlistWrap = document.querySelector('#watchlistWrap');
+
+watchlistToggle.addEventListener('click', async () => {
+  watchlistExpanded = !watchlistExpanded;
+  watchlistToggle.textContent = watchlistExpanded ? '접기' : '펼치기';
+  watchlistWrap.style.display = watchlistExpanded ? '' : 'none';
+  if (watchlistExpanded && !watchlistLoaded) {
+    watchlistBody.innerHTML = '<tr><td colspan="7" class="loading">관심종목 데이터를 불러오는 중...</td></tr>';
+    try {
+      const res = await fetch('/api/portfolio', { cache: 'no-store' });
+      if (!res.ok) return;
+      const data = await res.json();
+      renderWatchlist(sortBySavedOrder(data.watchlist, WATCHLIST_ORDER_KEY));
+      watchlistLoaded = true;
+    } catch (e) {
+      watchlistBody.innerHTML = '<tr><td colspan="7" class="muted" style="text-align:center">관심종목을 불러올 수 없습니다.</td></tr>';
+    }
+  }
+});
+
 /* Korean Market News Section */
 const krMarketNewsBody = document.querySelector('#krMarketNewsBody');
 const krMarketNewsDate = document.querySelector('#krMarketNewsDate');
@@ -2387,7 +2394,6 @@ loadKospiKosdaq();
 loadUSMarket();
 loadKrMarketNews();
 loadUSMarketNews();
-loadTraderFlow();
 setAutoRefresh(true);
 setupNewsRefresh();
 setupTraderFlowAutoRefresh();

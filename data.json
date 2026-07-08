@@ -1,6 +1,6 @@
 {
   "currency": "KRW",
-  "refreshSeconds": 10,
+  "refreshSeconds": 5,
   "holdings": [
     {
       "code": "005380",

@@ -499,10 +499,13 @@ def build_item(quote):
         "realtimeSignals": trend.get("realtimeSignals", []),
     }
 
-def build_portfolio():
+def build_portfolio(section=None):
     config = load_config()
-    all_codes = [h["code"] for h in config["holdings"]]
-    all_codes += [w["code"] for w in config.get("watchlist", [])]
+    if section == "holdings":
+        all_codes = [h["code"] for h in config["holdings"]]
+    else:
+        all_codes = [h["code"] for h in config["holdings"]]
+        all_codes += [w["code"] for w in config.get("watchlist", [])]
     quotes = {item["code"]: item for item in (fetch_quote(c) for c in all_codes)}
 
     holdings_rows = []
@@ -534,9 +537,10 @@ def build_portfolio():
         })
 
     watchlist_rows = []
-    for watch in config.get("watchlist", []):
-        quote = quotes.get(watch["code"], {"code": watch["code"], "error": "호가 데이터 없음"})
-        watchlist_rows.append(build_item(quote))
+    if section != "holdings":
+        for watch in config.get("watchlist", []):
+            quote = quotes.get(watch["code"], {"code": watch["code"], "error": "호가 데이터 없음"})
+            watchlist_rows.append(build_item(quote))
 
     total_cost = sum(row["cost"] for row in holdings_rows)
     total_current = sum(row["currentValue"] for row in holdings_rows)
@@ -2534,7 +2538,9 @@ class Handler(SimpleHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         p = parsed.path
         if p == "/api/portfolio":
-            self.send_json(build_portfolio())
+            qs = urllib.parse.parse_qs(parsed.query)
+            section = qs.get("section", [None])[0]
+            self.send_json(build_portfolio(section=section))
             return
         if p == "/api/config":
             self.send_json(load_config())

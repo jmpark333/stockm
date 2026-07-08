@@ -497,16 +497,22 @@ def build_item(quote):
         "trend": calc_trend(adjusted_quote),
     }
 
-def build_portfolio():
+def build_portfolio(section=None):
     global _PORTFOLIO_CACHE, _PORTFOLIO_CACHE_TS
-    clear_trend_cache()  # 요청 시작 시 추세 캐시 초기화
+    if section == "holdings":
+        pass
+    else:
+        clear_trend_cache()  # 요청 시작 시 추세 캐시 초기화
     now = time.time()
     if _PORTFOLIO_CACHE is not None and (now - _PORTFOLIO_CACHE_TS) < _PORTFOLIO_CACHE_TTL:
         return _PORTFOLIO_CACHE
 
     config = load_config()
-    all_codes = [h["code"] for h in config["holdings"]]
-    all_codes += [w["code"] for w in config.get("watchlist", [])]
+    if section == "holdings":
+        all_codes = [h["code"] for h in config["holdings"]]
+    else:
+        all_codes = [h["code"] for h in config["holdings"]]
+        all_codes += [w["code"] for w in config.get("watchlist", [])]
 
     # Parallel fetch_quote: previously N sequential HTTP calls (~200ms each).
     # With ~10 codes this cuts the "포트폴리오 로딩" phase from ~2s to ~0.3s.
@@ -544,9 +550,10 @@ def build_portfolio():
             "realizedProfitRate": realized_profit_rate,
         })
     watchlist_rows = []
-    for watch in config.get("watchlist", []):
-        quote = quotes.get(watch["code"], {"code": watch["code"], "error": "호가 데이터 없음"})
-        watchlist_rows.append(build_item(quote))
+    if section != "holdings":
+        for watch in config.get("watchlist", []):
+            quote = quotes.get(watch["code"], {"code": watch["code"], "error": "호가 데이터 없음"})
+            watchlist_rows.append(build_item(quote))
     total_cost = sum(row["cost"] for row in holdings_rows)
     total_current = sum(row["currentValue"] for row in holdings_rows)
     total_profit = total_current - total_cost
@@ -1361,8 +1368,9 @@ def serve_static(filename):
 
 @app.route("/api/portfolio")
 def api_portfolio():
+    section = request.args.get("section")
     return Response(
-        json.dumps(build_portfolio(), ensure_ascii=False),
+        json.dumps(build_portfolio(section=section), ensure_ascii=False),
         mimetype="application/json",
         headers={"Cache-Control": "no-store", "Access-Control-Allow-Origin": "*"},
     )

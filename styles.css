@@ -1027,6 +1027,32 @@ td {
   text-decoration-color: inherit;
 }
 
+.watchlist-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 10px;
+  background: rgba(148,163,184,0.12);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.watchlist-toggle-btn:hover {
+  background: rgba(148,163,184,0.2);
+}
+.watchlist-toggle-btn .arrow {
+  transition: transform 0.2s;
+  font-size: 10px;
+}
+.watchlist-toggle-btn.expanded .arrow {
+  transform: rotate(180deg);
+}
+
 /* ──────────────────────────────────────────
    Stock Manager AI Chat
    ────────────────────────────────────────── */

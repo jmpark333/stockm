@@ -129,7 +129,6 @@
                 <th data-sort="profitRate" class="sortable">수익률 <span class="sort-icon"></span></th>
                 <th data-sort="profit" class="sortable">수익금 <span class="sort-icon"></span></th>
                 <th>단기추세</th>
-                <th>시그널</th>
                 <th>상태</th>
               </tr>
             </thead>
@@ -144,8 +143,9 @@
             <h2>👀 관심종목</h2>
             <p>매수기회를 포착할 종목을 모니터링합니다.</p>
           </div>
+          <button id="watchlistToggle" class="watchlist-toggle-btn" type="button">펼치기</button>
         </div>
-        <div class="table-wrap">
+        <div id="watchlistWrap" class="table-wrap" style="display:none">
           <table>
             <thead>
               <tr>
@@ -155,7 +155,6 @@
                 <th>일중범위</th>
                 <th>변동성</th>
                 <th>단기추세</th>
-                <th>시그널</th>
                 <th>상태</th>
               </tr>
             </thead>
