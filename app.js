@@ -2110,6 +2110,10 @@ function setAutoRefresh(enabled) {
     autoTimer = setInterval(loadPortfolio, 10000);
   }
 }
+  if (enabled) {
+    autoTimer = setInterval(loadPortfolio, 10000);
+  }
+}
 
 function setupNewsRefresh() {
   if (newsTimer) clearInterval(newsTimer);
