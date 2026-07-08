@@ -297,6 +297,14 @@ def detect_trend_phase(code, current_price, previous_close, open_price):
         return "보합", 30, [f"오늘 보합 ({day_chg:+.1f}%)"]
 
 
+# 요청 내 추세 캐시 (같은 종목은 같은 추세 보장)
+_trend_cache: dict[str, tuple] = {}
+
+def clear_trend_cache():
+    global _trend_cache
+    _trend_cache = {}
+
+
 def track_history(code, current_price):
     if current_price is None:
         return
@@ -308,6 +316,10 @@ def track_history(code, current_price):
         history[code] = deque(saved[-MAX_HISTORY:], maxlen=MAX_HISTORY)
     elif code not in history:
         history[code] = deque(maxlen=MAX_HISTORY)
+    
+    # 같은 가격이면 중복 추가 방지
+    if history[code] and history[code][-1] == current_price:
+        return
     
     history[code].append(current_price)
     
@@ -359,8 +371,12 @@ def calc_trend(quote):
         signal_score = 0
         indicators = {}
 
-    # ── 추세 전환 감지 ──
-    trend_phase, trend_confidence, trend_reasons = detect_trend_phase(code, cp, pc, op)
+    # ── 추세 전환 감지 (캐시 활용) ──
+    if code in _trend_cache:
+        trend_phase, trend_confidence, trend_reasons = _trend_cache[code]
+    else:
+        trend_phase, trend_confidence, trend_reasons = detect_trend_phase(code, cp, pc, op)
+        _trend_cache[code] = (trend_phase, trend_confidence, trend_reasons)
     
     # 추세 단계를 short_trend로 변환
     if trend_phase in ("상승시작", "상승지속", "바닥반등"):
@@ -438,6 +454,7 @@ def build_item(quote):
 
 def build_portfolio():
     global _PORTFOLIO_CACHE, _PORTFOLIO_CACHE_TS
+    clear_trend_cache()  # 요청 시작 시 추세 캐시 초기화
     now = time.time()
     if _PORTFOLIO_CACHE is not None and (now - _PORTFOLIO_CACHE_TS) < _PORTFOLIO_CACHE_TTL:
         return _PORTFOLIO_CACHE
