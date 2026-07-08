@@ -23,20 +23,20 @@
     {
       "code": "009150",
       "name": "삼성전기",
-      "quantity": 4,
-      "avgPrice": 1736250
+      "quantity": 8,
+      "avgPrice": 1553125
     },
     {
       "code": "402340",
       "name": "SK스퀘어",
-      "quantity": 4,
-      "avgPrice": 1425000
+      "quantity": 8,
+      "avgPrice": 1306500
     },
     {
       "code": "011070",
       "name": "LG이노텍",
-      "quantity": 2,
-      "avgPrice": 797000
+      "quantity": 4,
+      "avgPrice": 752500
     }
   ],
   "watchlist": [
