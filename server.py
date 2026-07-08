@@ -184,7 +184,7 @@ def detect_trend_phase(code, current_price, previous_close, open_price):
                 return "하락지속", 80, reasons
     
     # ── 2단계: 기록 이력(history) 기반 (3개 이상) ──
-    if len(hist) >= 3:
+    if len(hist) >= 2:
         hist_changes = []
         for i in range(1, len(hist)):
             if hist[i-1] > 0:
@@ -192,29 +192,27 @@ def detect_trend_phase(code, current_price, previous_close, open_price):
                 hist_changes.append(chg)
         
         if hist_changes:
-            h_up = sum(1 for c in hist_changes if c > 0.1)
             h_down = sum(1 for c in hist_changes if c < -0.1)
+            h_up = sum(1 for c in hist_changes if c > 0.1)
             h_total = sum(hist_changes)
             
-            # 연속 하락 감지 (기록 이력에서)
-            if h_down >= 2 and h_up == 0:
-                reasons.append(f"기록상 {h_down}회 연속 하락 ({h_total:+.1f}%)")
+            # 연속 하락: 마지막 변화가 음수이고 오늘도 하락
+            if hist_changes[-1] < -0.1 and day_chg < 0:
+                reasons.append(f"연속 하락 ({h_total:+.1f}%)")
                 return "하락지속", 70, reasons
             
-            # 연속 상승 감지
-            if h_up >= 2 and h_down == 0:
-                reasons.append(f"기록상 {h_up}회 연속 상승 ({h_total:+.1f}%)")
+            # 연속 상승: 마지막 변화가 양수이고 오늘도 상승
+            if hist_changes[-1] > 0.1 and day_chg > 0:
+                reasons.append(f"연속 상승 ({h_total:+.1f}%)")
                 return "상승지속", 70, reasons
             
-            # 바닥 반등
-            if h_total < -1 and hist_changes[-1] > 0:
-                reasons.append(f"기록상 {h_total:+.1f}% 하락 후 반등")
-                return "바닥반등", 65, reasons
+            # 바닥 반등: 하락 후 반등
+            if h_total < -0.5 and hist_changes[-1] > 0:
+                return "바닥반등", 65, [f"하락({h_total:+.1f}%) 후 반등"]
             
-            # 천장 반락
-            if h_total > 1 and hist_changes[-1] < 0:
-                reasons.append(f"기록상 {h_total:+.1f}% 상승 후 조정")
-                return "천장반락", 65, reasons
+            # 천장 반락: 상승 후 조정
+            if h_total > 0.5 and hist_changes[-1] < 0:
+                return "천장반락", 65, [f"상승({h_total:+.1f}%) 후 조정"]
     
     # ── 3단계: 오늘 가격 변동만으로 판단 ──
     if day_chg > 2:
