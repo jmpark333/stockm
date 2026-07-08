@@ -373,9 +373,10 @@ def calc_trend(quote):
                 prev_consec = prev_data.get("consec", 1)
                 
                 # 같은 방향이면 +1, 방향 다르면 1부터 시작
+                # 하락세약화/상승세약화는 방향 전환으로 간주 (consec 리셋)
                 same_direction = (
-                    (trend_phase in ("하락시작", "하락지속", "하락세약화") and prev_phase in ("하락시작", "하락지속", "하락세약화")) or
-                    (trend_phase in ("상승시작", "상승지속", "상승세약화") and prev_phase in ("상승시작", "상승지속", "상승세약화"))
+                    (trend_phase in ("하락시작", "하락지속") and prev_phase in ("하락시작", "하락지속")) or
+                    (trend_phase in ("상승시작", "상승지속") and prev_phase in ("상승시작", "상승지속"))
                 )
                 if same_direction:
                     consec = prev_consec + 1
