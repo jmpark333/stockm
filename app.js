@@ -1511,6 +1511,11 @@ function updateSortIcons() {
 }
 
 // 추세 시각화 전역 상수
+const PHASE_COLORS = {
+  '상승시작': '#22c55e', '상승지속': '#16a34a', '상승세약화': '#eab308',
+  '하락시작': '#ef4444', '하락지속': '#dc2626', '하락세약화': '#f59e0b',
+  '바닥반등': '#3b82f6', '천장반락': '#f97316', '보합': '#94a3b8'
+};
 const PHASE_LABELS = {
   '상승시작': '↗ 상승시작', '상승지속': '↑ 상승지속', '상승세약화': '⇀ 상승세약화',
   '하락시작': '↘ 하락시작', '하락지속': '↓ 하락지속', '하락세약화': '⇀ 하락세약화',
@@ -1598,6 +1603,7 @@ function renderHoldings(rows) {
     const trendPhase = t.trendPhase || '보합';
     const trendDataAttr = `data-trend='${JSON.stringify(t)}'`;
     const trendLabel = PHASE_LABELS[trendPhase] || trendPhase;
+    const trendColor = PHASE_COLORS[trendPhase] || '#94a3b8';
     const waveSvg = makeWaveSvg(trendPhase, t.rangePos);
     
     // 추세 근거 요약
@@ -1613,7 +1619,7 @@ function renderHoldings(rows) {
       <td>${formatMoney(row.currentValue)}</td>
       <td class="${row.realizedProfit >= 0 ? 'up' : 'down'}">${formatPercent(row.realizedProfitRate)}</td>
       <td class="${row.realizedProfit >= 0 ? 'up' : 'down'}">${formatSignedMoney(row.realizedProfit)}<br><small style="opacity:0.6">(비용 ${formatMoney(Math.round(row.sellFee))})</small></td>
-      <td class="trend-cell trend-clickable" ${trendDataAttr}>${waveSvg}<span style="font-size:11px;font-weight:600">${trendLabel}</span>${trendSummary ? `<br><small style="opacity:0.6;font-size:10px">${trendSummary}</small>` : ''}</td>
+      <td class="trend-cell trend-clickable" ${trendDataAttr}>${waveSvg}<span style="font-size:11px;font-weight:600;color:${trendColor}">${trendLabel}</span>${trendSummary ? `<br><small style="opacity:0.6;font-size:10px">${trendSummary}</small>` : ''}</td>
       <td>${badgeHtml} ${aiBtnHtml}</td>
       <td>${row.session || row.error || '-'}${realtimeHtml}</td>
     `;
@@ -1661,6 +1667,7 @@ function renderWatchlist(rows) {
     const trendPhase = t.trendPhase || '보합';
     const trendDataAttr = `data-trend='${JSON.stringify(t)}'`;
     const trendLabel2 = PHASE_LABELS[trendPhase] || trendPhase;
+    const trendColor2 = PHASE_COLORS[trendPhase] || '#94a3b8';
     const waveSvg2 = makeWaveSvg(trendPhase, t.rangePos);
     // 추세 근거 요약
     const trendReasons = t.signalReasons || [];
@@ -1672,7 +1679,7 @@ function renderWatchlist(rows) {
       <td class="${row.change > 0 ? 'up' : row.change < 0 ? 'down' : 'neutral'}">${formatSignedMoney(row.change)} / ${formatPercent(row.changeRate)}</td>
       <td>${dayRange}<br>${rangeBar(t.rangePos)}</td>
       <td>${t.volatility}%</td>
-      <td class="trend-cell trend-clickable" ${trendDataAttr}>${waveSvg2}<span style="font-size:11px;font-weight:600">${trendLabel2}</span>${trendSummary ? `<br><small style="opacity:0.6;font-size:10px">${trendSummary}</small>` : ''}</td>
+      <td class="trend-cell trend-clickable" ${trendDataAttr}>${waveSvg2}<span style="font-size:11px;font-weight:600;color:${trendColor2}">${trendLabel2}</span>${trendSummary ? `<br><small style="opacity:0.6;font-size:10px">${trendSummary}</small>` : ''}</td>
       <td>${badgeHtml} ${aiBtnHtml}</td>
       <td>${row.session || row.error || '-'}${realtimeHtml}</td>
     `;

@@ -324,17 +324,9 @@ def calc_trend(quote):
     lv = quote.get("low")
     op = quote.get("open")
     code = quote.get("code")
-    amp = quote.get("afterMarketPrice")
     if cp is None:
         return {"trend": "unknown", "signal": "hold", "rangePos": 50, "volatility": 0}
     track_history(code, cp)
-    
-    # 애프터마켓 가격이 있으면 고가/저가에 반영
-    if amp and amp > 0:
-        if hv is None or amp > hv:
-            hv = amp
-        if lv is None or amp < lv:
-            lv = amp
     
     range_pos = 50
     if hv is not None and lv is not None and hv != lv:
@@ -468,6 +460,9 @@ def build_item(quote):
         if lv is None or amp < lv:
             lv = amp
     
+    # 조정된 고가/저가를 quote에 반영
+    adjusted_quote = {**quote, "high": hv, "low": lv}
+    
     return {
         "code": quote.get("code"),
         "name": quote.get("name"),
@@ -482,7 +477,7 @@ def build_item(quote):
         "afterMarketPrice": amp,
         "updatedAt": quote.get("updatedAt"),
         "error": quote.get("error"),
-        "trend": calc_trend(quote),
+        "trend": calc_trend(adjusted_quote),
     }
 
 def build_portfolio():
