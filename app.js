@@ -1511,29 +1511,43 @@ function updateSortIcons() {
 }
 
 // 추세 시각화 전역 상수
-// sin(x) 기준: 0=중간, 0.25=최고점, 0.5=중간, 0.75=최저점
-const PHASE_POSITIONS = {
-  '하락시작': 0.15,   // 최고점에서 내려오는 중
-  '하락지속': 0.30,   // 계속 내려가는 중
-  '하락세약화': 0.60, // 최저점에서 올라오는 중
-  '보합': 0.50,       // 중간
-  '상승시작': 0.65,   // 올라가는 중
-  '상승지속': 0.80,   // 최고점을 향해
-  '상승세약화': 0.10, // 최고점에서 내려오는 중
-  '바닥반등': 0.55,   // 최저점에서 반등
-  '천장반락': 0.20    // 최고점에서 조정
-};
 const PHASE_LABELS = {
   '상승시작': '↗ 상승시작', '상승지속': '↑ 상승지속', '상승세약화': '⇀ 상승세약화',
   '하락시작': '↘ 하락시작', '하락지속': '↓ 하락지속', '하락세약화': '⇀ 하락세약화',
   '바닥반등': '⤴ 바닥반등', '천장반락': '⤵ 천장반락', '보합': '― 보합'
 };
 
-function makeWaveSvg(phase) {
-  const pos = PHASE_POSITIONS[phase] || 0.5;
-  const color = phase.includes('상승') ? '#22c55e' : phase.includes('하락') ? '#ef4444' : '#94a3b8';
+// rangePos(0~100%)와 추세를 조합해서 점 위치 계산
+// 싸인파: 0=중간(왼쪽), 0.25=최고점, 0.5=중간(오른쪽), 0.75=최저점
+function calcWavePos(trendPhase, rangePos) {
+  const rp = rangePos != null ? rangePos : 50;
   
-  // 1주기 사인 곡선 포인트 생성 (30개 포인트)
+  // 추세별 기본 영역
+  const ranges = {
+    '하락시작':   [0.35, 0.50],  // 중간→내려오는 중
+    '하락지속':   [0.50, 0.70],  // 계속 내려가는 중
+    '하락세약화': [0.70, 0.85],  // 바닥 근처, 반등 준비
+    '보합':       [0.45, 0.55],  // 중간
+    '상승시작':   [0.00, 0.15],  // 올라가는 중
+    '상승지속':   [0.15, 0.25],  // 고점 근처
+    '상승세약화': [0.25, 0.40],  // 고점 지나 조정 중
+    '바닥반등':   [0.75, 0.85],  // 바닥에서 반등
+    '천장반락':   [0.20, 0.35],  // 고점에서 조정
+  };
+  
+  const [min, max] = ranges[trendPhase] || [0.45, 0.55];
+  
+  // rangePos를 해당 영역 안에서 비례 배치
+  // rangePos 0% = 영역 왼쪽(min), 100% = 영역 오른쪽(max)
+  const pos = min + (rp / 100) * (max - min);
+  return Math.max(0, Math.min(1, pos));
+}
+
+function makeWaveSvg(trendPhase, rangePos) {
+  const pos = calcWavePos(trendPhase, rangePos);
+  const color = trendPhase.includes('상승') ? '#22c55e' : trendPhase.includes('하락') ? '#ef4444' : '#94a3b8';
+  
+  // 1주기 사인 곡선 포인트 생성
   const points = [];
   const w = 60, h = 20, amp = 7, cy = 10;
   for (let i = 0; i <= 30; i++) {
@@ -1543,7 +1557,6 @@ function makeWaveSvg(phase) {
   }
   const pathD = 'M' + points.join(' L');
   
-  // 점 위치
   const dotX = pos * w;
   const dotY = cy - Math.sin(pos * Math.PI * 2) * amp;
   
@@ -1585,7 +1598,7 @@ function renderHoldings(rows) {
     const trendPhase = t.trendPhase || '보합';
     const trendDataAttr = `data-trend='${JSON.stringify(t)}'`;
     const trendLabel = PHASE_LABELS[trendPhase] || trendPhase;
-    const waveSvg = makeWaveSvg(trendPhase);
+    const waveSvg = makeWaveSvg(trendPhase, t.rangePos);
     
     // 추세 근거 요약
     const trendReasons = t.signalReasons || [];
@@ -1648,7 +1661,7 @@ function renderWatchlist(rows) {
     const trendPhase = t.trendPhase || '보합';
     const trendDataAttr = `data-trend='${JSON.stringify(t)}'`;
     const trendLabel2 = PHASE_LABELS[trendPhase] || trendPhase;
-    const waveSvg2 = makeWaveSvg(trendPhase);
+    const waveSvg2 = makeWaveSvg(trendPhase, t.rangePos);
     // 추세 근거 요약
     const trendReasons = t.signalReasons || [];
     const trendSummary = trendReasons.length > 0 ? trendReasons[0] : '';
