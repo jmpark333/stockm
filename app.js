@@ -1511,11 +1511,17 @@ function updateSortIcons() {
 }
 
 // 추세 시각화 전역 상수
+// sin(x) 기준: 0=중간, 0.25=최고점, 0.5=중간, 0.75=최저점
 const PHASE_POSITIONS = {
-  '하락시작': 0.0, '하락지속': 0.15, '하락세약화': 0.35,
-  '보합': 0.5,
-  '상승시작': 0.65, '상승지속': 0.85, '상승세약화': 0.95,
-  '바닥반등': 0.35, '천장반락': 0.85
+  '하락시작': 0.15,   // 최고점에서 내려오는 중
+  '하락지속': 0.30,   // 계속 내려가는 중
+  '하락세약화': 0.60, // 최저점에서 올라오는 중
+  '보합': 0.50,       // 중간
+  '상승시작': 0.65,   // 올라가는 중
+  '상승지속': 0.80,   // 최고점을 향해
+  '상승세약화': 0.10, // 최고점에서 내려오는 중
+  '바닥반등': 0.55,   // 최저점에서 반등
+  '천장반락': 0.20    // 최고점에서 조정
 };
 const PHASE_LABELS = {
   '상승시작': '↗ 상승시작', '상승지속': '↑ 상승지속', '상승세약화': '⇀ 상승세약화',
@@ -1526,10 +1532,12 @@ const PHASE_LABELS = {
 function makeWaveSvg(phase) {
   const pos = PHASE_POSITIONS[phase] || 0.5;
   const color = phase.includes('상승') ? '#22c55e' : phase.includes('하락') ? '#ef4444' : '#94a3b8';
+  // sin(x) 곡선: 0->중간, 0.25->최고, 0.5->중간, 0.75->최저, 1->중간
   const y = 10 - Math.sin(pos * Math.PI * 2) * 7;
-  return `<svg width="60" height="20" viewBox="0 0 60 20" style="display:block;margin:2px auto">
-    <path d="M0,10 C10,10 15,2 20,2 C25,2 25,18 30,18 C35,18 35,2 40,2 C45,2 50,18 60,10" fill="none" stroke="#475569" stroke-width="1.2"/>
-    <circle cx="${pos * 60}" cy="${y}" r="3.5" fill="${color}" stroke="white" stroke-width="1"/>
+  // 1주기 사인 곡선 (베지어 곡선으로 근사)
+  return `<svg width="60" height="24" viewBox="0 0 60 24" style="display:block;margin:2px auto">
+    <path d="M0,12 C5,12 7.5,3 15,3 C22.5,3 22.5,21 30,21 C37.5,21 37.5,3 45,3 C52.5,3 55,12 60,12" fill="none" stroke="#475569" stroke-width="1.2"/>
+    <circle cx="${pos * 60}" cy="${y}" r="4" fill="${color}" stroke="white" stroke-width="1.5"/>
   </svg>`;
 }
 
