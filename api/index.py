@@ -324,9 +324,18 @@ def calc_trend(quote):
     lv = quote.get("low")
     op = quote.get("open")
     code = quote.get("code")
+    amp = quote.get("afterMarketPrice")
     if cp is None:
         return {"trend": "unknown", "signal": "hold", "rangePos": 50, "volatility": 0}
     track_history(code, cp)
+    
+    # 애프터마켓 가격이 있으면 고가/저가에 반영
+    if amp and amp > 0:
+        if hv is None or amp > hv:
+            hv = amp
+        if lv is None or amp < lv:
+            lv = amp
+    
     range_pos = 50
     if hv is not None and lv is not None and hv != lv:
         range_pos = round((cp - lv) / (hv - lv) * 100, 1)
