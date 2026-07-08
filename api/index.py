@@ -452,6 +452,7 @@ def build_item(quote):
     hv = quote.get("high")
     lv = quote.get("low")
     amp = quote.get("afterMarketPrice")
+    code = quote.get("code")
     
     # 애프터마켓 가격이 있으면 고가/저가에 반영
     if amp and amp > 0:
@@ -459,6 +460,22 @@ def build_item(quote):
             hv = amp
         if lv is None or amp < lv:
             lv = amp
+    
+    # Redis에서 이전 최저가/최고가 로드 (절대 높아지지 않도록)
+    range_key = f"price_range:{code}"
+    saved_range = kv_get(range_key)
+    if saved_range:
+        saved_low = saved_range.get("low", 0)
+        saved_high = saved_range.get("high", 0)
+        # 최저가는 절대 높아지면 안 됨
+        if saved_low > 0 and lv is not None and lv > saved_low:
+            lv = saved_low
+        # 최고가는 절대 낮아지면 안 됨
+        if saved_high > 0 and hv is not None and hv < saved_high:
+            hv = saved_high
+    
+    # 현재 고가/저가를 Redis에 저장
+    kv_set(range_key, {"low": lv, "high": hv})
     
     # 조정된 고가/저가를 quote에 반영
     adjusted_quote = {**quote, "high": hv, "low": lv}
