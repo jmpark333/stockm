@@ -311,12 +311,18 @@ def calc_trend(quote):
     if op and op > 0:
         change_from_open = round((cp - op) / op * 100, 2)
 
-    # 기술적 지표 가져오기
-    tech = calc_tech_indicators(code)
-    tech_signals = tech.get("signals", [])
-    tech_signal = tech.get("techSignal", "hold")
-    signal_score = tech.get("signalScore", 0)
-    indicators = tech.get("indicators", {})
+    # 기술적 지표 가져오기 (캐시 활용)
+    try:
+        tech = calc_tech_indicators(code)
+        tech_signals = tech.get("signals", [])
+        tech_signal = tech.get("techSignal", "hold")
+        signal_score = tech.get("signalScore", 0)
+        indicators = tech.get("indicators", {})
+    except Exception:
+        tech_signals = []
+        tech_signal = "hold"
+        signal_score = 0
+        indicators = {}
 
     # 기술적 지표 기반 단기추세 판단 (단순 가격 비교보다 안정적)
     short_trend = "flat"
@@ -386,6 +392,18 @@ def calc_trend(quote):
                 if short_trend != "up":
                     short_trend = "down"
                     trend_reasons.append("가격 < MA5 < MA20 (강한 하락)")
+    
+    # 기술적 지표가 없으면 가격 기반 판단 사용
+    if not indicators:
+        if len(hist) >= 3:
+            first = hist[0]
+            last = hist[-1]
+            if last > first * 1.001:
+                short_trend = "up"
+                trend_reasons.append("가격 상승 추세")
+            elif last < first * 0.999:
+                short_trend = "down"
+                trend_reasons.append("가격 하락 추세")
 
     # 기본 시그널 (가격 기반)
     signal = "hold"
