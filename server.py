@@ -191,18 +191,16 @@ def detect_trend_phase(code, current_price, previous_close, open_price):
     if is_rising and prev_phase in ("상승시작", "상승지속"):
         return "상승지속", 70, [f"{prev_consec + 1}회 연속 상승 ({price_chg:+.2f}%)"]
     
-    if not is_falling and prev_phase in ("하락시작", "하락지속"):
-        return "하락세약화", 55, [f"하락 멈춤 ({price_chg:+.2f}%)"]
+    if is_rising and prev_phase in ("하락시작", "하락지속", "하락세약화"):
+        return "하락세약화", 60, [f"하락 중 반등 ({price_chg:+.2f}%)"]
     
-    if not is_rising and prev_phase in ("상승시작", "상승지속"):
-        return "상승세약화", 55, [f"상승 멈춤 ({price_chg:+.2f}%)"]
+    if is_falling and prev_phase in ("상승시작", "상승지속", "상승세약화"):
+        return "상승세약화", 60, [f"상승 중 조정 ({price_chg:+.2f}%)"]
     
-    # 하락 후 보합
-    if prev_phase in ("하락시작", "하락지속", "하락세약화"):
+    if not is_rising and not is_falling and prev_phase in ("하락시작", "하락지속", "하락세약화"):
         return "하락세약화", 50, [f"하락 후 보합 ({price_chg:+.2f}%)"]
     
-    # 상승 후 보합
-    if prev_phase in ("상승시작", "상승지속", "상승세약화"):
+    if not is_rising and not is_falling and prev_phase in ("상승시작", "상승지속", "상승세약화"):
         return "상승세약화", 50, [f"상승 후 보합 ({price_chg:+.2f}%)"]
     
     if is_rising:
