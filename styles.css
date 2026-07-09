@@ -176,21 +176,21 @@ h2 {
 }
 
 .table-wrap {
-  overflow-x: auto;
+  overflow-x: hidden;
 }
 
 table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 920px;
 }
 
 th,
 td {
-  padding: 16px 12px;
+  padding: 12px 8px;
+  white-space: nowrap;
+  font-size: 13px;
   border-bottom: 1px solid var(--line);
   text-align: right;
-  white-space: nowrap;
 }
 
 th:first-child,
@@ -233,12 +233,17 @@ td {
 .name-cell {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
+}
+
+.name-cell strong {
+  font-size: 13px;
 }
 
 .name-cell small {
   color: var(--muted);
   font-weight: 600;
+  font-size: 11px;
 }
 
 .up {
