@@ -1553,15 +1553,18 @@ function calcWavePos(trendPhase, rangePos) {
 
 function makeLongTrendHtml(trendData) {
   const longTrend = trendData.longTrend || '보합';
-  const longTrendConfidence = trendData.longTrendConfidence || 0;
+  const longTrendReasons = trendData.longTrendReasons || [];
   const rangePos = trendData.rangePos || 50;
   
   const trendLabel = PHASE_LABELS[longTrend] || longTrend;
   const trendColor = PHASE_COLORS[longTrend] || '#94a3b8';
   const waveSvg = makeWaveSvg(longTrend, rangePos);
   
+  // 판단근거 표시
+  const mainReason = longTrendReasons.length > 0 ? longTrendReasons[0] : '';
+  
   return `${waveSvg}<span style="font-size:11px;font-weight:600;color:${trendColor}">${trendLabel}</span>
-    <br><small style="opacity:0.6;font-size:10px">신뢰도 ${longTrendConfidence}%</small>`;
+    ${mainReason ? `<br><small style="opacity:0.6;font-size:10px">${mainReason}</small>` : ''}`;
 }
 
 function makeWaveSvg(trendPhase, rangePos) {

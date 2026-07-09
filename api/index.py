@@ -214,7 +214,10 @@ def save_short_trend_history(code, trend_phase):
 
 
 def detect_long_term_trend(code, current_price):
-    """장기 추세를 판단한다. 단기추세 결과 10개 종합 기반."""
+    """장기 추세를 판단한다. 단기추세 결과 10개 종합 기반.
+    
+    전환 조건: 방향 전환 시 최소 2회 이상 연속된 신호 필요
+    """
     key = f"short_trend_history:{code}"
     saved = kv_get(key)
     
@@ -229,6 +232,10 @@ def detect_long_term_trend(code, current_price):
     
     up_phases = ("상승시작", "상승지속", "상승세약화", "바닥반등")
     down_phases = ("하락시작", "하락지속", "하락세약화", "천장반락")
+    
+    # 최근 추세 분석 (마지막 3개 기준)
+    recent_phases = [item.get("phase", "보합") for item in saved[-3:]]
+    last_phase = recent_phases[-1] if recent_phases else "보합"
     
     for item in saved:
         phase = item.get("phase", "보합")
@@ -247,53 +254,53 @@ def detect_long_term_trend(code, current_price):
     
     up_ratio = up_count / total
     down_ratio = down_count / total
+    gap = abs(up_ratio - down_ratio)
     
-    reasons = [f"최근 {len(saved)}개 추세 중 상승 {up_count}회, 하락 {down_count}회"]
+    reasons = [f"상승 {up_count}회 / 하락 {down_count}회 / 보합 {neutral_count}회"]
     
-    # 판단 (단기추세와 동일한 상태 머신)
+    # 판단 로직
     prev_key = f"long_trend_phase:{code}"
     prev_data = kv_get(prev_key)
     prev_phase = prev_data.get("phase") if prev_data else None
     consec = 1
     
-    if up_ratio >= 0.7:
-        # 강한 상승 추세
+    # 상승 추세 판정
+    if up_ratio >= 0.6 and up_ratio > down_ratio + 0.1:
         if prev_phase in ("상승시작", "상승지속", "상승세약화"):
             consec = (prev_data.get("consec", 1) if prev_data else 1) + 1
-            result = ("상승지속", 70, reasons + [f"{consec}회 연속 상승"])
+            result = ("상승지속", 60, reasons + [f"{consec}회 연속 상승 ({up_ratio:.0%})"])
         elif prev_phase in ("하락시작", "하락지속", "하락세약화"):
-            result = ("상승시작", 55, reasons + ["하락→상승 전환"])
+            # 전환 시 강한 조건: 최근 3개 중 2개 이상 상승
+            up_recent = sum(1 for p in recent_phases if p in up_phases)
+            if up_recent >= 2:
+                result = ("상승시작", 55, reasons + [f"전환 (최근3 중 상승 {up_recent}개)"])
+            else:
+                result = ("하락세약화", 50, reasons + ["전환 조건 미충족"])
+                direction = "down"
+                kv_set(prev_key, {"phase": result[0], "consec": 1, "ts": int(time.time()), "price": current_price, "direction": direction})
+                return result
         else:
-            result = ("상승시작", 50, reasons)
+            result = ("상승시작", 50, reasons + [f"상승 우세 ({up_ratio:.0%})"])
         direction = "up"
-    elif up_ratio >= 0.5:
-        # 약한 상승 추세
-        if prev_phase in ("상승시작", "상승지속", "상승세약화"):
-            consec = (prev_data.get("consec", 1) if prev_data else 1) + 1
-            result = ("상승지속", 60, reasons + [f"{consec}회 연속 상승"])
-        else:
-            result = ("상승세약화", 50, reasons)
-        direction = "up"
-    elif down_ratio >= 0.7:
-        # 강한 하락 추세
+    # 하락 추세 판정
+    elif down_ratio >= 0.6 and down_ratio > up_ratio + 0.1:
         if prev_phase in ("하락시작", "하락지속", "하락세약화"):
             consec = (prev_data.get("consec", 1) if prev_data else 1) + 1
-            result = ("하락지속", 70, reasons + [f"{consec}회 연속 하락"])
+            result = ("하락지속", 60, reasons + [f"{consec}회 연속 하락 ({down_ratio:.0%})"])
         elif prev_phase in ("상승시작", "상승지속", "상승세약화"):
-            result = ("하락시작", 55, reasons + ["상승→하락 전환"])
+            down_recent = sum(1 for p in recent_phases if p in down_phases)
+            if down_recent >= 2:
+                result = ("하락시작", 55, reasons + [f"전환 (최근3 중 하락 {down_recent}개)"])
+            else:
+                result = ("상승세약화", 50, reasons + ["전환 조건 미충족"])
+                direction = "up"
+                kv_set(prev_key, {"phase": result[0], "consec": 1, "ts": int(time.time()), "price": current_price, "direction": direction})
+                return result
         else:
-            result = ("하락시작", 50, reasons)
-        direction = "down"
-    elif down_ratio >= 0.5:
-        # 약한 하락 추세
-        if prev_phase in ("하락시작", "하락지속", "하락세약화"):
-            consec = (prev_data.get("consec", 1) if prev_data else 1) + 1
-            result = ("하락지속", 60, reasons + [f"{consec}회 연속 하락"])
-        else:
-            result = ("하락세약화", 50, reasons)
+            result = ("하락시작", 50, reasons + [f"하락 우세 ({down_ratio:.0%})"])
         direction = "down"
     else:
-        result = ("보합", 30, reasons)
+        result = ("보합", 30, reasons + ["뚜렷한 방향 없음"])
         direction = None
     
     kv_set(prev_key, {
@@ -590,10 +597,8 @@ def calc_trend(quote):
             signal = "hold"
             reasons.append("기술적 지표 하락 신호로 매수 보류")
 
-    # 장기 추세 (최근 10개 가격 이력 기반)
+    # 장기 추세 (단기추세 10개 종합 기반)
     long_trend_phase, long_trend_confidence, long_trend_reasons = detect_long_term_trend(code, cp)
-    if long_trend_reasons:
-        reasons.extend(long_trend_reasons)
 
     return {
         "rangePos": range_pos,
@@ -604,7 +609,7 @@ def calc_trend(quote):
         "trendPhase": trend_phase,
         "trendConfidence": trend_confidence,
         "longTrend": long_trend_phase,
-        "longTrendConfidence": long_trend_confidence,
+        "longTrendReasons": long_trend_reasons,
         "signal": signal,
         "signalReasons": reasons,
         "techIndicators": indicators,
