@@ -1557,6 +1557,19 @@ function makeLongTrendHtml(trendData) {
     ${mainReason ? `<br><small style="opacity:0.6;font-size:10px">${mainReason}</small>` : ''}`;
 }
 
+let stockSummaries = {};
+
+async function fetchStockSummaries() {
+  try {
+    const res = await fetch('/api/stock-summaries', { cache: 'no-store' });
+    stockSummaries = await res.json();
+    // 요약 업데이트 시 테이블 다시 렌더링
+    if (lastHoldingsRows) renderHoldings(lastHoldingsRows);
+  } catch (e) {
+    console.error('요약 로드 실패:', e);
+  }
+}
+
 function renderHoldings(rows) {
   lastHoldingsRows = rows;
   const sortedRows = sortHoldingsData(rows);
@@ -1601,6 +1614,16 @@ function renderHoldings(rows) {
       <td>${makeLongTrendHtml(t)}</td>
     `;
     holdingsBody.appendChild(tr);
+    
+    // AI 요약 표시
+    const summary = stockSummaries[row.code];
+    if (summary) {
+      const summaryTr = document.createElement('tr');
+      summaryTr.className = 'stock-summary-row';
+      summaryTr.innerHTML = `<td colspan="10" style="padding:4px 12px 8px;font-size:11px;color:var(--muted);border-bottom:1px solid var(--border);white-space:pre-line">${summary}</td>`;
+      holdingsBody.appendChild(summaryTr);
+    }
+    
     makeDraggable(tr, holdingsBody);
   });
   attachChartHandlers(holdingsBody);
@@ -1651,6 +1674,16 @@ function renderWatchlist(rows) {
       <td>${makeLongTrendHtml(t)}</td>
     `;
     watchlistBody.appendChild(tr);
+    
+    // AI 요약 표시
+    const summary = stockSummaries[row.code];
+    if (summary) {
+      const summaryTr = document.createElement('tr');
+      summaryTr.className = 'stock-summary-row';
+      summaryTr.innerHTML = `<td colspan="8" style="padding:4px 12px 8px;font-size:11px;color:var(--muted);border-bottom:1px solid var(--border);white-space:pre-line">${summary}</td>`;
+      watchlistBody.appendChild(summaryTr);
+    }
+    
     makeDraggable(tr, watchlistBody);
   });
   attachChartHandlers(watchlistBody);
@@ -2017,6 +2050,9 @@ async function loadPortfolio() {
     }
     sourceText.textContent = `네이버 금융 polling API · ${data.refreshSeconds}초 자동 갱신`;
     statusPill.textContent = `정상 · ${new Date().toLocaleTimeString('ko-KR')}`;
+    
+    // 종목별 AI 요약 로드
+    fetchStockSummaries();
 
     const now = Date.now();
     if (now - lastSidebarRefresh > SIDEBAR_REFRESH_INTERVAL) {

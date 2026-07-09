@@ -195,7 +195,7 @@ def fetch_quote(code):
         return {"code": code, "error": str(exc)}
 
 def save_short_trend_history(code, trend_phase):
-    """단기추세 결과를 Redis에 저장 (최근 10개)."""
+    """단기추세 결과를 Redis에 저장 (최근 5개)."""
     key = f"short_trend_history:{code}"
     saved = kv_get(key)
     history = saved if isinstance(saved, list) else []
@@ -206,9 +206,9 @@ def save_short_trend_history(code, trend_phase):
     else:
         history.append({"phase": trend_phase, "count": 1})
     
-    # 최근 10개만 유지
-    if len(history) > 10:
-        history = history[-10:]
+    # 최근 5개만 유지
+    if len(history) > 5:
+        history = history[-5:]
     
     kv_set(key, history)
 
@@ -222,8 +222,8 @@ def detect_mid_term_trend(code, current_price):
     key = f"short_trend_history:{code}"
     saved = kv_get(key)
     
-    if not saved or not isinstance(saved, list):
-        return "보합", 0, ["단기 데이터 부족"], 0, 0, 0, 0
+    if not saved or not isinstance(saved, list) or len(saved) < 5:
+        return "보합", 0, ["단기 데이터 부족 (5개 필요)"], 0, 0, 0, 0
     
     # 상승/하락/보합 카운트
     up_count = 0
@@ -249,8 +249,8 @@ def detect_mid_term_trend(code, current_price):
         else:
             neutral_count += count
     
-    if total < 10:
-        return "보합", 0, [f"단기 데이터 부족 ({total}/10)"], 0, 0, 0, 0
+    if total == 0:
+        return "보합", 0, [], 0
     
     up_ratio = up_count / total
     down_ratio = down_count / total
@@ -323,7 +323,7 @@ def detect_mid_term_trend(code, current_price):
 
 
 def save_mid_term_trend_history(code, mid_trend_phase, up_count, down_count, neutral_count):
-    """중기추세 결과(단계 + 상승/하락/보합 횟수)를 Redis에 저장 (최근 10개)."""
+    """중기추세 결과(단계 + 상승/하락/보합 횟수)를 Redis에 저장 (최근 5개)."""
     key = f"mid_trend_history:{code}"
     saved = kv_get(key)
     history = saved if isinstance(saved, list) else []
@@ -340,9 +340,9 @@ def save_mid_term_trend_history(code, mid_trend_phase, up_count, down_count, neu
             "neutral": neutral_count,
         })
     
-    # 최근 10개만 유지
-    if len(history) > 10:
-        history = history[-10:]
+    # 최근 5개만 유지
+    if len(history) > 5:
+        history = history[-5:]
     
     kv_set(key, history)
 
@@ -356,8 +356,8 @@ def detect_long_term_trend(code, current_price):
     key = f"mid_trend_history:{code}"
     saved = kv_get(key)
     
-    if not saved or not isinstance(saved, list):
-        return "보합", 0, ["중기 데이터 부족"], 0
+    if not saved or not isinstance(saved, list) or len(saved) < 5:
+        return "보합", 0, ["중기 데이터 부족 (5개 필요)"], 0
     
     # 중기추세 결과에서 상승/하락/보합 횟수를 직접 합산
     up_count = 0
@@ -380,8 +380,8 @@ def detect_long_term_trend(code, current_price):
         else:
             neutral_count += count
     
-    if total < 10:
-        return "보합", 0, [f"중기 데이터 부족 ({total}/10)"], 0
+    if total == 0:
+        return "보합", 0, [], 0, 0, 0, 0
     
     reasons = [f"상승 {up_count}회 / 하락 {down_count}회 / 보합 {neutral_count}회"]
     
@@ -448,7 +448,7 @@ def detect_trend_phase(code, current_price, previous_close, open_price):
     prev_phase = prev_data.get("phase") if prev_data else None
     prev_price = prev_data.get("price", 0) if prev_data else 0
     prev_consec = prev_data.get("consec", 1) if prev_data else 1
-    prev_direction = prev_data.get("direction") if prev_data else None
+    prev_direction = prev_data.get("direction")
     
     if prev_price > 0:
         price_chg = ((current_price - prev_price) / prev_price * 100)
@@ -818,6 +818,52 @@ def build_item(quote):
         "error": quote.get("error"),
         "trend": calc_trend(adjusted_quote),
     }
+
+
+def generate_stock_summary(item):
+    """종목별 AI 요약 생성 (규칙 기반, 2줄)"""
+    trend = item.get("trend", {})
+    short_phase = trend.get("trendPhase", "보합")
+    mid_trend = trend.get("midTrend", "보합")
+    long_trend = trend.get("longTrend", "보합")
+    change_rate = item.get("changeRate", 0) or 0
+    profit_rate = item.get("realizedProfitRate") or item.get("profitRate") or 0
+    
+    # 추세 요약
+    trend_parts = []
+    if short_phase not in ("보합",):
+        trend_parts.append(f"단기{short_phase}")
+    if mid_trend not in ("보합",):
+        trend_parts.append(f"중기{mid_trend}")
+    if long_trend not in ("보합",):
+        trend_parts.append(f"장기{long_trend}")
+    
+    if not trend_parts:
+        trend_desc = "모든 추세 보합"
+    else:
+        trend_desc = ", ".join(trend_parts)
+    
+    # 가격 및 수익률 요약
+    if change_rate > 0:
+        price_desc = f"전일대비 +{change_rate:.1f}% 상승 중"
+    elif change_rate < 0:
+        price_desc = f"전일대비 {change_rate:.1f}% 하락 중"
+    else:
+        price_desc = "보합 유지"
+    
+    # 종합 의견
+    up_signals = sum(1 for t in [short_phase, mid_trend, long_trend] if "상승" in t)
+    down_signals = sum(1 for t in [short_phase, mid_trend, long_trend] if "하락" in t)
+    
+    if up_signals > down_signals:
+        opinion = "상승 우세 → 긍정적"
+    elif down_signals > up_signals:
+        opinion = "하락 우세 → 주의 필요"
+    else:
+        opinion = "혼조세 → 관망"
+    
+    return f"{trend_desc} | {price_desc}\n{opinion}"
+
 
 def build_portfolio(section=None):
     global _PORTFOLIO_CACHE, _PORTFOLIO_CACHE_TS
@@ -1690,6 +1736,94 @@ def api_portfolio():
     section = request.args.get("section")
     return Response(
         json.dumps(build_portfolio(section=section), ensure_ascii=False),
+        mimetype="application/json",
+        headers={"Cache-Control": "no-store", "Access-Control-Allow-Origin": "*"},
+    )
+
+@app.route("/api/stock-summaries")
+def api_stock_summaries():
+    """종목별 AI 요약 생성"""
+    config = load_config()
+    news = build_news()
+    news_map = {n["code"]: n.get("articles", []) for n in news}
+    
+    summaries = {}
+    # 보유종목 + 관심종목
+    all_items = []
+    for h in config["holdings"]:
+        all_items.append({"code": h["code"], "name": h["name"], "type": "holding"})
+    for w in config.get("watchlist", []):
+        all_items.append({"code": w["code"], "name": w["name"], "type": "watchlist"})
+    
+    # 기존 portfolio 캐시에서 추세 데이터 사용
+    portfolio = build_portfolio()
+    holdings_map = {h["code"]: h for h in portfolio.get("holdings", [])}
+    watchlist_map = {w["code"]: w for w in portfolio.get("watchlist", [])}
+    
+    for item in all_items:
+        code = item["code"]
+        name = item["name"]
+        
+        # 추세 데이터 가져오기
+        if code in holdings_map:
+            data = holdings_map[code]
+        elif code in watchlist_map:
+            data = watchlist_map[code]
+        else:
+            continue
+        
+        trend = data.get("trend", {})
+        short_phase = trend.get("trendPhase", "보합")
+        mid_trend = trend.get("midTrend", "보합")
+        long_trend = trend.get("longTrend", "보합")
+        mid_reasons = trend.get("midTrendReasons", [])
+        long_reasons = trend.get("longTrendReasons", [])
+        change_rate = data.get("changeRate", 0) or 0
+        profit_rate = data.get("realizedProfitRate") or data.get("profitRate") or 0
+        current_price = data.get("currentPrice", 0)
+        
+        # 뉴스 헤드라인
+        articles = news_map.get(code, [])
+        news_headline = articles[0]["title"] if articles else ""
+        
+        # 추세 요약
+        trend_parts = []
+        if short_phase != "보합":
+            trend_parts.append(f"단기 {short_phase}")
+        if mid_trend != "보합":
+            trend_parts.append(f"중기 {mid_trend}")
+        if long_trend != "보합":
+            trend_parts.append(f"장기 {long_trend}")
+        trend_desc = ", ".join(trend_parts) if trend_parts else "모든 추세 보합"
+        
+        # 가격 요약
+        if change_rate > 0:
+            price_desc = f"전일대비 +{change_rate:.1f}% 상승 중"
+        elif change_rate < 0:
+            price_desc = f"전일대비 {change_rate:.1f}% 하락 중"
+        else:
+            price_desc = "보합 유지"
+        
+        # 종합 의견
+        up_signals = sum(1 for t in [short_phase, mid_trend, long_trend] if "상승" in t)
+        down_signals = sum(1 for t in [short_phase, mid_trend, long_trend] if "하락" in t)
+        
+        if up_signals > down_signals:
+            opinion = "상승 우세 → 긍정적"
+        elif down_signals > up_signals:
+            opinion = "하락 우세 → 주의 필요"
+        else:
+            opinion = "혼조세 → 관망"
+        
+        # 뉴스가 있으면 의견에 반영
+        if news_headline:
+            opinion += f" | 📰 {news_headline[:40]}..."
+        
+        summary_text = f"{trend_desc} | {price_desc}\n{opinion}"
+        summaries[code] = summary_text
+    
+    return Response(
+        json.dumps(summaries, ensure_ascii=False),
         mimetype="application/json",
         headers={"Cache-Control": "no-store", "Access-Control-Allow-Origin": "*"},
     )
@@ -3261,6 +3395,19 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
     system_prompt += "- 매매 시그널(매수/매도/관망)을 명확히 제시하고, 목표가와 손절가를 수치로 제시할 것\n"
     system_prompt += "- 불확실성은 '~할 수 있습니다', '~가능성이 있습니다'와 같이 표현할 것\n"
     system_prompt += "- 한문단으로 끝내지 말고, 구조화된 답변(기술적 분석, 뉴스 영향, 시장 심리, 종합 판단)을 제공할 것\n\n"
+    
+    # 종목별 요약 요청 처리
+    if "요약" in user_message or "summary" in user_message.lower():
+        system_prompt += "[종목별 요약 요청]\n"
+        system_prompt += "사용자가 종목별 요약을 요청했습니다. 각 종목에 대해 2줄로 요약하세요.\n"
+        system_prompt += "형식:\n"
+        system_prompt += "**[종목명]** (현재가, 수익률)\n"
+        system_prompt += "• 추세: 단기/중기/장기 추세 상태\n"
+        system_prompt += "• 의견: 한 줄 요약\n\n"
+        system_prompt += "예시:\n"
+        system_prompt += "**삼성전자** (276,000원, -8.27%)\n"
+        system_prompt += "• 추세: 단기 상승세약화, 중기 하락지속, 장기 하락지속\n"
+        system_prompt += "• 의견: 하락 추세 지속 중이나 단기 반등 가능성 있음\n\n"
 
     messages = [{"role": "system", "content": system_prompt}]
     sliced = history[-5:] if history else []
