@@ -410,13 +410,13 @@ def detect_long_term_trend(code, current_price):
     """장기 추세를 판단한다. 중기추세 결과 기반.
     
     중기추세가 저장한 상승/하락/보합 횟수를 직접 종합하여 판단.
-    반환: (phase, confidence, reasons, cumulative_change, up_count, down_count, neutral_count)
+    반환: (phase, confidence, reasons, cumulative_change)
     """
     key = f"mid_trend_history:{code}"
     saved = kv_get(key)
     
     if not saved or not isinstance(saved, list) or len(saved) < 2:
-        return "보합", 0, ["데이터 수집 중"], 0, 0, 0, 0
+        return "보합", 0, ["데이터 수집 중"], 0
     
     # 중기추세 결과에서 상승/하락/보합 횟수를 직접 합산
     up_count = 0
