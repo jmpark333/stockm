@@ -1480,10 +1480,6 @@ function sortHoldingsData(data) {
         valA = a.avgPrice || 0;
         valB = b.avgPrice || 0;
         break;
-      case 'currentValue':
-        valA = a.currentValue || 0;
-        valB = b.currentValue || 0;
-        break;
       case 'profitRate':
         valA = a.realizedProfitRate || 0;
         valB = b.realizedProfitRate || 0;
@@ -1551,7 +1547,7 @@ function calcWavePos(trendPhase, rangePos) {
   return Math.max(0, Math.min(1, pos));
 }
 
-function makeLongTrendHtml(trendData) {
+function makeMidTrendHtml(trendData) {
   const longTrend = trendData.longTrend || '보합';
   const longTrendReasons = trendData.longTrendReasons || [];
   const longCumulativeChange = trendData.longCumulativeChange || 0;
@@ -1561,15 +1557,30 @@ function makeLongTrendHtml(trendData) {
   const trendColor = PHASE_COLORS[longTrend] || '#94a3b8';
   const waveSvg = makeWaveSvg(longTrend, rangePos);
   
-  // 지속 중일 때만 누적 변동률 표시
   const chgText = longTrend.includes('지속') && longCumulativeChange 
     ? ` (${longCumulativeChange > 0 ? '+' : ''}${longCumulativeChange}%)` 
     : '';
   
-  // 판단근거 표시
   const mainReason = longTrendReasons.length > 0 ? longTrendReasons[0] : '';
   
   return `${waveSvg}<span style="font-size:11px;font-weight:600;color:${trendColor}">${trendLabel}${chgText}</span>
+    ${mainReason ? `<br><small style="opacity:0.6;font-size:10px">${mainReason}</small>` : ''}`;
+}
+
+function makeLongTrendHtml(trendData) {
+  const midTrendReasons = trendData.longTrendReasons || [];
+  const mainReason = midTrendReasons.length > 0 ? midTrendReasons[0] : '';
+  const longTrend = trendData.longTrend || '보합';
+
+  const isUp = longTrend.includes('상승');
+  const isDown = longTrend.includes('하락');
+  const color = isUp ? '#22c55e' : isDown ? '#ef4444' : '#94a3b8';
+  const icon = isUp ? '▲' : isDown ? '▼' : '―';
+
+  const chg = trendData.longCumulativeChange || 0;
+  const chgText = chg !== 0 ? ` (${chg > 0 ? '+' : ''}${chg}%)` : '';
+
+  return `<span style="font-size:11px;font-weight:600;color:${color}">${icon} ${longTrend}${chgText}</span>
     ${mainReason ? `<br><small style="opacity:0.6;font-size:10px">${mainReason}</small>` : ''}`;
 }
 
@@ -1634,10 +1645,10 @@ function renderHoldings(rows) {
       <td class="clickable" data-code="${row.code}" data-name="${row.name}" data-avg="${row.avgPrice}">${formatMoney(row.currentPrice)}</td>
       <td class="${row.change > 0 ? 'up' : row.change < 0 ? 'down' : 'neutral'}">${formatSignedMoney(row.change)} / ${formatPercent(row.changeRate)}</td>
       <td class="avg-price-cell" data-code="${row.code}" data-name="${row.name}" data-avg="${row.avgPrice}" data-qty="${row.quantity}" data-price="${row.currentPrice}">${formatMoney(row.avgPrice)}</td>
-      <td>${formatMoney(row.currentValue)}</td>
       <td class="${row.realizedProfit >= 0 ? 'up' : 'down'}">${formatPercent(row.realizedProfitRate)}</td>
       <td class="${row.realizedProfit >= 0 ? 'up' : 'down'}">${formatSignedMoney(row.realizedProfit)}<br><small style="opacity:0.6">(비용 ${formatMoney(Math.round(row.sellFee))})</small></td>
       <td class="trend-cell trend-clickable" ${trendDataAttr}>${waveSvg}<span style="font-size:11px;font-weight:600;color:${trendColor}">${trendLabel}</span>${trendSummary ? `<br><small style="opacity:0.6;font-size:10px">${trendSummary}</small>` : ''}</td>
+      <td>${makeMidTrendHtml(t)}</td>
       <td>${makeLongTrendHtml(t)}</td>
     `;
     holdingsBody.appendChild(tr);
@@ -1688,6 +1699,7 @@ function renderWatchlist(rows) {
       <td>${dayRange}<br>${rangeBar(t.rangePos)}</td>
       <td>${t.volatility}%</td>
       <td class="trend-cell trend-clickable" ${trendDataAttr}>${waveSvg2}<span style="font-size:11px;font-weight:600;color:${trendColor2}">${trendLabel2}</span>${trendSummary ? `<br><small style="opacity:0.6;font-size:10px">${trendSummary}</small>` : ''}</td>
+      <td>${makeMidTrendHtml(t)}</td>
       <td>${makeLongTrendHtml(t)}</td>
     `;
     watchlistBody.appendChild(tr);
