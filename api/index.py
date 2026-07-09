@@ -222,8 +222,8 @@ def detect_mid_term_trend(code, current_price):
     key = f"short_trend_history:{code}"
     saved = kv_get(key)
     
-    if not saved or not isinstance(saved, list) or len(saved) < 10:
-        return "보합", 0, ["단기 데이터 부족 (10개 필요)"], 0, 0, 0, 0
+    if not saved or not isinstance(saved, list):
+        return "보합", 0, ["단기 데이터 부족"], 0, 0, 0, 0
     
     # 상승/하락/보합 카운트
     up_count = 0
@@ -249,8 +249,8 @@ def detect_mid_term_trend(code, current_price):
         else:
             neutral_count += count
     
-    if total == 0:
-        return "보합", 0, ["단기 데이터 부족"], 0, 0, 0, 0
+    if total < 10:
+        return "보합", 0, [f"단기 데이터 부족 ({total}/10)"], 0, 0, 0, 0
     
     up_ratio = up_count / total
     down_ratio = down_count / total
@@ -356,8 +356,8 @@ def detect_long_term_trend(code, current_price):
     key = f"mid_trend_history:{code}"
     saved = kv_get(key)
     
-    if not saved or not isinstance(saved, list) or len(saved) < 10:
-        return "보합", 0, ["중기 데이터 부족 (10개 필요)"], 0
+    if not saved or not isinstance(saved, list):
+        return "보합", 0, ["중기 데이터 부족"], 0
     
     # 중기추세 결과에서 상승/하락/보합 횟수를 직접 합산
     up_count = 0
@@ -380,8 +380,8 @@ def detect_long_term_trend(code, current_price):
         else:
             neutral_count += count
     
-    if total == 0:
-        return "보합", 0, ["중기 데이터 부족"], 0
+    if total < 10:
+        return "보합", 0, [f"중기 데이터 부족 ({total}/10)"], 0
     
     reasons = [f"상승 {up_count}회 / 하락 {down_count}회 / 보합 {neutral_count}회"]
     
