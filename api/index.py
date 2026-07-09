@@ -680,7 +680,7 @@ def calc_trend(quote):
             "start_price": start_price,
         })
         
-        # 단기추세 결과를 장기추세 이력에 저장
+        # 단기추세 결과를 중기추세 이력에 저장
         save_short_trend_history(code, trend_phase)
     
     # 추세 단계를 short_trend로 변환
@@ -725,14 +725,23 @@ def calc_trend(quote):
             signal = "hold"
             reasons.append("기술적 지표 하락 신호로 매수 보류")
 
-    # 중기 추세 (단기추세 10개 종합 기반)
-    mid_trend_phase, mid_trend_confidence, mid_trend_reasons, mid_cumulative_chg, mid_up, mid_down, mid_neutral = detect_mid_term_trend(code, cp)
+    # 중기 추세 (단기추세 10개 종합 기반) — 캐시 사용
+    mid_cache_key = f"mid_{code}"
+    if mid_cache_key in _trend_cache:
+        mid_trend_phase, mid_trend_confidence, mid_trend_reasons, mid_cumulative_chg, mid_up, mid_down, mid_neutral = _trend_cache[mid_cache_key]
+    else:
+        mid_trend_phase, mid_trend_confidence, mid_trend_reasons, mid_cumulative_chg, mid_up, mid_down, mid_neutral = detect_mid_term_trend(code, cp)
+        _trend_cache[mid_cache_key] = (mid_trend_phase, mid_trend_confidence, mid_trend_reasons, mid_cumulative_chg, mid_up, mid_down, mid_neutral)
+        # 중기추세 결과 저장 → 장기추세 분석용
+        save_mid_term_trend_history(code, mid_trend_phase, mid_up, mid_down, mid_neutral)
     
-    # 중기추세 결과 저장 → 장기추세 분석용
-    save_mid_term_trend_history(code, mid_trend_phase, mid_up, mid_down, mid_neutral)
-    
-    # 장기 추세 (중기추세 10개 종합 기반)
-    long_trend_phase, long_trend_confidence, long_trend_reasons, long_cumulative_chg = detect_long_term_trend(code, cp)
+    # 장기 추세 (중기추세 10개 종합 기반) — 캐시 사용
+    long_cache_key = f"long_{code}"
+    if long_cache_key in _trend_cache:
+        long_trend_phase, long_trend_confidence, long_trend_reasons, long_cumulative_chg = _trend_cache[long_cache_key]
+    else:
+        long_trend_phase, long_trend_confidence, long_trend_reasons, long_cumulative_chg = detect_long_term_trend(code, cp)
+        _trend_cache[long_cache_key] = (long_trend_phase, long_trend_confidence, long_trend_reasons, long_cumulative_chg)
 
     # 단기 추세 누적 변동률
     short_cumulative_chg = 0
