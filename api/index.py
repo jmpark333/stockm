@@ -344,7 +344,7 @@ def save_mid_term_trend_history(code, mid_trend_phase):
 def detect_long_term_trend(code, current_price):
     """장기 추세를 판단한다. 중기추세 결과 10개 종합 기반.
     
-    전환 조건: 방향 전환 시 최소 2회 이상 연속된 신호 필요
+    판단 기준: 상승/하락 횟수 비율차이로 판단
     반환: (phase, confidence, reasons, cumulative_change)
     """
     key = f"mid_trend_history:{code}"
@@ -385,7 +385,7 @@ def detect_long_term_trend(code, current_price):
     
     reasons = [f"상승 {up_count}회 / 하락 {down_count}회 / 보합 {neutral_count}회"]
     
-    # 판단 로직
+    # 판단 로직 — 장기추세는 상승/하락 비율차이로 판단
     prev_key = f"long_trend_phase:{code}"
     prev_data = kv_get(prev_key)
     prev_phase = prev_data.get("phase") if prev_data else None
@@ -393,8 +393,8 @@ def detect_long_term_trend(code, current_price):
     consec = 1
     start_price = current_price
     
-    # 상승 추세 판정
-    if up_ratio >= 0.6 and up_ratio > down_ratio + 0.1:
+    # 상승 추세 판정: 상승이 하락의 2배 이상
+    if up_count >= down_count * 2 and up_count >= 3:
         if prev_phase in ("상승시작", "상승지속", "상승세약화"):
             consec = (prev_data.get("consec", 1) if prev_data else 1) + 1
             start_price = prev_start_price
@@ -411,8 +411,8 @@ def detect_long_term_trend(code, current_price):
         else:
             result = ("상승시작", 50, reasons + [f"상승 우세 ({up_ratio:.0%})"])
         direction = "up"
-    # 하락 추세 판정
-    elif down_ratio >= 0.6 and down_ratio > up_ratio + 0.1:
+    # 하락 추세 판정: 하락이 상승의 2배 이상
+    elif down_count >= up_count * 2 and down_count >= 3:
         if prev_phase in ("하락시작", "하락지속", "하락세약화"):
             consec = (prev_data.get("consec", 1) if prev_data else 1) + 1
             start_price = prev_start_price
