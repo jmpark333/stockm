@@ -519,6 +519,7 @@ def calc_trend(quote):
         consec = 1
         now_ts = int(time.time())
         direction = None
+        start_price = cp  # 기본값: 현재 가격
         
         if trend_phase in ("하락시작", "하락지속", "하락세약화"):
             direction = "down"
@@ -530,16 +531,20 @@ def calc_trend(quote):
             prev_phase = prev_data.get("phase", "")
             prev_consec = prev_data.get("consec", 1)
             prev_direction = prev_data.get("direction")
+            prev_start_price = prev_data.get("start_price", cp)
             
-            # 하락세약화에서 하락지속으로 복귀 시 consec 유지
+            # 하락세약화에서 하락지속으로 복귀 시 consec 유지, start_price 유지
             if trend_phase == "하락지속" and prev_phase == "하락세약화" and prev_direction == "down":
                 consec = prev_consec + 1
-            # 상승세약화에서 상승지속으로 복귀 시 consec 유지
+                start_price = prev_start_price
+            # 상승세약화에서 상승지속으로 복귀 시 consec 유지, start_price 유지
             elif trend_phase == "상승지속" and prev_phase == "상승세약화" and prev_direction == "up":
                 consec = prev_consec + 1
-            # 같은 방향이면 +1
+                start_price = prev_start_price
+            # 같은 방향이면 +1, start_price 유지
             elif direction == prev_direction and direction is not None:
                 consec = prev_consec + 1
+                start_price = prev_start_price
             else:
                 consec = 1
         
@@ -550,6 +555,7 @@ def calc_trend(quote):
             "ts": now_ts,
             "price": cp,
             "direction": direction,
+            "start_price": start_price,
         })
         
         # 단기추세 결과를 장기추세 이력에 저장
@@ -600,6 +606,14 @@ def calc_trend(quote):
     # 장기 추세 (단기추세 10개 종합 기반)
     long_trend_phase, long_trend_confidence, long_trend_reasons = detect_long_term_trend(code, cp)
 
+    # 누적 변동률 계산 (상승지속/하락지속 기간)
+    cumulative_chg = 0
+    trend_data = kv_get(f"trend_phase:{code}")
+    if trend_data and trend_data.get("start_price") and cp:
+        start_price = trend_data["start_price"]
+        if start_price > 0:
+            cumulative_chg = round((cp - start_price) / start_price * 100, 2)
+
     return {
         "rangePos": range_pos,
         "volatility": volatility,
@@ -608,6 +622,7 @@ def calc_trend(quote):
         "shortTrend": short_trend,
         "trendPhase": trend_phase,
         "trendConfidence": trend_confidence,
+        "cumulativeChange": cumulative_chg,
         "longTrend": long_trend_phase,
         "longTrendReasons": long_trend_reasons,
         "signal": signal,

@@ -1631,7 +1631,7 @@ function renderHoldings(rows) {
       <td>${formatMoney(row.currentValue)}</td>
       <td class="${row.realizedProfit >= 0 ? 'up' : 'down'}">${formatPercent(row.realizedProfitRate)}</td>
       <td class="${row.realizedProfit >= 0 ? 'up' : 'down'}">${formatSignedMoney(row.realizedProfit)}<br><small style="opacity:0.6">(비용 ${formatMoney(Math.round(row.sellFee))})</small></td>
-      <td class="trend-cell trend-clickable" ${trendDataAttr}>${waveSvg}<span style="font-size:11px;font-weight:600;color:${trendColor}">${trendLabel}</span>${trendSummary ? `<br><small style="opacity:0.6;font-size:10px">${trendSummary}</small>` : ''}</td>
+      <td class="trend-cell trend-clickable" ${trendDataAttr}>${waveSvg}<span style="font-size:11px;font-weight:600;color:${trendColor}">${trendLabel}${trendPhase.includes('지속') && t.cumulativeChange ? ` (${t.cumulativeChange > 0 ? '+' : ''}${t.cumulativeChange}%)` : ''}</span>${trendSummary ? `<br><small style="opacity:0.6;font-size:10px">${trendSummary}</small>` : ''}</td>
       <td>${makeLongTrendHtml(t)}</td>
     `;
     holdingsBody.appendChild(tr);
@@ -1681,7 +1681,7 @@ function renderWatchlist(rows) {
       <td class="${row.change > 0 ? 'up' : row.change < 0 ? 'down' : 'neutral'}">${formatSignedMoney(row.change)} / ${formatPercent(row.changeRate)}</td>
       <td>${dayRange}<br>${rangeBar(t.rangePos)}</td>
       <td>${t.volatility}%</td>
-      <td class="trend-cell trend-clickable" ${trendDataAttr}>${waveSvg2}<span style="font-size:11px;font-weight:600;color:${trendColor2}">${trendLabel2}</span>${trendSummary ? `<br><small style="opacity:0.6;font-size:10px">${trendSummary}</small>` : ''}</td>
+      <td class="trend-cell trend-clickable" ${trendDataAttr}>${waveSvg2}<span style="font-size:11px;font-weight:600;color:${trendColor2}">${trendLabel2}${trendPhase.includes('지속') && t.cumulativeChange ? ` (${t.cumulativeChange > 0 ? '+' : ''}${t.cumulativeChange}%)` : ''}</span>${trendSummary ? `<br><small style="opacity:0.6;font-size:10px">${trendSummary}</small>` : ''}</td>
       <td>${makeLongTrendHtml(t)}</td>
     `;
     watchlistBody.appendChild(tr);
