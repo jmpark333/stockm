@@ -1554,16 +1554,22 @@ function calcWavePos(trendPhase, rangePos) {
 function makeLongTrendHtml(trendData) {
   const longTrend = trendData.longTrend || '보합';
   const longTrendReasons = trendData.longTrendReasons || [];
+  const longCumulativeChange = trendData.longCumulativeChange || 0;
   const rangePos = trendData.rangePos || 50;
   
   const trendLabel = PHASE_LABELS[longTrend] || longTrend;
   const trendColor = PHASE_COLORS[longTrend] || '#94a3b8';
   const waveSvg = makeWaveSvg(longTrend, rangePos);
   
+  // 지속 중일 때만 누적 변동률 표시
+  const chgText = longTrend.includes('지속') && longCumulativeChange 
+    ? ` (${longCumulativeChange > 0 ? '+' : ''}${longCumulativeChange}%)` 
+    : '';
+  
   // 판단근거 표시
   const mainReason = longTrendReasons.length > 0 ? longTrendReasons[0] : '';
   
-  return `${waveSvg}<span style="font-size:11px;font-weight:600;color:${trendColor}">${trendLabel}</span>
+  return `${waveSvg}<span style="font-size:11px;font-weight:600;color:${trendColor}">${trendLabel}${chgText}</span>
     ${mainReason ? `<br><small style="opacity:0.6;font-size:10px">${mainReason}</small>` : ''}`;
 }
 
@@ -1631,7 +1637,7 @@ function renderHoldings(rows) {
       <td>${formatMoney(row.currentValue)}</td>
       <td class="${row.realizedProfit >= 0 ? 'up' : 'down'}">${formatPercent(row.realizedProfitRate)}</td>
       <td class="${row.realizedProfit >= 0 ? 'up' : 'down'}">${formatSignedMoney(row.realizedProfit)}<br><small style="opacity:0.6">(비용 ${formatMoney(Math.round(row.sellFee))})</small></td>
-      <td class="trend-cell trend-clickable" ${trendDataAttr}>${waveSvg}<span style="font-size:11px;font-weight:600;color:${trendColor}">${trendLabel}${trendPhase.includes('지속') && t.cumulativeChange ? ` (${t.cumulativeChange > 0 ? '+' : ''}${t.cumulativeChange}%)` : ''}</span>${trendSummary ? `<br><small style="opacity:0.6;font-size:10px">${trendSummary}</small>` : ''}</td>
+      <td class="trend-cell trend-clickable" ${trendDataAttr}>${waveSvg}<span style="font-size:11px;font-weight:600;color:${trendColor}">${trendLabel}</span>${trendSummary ? `<br><small style="opacity:0.6;font-size:10px">${trendSummary}</small>` : ''}</td>
       <td>${makeLongTrendHtml(t)}</td>
     `;
     holdingsBody.appendChild(tr);
@@ -1681,7 +1687,7 @@ function renderWatchlist(rows) {
       <td class="${row.change > 0 ? 'up' : row.change < 0 ? 'down' : 'neutral'}">${formatSignedMoney(row.change)} / ${formatPercent(row.changeRate)}</td>
       <td>${dayRange}<br>${rangeBar(t.rangePos)}</td>
       <td>${t.volatility}%</td>
-      <td class="trend-cell trend-clickable" ${trendDataAttr}>${waveSvg2}<span style="font-size:11px;font-weight:600;color:${trendColor2}">${trendLabel2}${trendPhase.includes('지속') && t.cumulativeChange ? ` (${t.cumulativeChange > 0 ? '+' : ''}${t.cumulativeChange}%)` : ''}</span>${trendSummary ? `<br><small style="opacity:0.6;font-size:10px">${trendSummary}</small>` : ''}</td>
+      <td class="trend-cell trend-clickable" ${trendDataAttr}>${waveSvg2}<span style="font-size:11px;font-weight:600;color:${trendColor2}">${trendLabel2}</span>${trendSummary ? `<br><small style="opacity:0.6;font-size:10px">${trendSummary}</small>` : ''}</td>
       <td>${makeLongTrendHtml(t)}</td>
     `;
     watchlistBody.appendChild(tr);

@@ -217,12 +217,13 @@ def detect_long_term_trend(code, current_price):
     """장기 추세를 판단한다. 단기추세 결과 10개 종합 기반.
     
     전환 조건: 방향 전환 시 최소 2회 이상 연속된 신호 필요
+    반환: (phase, confidence, reasons, cumulative_change)
     """
     key = f"short_trend_history:{code}"
     saved = kv_get(key)
     
     if not saved or not isinstance(saved, list) or len(saved) < 3:
-        return "보합", 0, ["단기 데이터 부족"]
+        return "보합", 0, ["단기 데이터 부족"], 0
     
     # 상승/하락/보합 카운트
     up_count = 0
@@ -235,7 +236,6 @@ def detect_long_term_trend(code, current_price):
     
     # 최근 추세 분석 (마지막 3개 기준)
     recent_phases = [item.get("phase", "보합") for item in saved[-3:]]
-    last_phase = recent_phases[-1] if recent_phases else "보합"
     
     for item in saved:
         phase = item.get("phase", "보합")
@@ -250,11 +250,10 @@ def detect_long_term_trend(code, current_price):
             neutral_count += count
     
     if total == 0:
-        return "보합", 0, []
+        return "보합", 0, [], 0
     
     up_ratio = up_count / total
     down_ratio = down_count / total
-    gap = abs(up_ratio - down_ratio)
     
     reasons = [f"상승 {up_count}회 / 하락 {down_count}회 / 보합 {neutral_count}회"]
     
@@ -262,22 +261,24 @@ def detect_long_term_trend(code, current_price):
     prev_key = f"long_trend_phase:{code}"
     prev_data = kv_get(prev_key)
     prev_phase = prev_data.get("phase") if prev_data else None
+    prev_start_price = prev_data.get("start_price", current_price) if prev_data else current_price
     consec = 1
+    start_price = current_price
     
     # 상승 추세 판정
     if up_ratio >= 0.6 and up_ratio > down_ratio + 0.1:
         if prev_phase in ("상승시작", "상승지속", "상승세약화"):
             consec = (prev_data.get("consec", 1) if prev_data else 1) + 1
+            start_price = prev_start_price
             result = ("상승지속", 60, reasons + [f"{consec}회 연속 상승 ({up_ratio:.0%})"])
         elif prev_phase in ("하락시작", "하락지속", "하락세약화"):
-            # 전환 시 강한 조건: 최근 3개 중 2개 이상 상승
             up_recent = sum(1 for p in recent_phases if p in up_phases)
             if up_recent >= 2:
                 result = ("상승시작", 55, reasons + [f"전환 (최근3 중 상승 {up_recent}개)"])
             else:
                 result = ("하락세약화", 50, reasons + ["전환 조건 미충족"])
                 direction = "down"
-                kv_set(prev_key, {"phase": result[0], "consec": 1, "ts": int(time.time()), "price": current_price, "direction": direction})
+                kv_set(prev_key, {"phase": result[0], "consec": 1, "ts": int(time.time()), "price": current_price, "direction": direction, "start_price": current_price})
                 return result
         else:
             result = ("상승시작", 50, reasons + [f"상승 우세 ({up_ratio:.0%})"])
@@ -286,6 +287,7 @@ def detect_long_term_trend(code, current_price):
     elif down_ratio >= 0.6 and down_ratio > up_ratio + 0.1:
         if prev_phase in ("하락시작", "하락지속", "하락세약화"):
             consec = (prev_data.get("consec", 1) if prev_data else 1) + 1
+            start_price = prev_start_price
             result = ("하락지속", 60, reasons + [f"{consec}회 연속 하락 ({down_ratio:.0%})"])
         elif prev_phase in ("상승시작", "상승지속", "상승세약화"):
             down_recent = sum(1 for p in recent_phases if p in down_phases)
@@ -294,7 +296,7 @@ def detect_long_term_trend(code, current_price):
             else:
                 result = ("상승세약화", 50, reasons + ["전환 조건 미충족"])
                 direction = "up"
-                kv_set(prev_key, {"phase": result[0], "consec": 1, "ts": int(time.time()), "price": current_price, "direction": direction})
+                kv_set(prev_key, {"phase": result[0], "consec": 1, "ts": int(time.time()), "price": current_price, "direction": direction, "start_price": current_price})
                 return result
         else:
             result = ("하락시작", 50, reasons + [f"하락 우세 ({down_ratio:.0%})"])
@@ -303,15 +305,21 @@ def detect_long_term_trend(code, current_price):
         result = ("보합", 30, reasons + ["뚜렷한 방향 없음"])
         direction = None
     
+    # 누적 변동률 계산
+    cumulative_chg = 0
+    if start_price and start_price > 0:
+        cumulative_chg = round((current_price - start_price) / start_price * 100, 2)
+    
     kv_set(prev_key, {
         "phase": result[0],
         "consec": consec,
         "ts": int(time.time()),
         "price": current_price,
         "direction": direction,
+        "start_price": start_price,
     })
     
-    return result
+    return result + (cumulative_chg,)
 
 
 def detect_trend_phase(code, current_price, previous_close, open_price):
@@ -604,15 +612,15 @@ def calc_trend(quote):
             reasons.append("기술적 지표 하락 신호로 매수 보류")
 
     # 장기 추세 (단기추세 10개 종합 기반)
-    long_trend_phase, long_trend_confidence, long_trend_reasons = detect_long_term_trend(code, cp)
+    long_trend_phase, long_trend_confidence, long_trend_reasons, long_cumulative_chg = detect_long_term_trend(code, cp)
 
-    # 누적 변동률 계산 (상승지속/하락지속 기간)
-    cumulative_chg = 0
+    # 단기 추세 누적 변동률
+    short_cumulative_chg = 0
     trend_data = kv_get(f"trend_phase:{code}")
     if trend_data and trend_data.get("start_price") and cp:
         start_price = trend_data["start_price"]
         if start_price > 0:
-            cumulative_chg = round((cp - start_price) / start_price * 100, 2)
+            short_cumulative_chg = round((cp - start_price) / start_price * 100, 2)
 
     return {
         "rangePos": range_pos,
@@ -622,9 +630,10 @@ def calc_trend(quote):
         "shortTrend": short_trend,
         "trendPhase": trend_phase,
         "trendConfidence": trend_confidence,
-        "cumulativeChange": cumulative_chg,
+        "cumulativeChange": short_cumulative_chg,
         "longTrend": long_trend_phase,
         "longTrendReasons": long_trend_reasons,
+        "longCumulativeChange": long_cumulative_chg,
         "signal": signal,
         "signalReasons": reasons,
         "techIndicators": indicators,
