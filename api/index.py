@@ -382,7 +382,7 @@ def detect_long_term_trend(code, current_price):
             elif phase in down_phases:
                 down_count += count
             else:
-            neutral_count += count
+                neutral_count += count
     
     if total == 0:
         return "보합", 0, [], 0, 0, 0, 0
