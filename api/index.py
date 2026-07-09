@@ -669,10 +669,7 @@ def build_item(quote):
 
 def build_portfolio(section=None):
     global _PORTFOLIO_CACHE, _PORTFOLIO_CACHE_TS
-    if section == "holdings":
-        pass
-    else:
-        clear_trend_cache()  # 요청 시작 시 추세 캐시 초기화
+    clear_trend_cache()  # 요청 시작 시 추세 캐시 초기화
     now = time.time()
     if _PORTFOLIO_CACHE is not None and (now - _PORTFOLIO_CACHE_TS) < _PORTFOLIO_CACHE_TTL:
         return _PORTFOLIO_CACHE
