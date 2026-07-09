@@ -125,7 +125,9 @@ def _blob_set(key, value):
             method="PUT",
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
-            return resp.status in (200, 201)
+            ok = resp.status in (200, 201)
+            print(f"[blob_set] key={key} status={resp.status} ok={ok}", file=sys.stderr, flush=True)
+            return ok
     except Exception as exc:
         print(f"[blob_set] key={key} error={exc}", file=sys.stderr, flush=True)
         return False
@@ -271,7 +273,7 @@ def save_short_trend_history(code, trend_phase):
 
 
 def detect_mid_term_trend(code, current_price):
-    """중기 추세를 판단한다. 단기추세 결과 10개 종합 기반.
+    """중기 추세를 판단한다. 단기추세 결과 기반.
     
     전환 조건: 방향 전환 시 최소 2회 이상 연속된 신호 필요
     반환: (phase, confidence, reasons, cumulative_change, up_count, down_count, neutral_count)
@@ -279,8 +281,8 @@ def detect_mid_term_trend(code, current_price):
     key = f"short_trend_history:{code}"
     saved = kv_get(key)
     
-    if not saved or not isinstance(saved, list) or len(saved) < 5:
-        return "보합", 0, ["단기 데이터 부족 (5개 필요)"], 0, 0, 0, 0
+    if not saved or not isinstance(saved, list) or len(saved) < 2:
+        return "보합", 0, ["데이터 수집 중"], 0, 0, 0, 0
     
     # 상승/하락/보합 카운트
     up_count = 0
@@ -307,7 +309,7 @@ def detect_mid_term_trend(code, current_price):
             neutral_count += count
     
     if total == 0:
-        return "보합", 0, [], 0
+        return "보합", 0, [], 0, 0, 0, 0
     
     up_ratio = up_count / total
     down_ratio = down_count / total
@@ -405,16 +407,16 @@ def save_mid_term_trend_history(code, mid_trend_phase, up_count, down_count, neu
 
 
 def detect_long_term_trend(code, current_price):
-    """장기 추세를 판단한다. 중기추세 결과 10개 종합 기반.
+    """장기 추세를 판단한다. 중기추세 결과 기반.
     
     중기추세가 저장한 상승/하락/보합 횟수를 직접 종합하여 판단.
-    반환: (phase, confidence, reasons, cumulative_change)
+    반환: (phase, confidence, reasons, cumulative_change, up_count, down_count, neutral_count)
     """
     key = f"mid_trend_history:{code}"
     saved = kv_get(key)
     
-    if not saved or not isinstance(saved, list) or len(saved) < 5:
-        return "보합", 0, ["중기 데이터 부족 (5개 필요)"], 0
+    if not saved or not isinstance(saved, list) or len(saved) < 2:
+        return "보합", 0, ["데이터 수집 중"], 0, 0, 0, 0
     
     # 중기추세 결과에서 상승/하락/보합 횟수를 직접 합산
     up_count = 0
@@ -438,7 +440,7 @@ def detect_long_term_trend(code, current_price):
             neutral_count += count
     
     if total == 0:
-        return "보합", 0, [], 0, 0, 0, 0
+        return "보합", 0, [], 0
     
     reasons = [f"상승 {up_count}회 / 하락 {down_count}회 / 보합 {neutral_count}회"]
     

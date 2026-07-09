@@ -178,12 +178,12 @@ def save_mid_term_trend_history(code, mid_trend_phase, up_count, down_count, neu
 
 
 def detect_mid_term_trend(code, current_price):
-    """중기 추세를 판단한다. 단기추세 결과 5개 종합 기반."""
+    """중기 추세를 판단한다. 단기추세 결과 기반."""
     key = f"short_trend_history:{code}"
     saved = kv_get(key)
     
-    if not saved or not isinstance(saved, list) or len(saved) < 5:
-        return "보합", 0, ["단기 데이터 부족 (5개 필요)"], 0, 0, 0, 0
+    if not saved or not isinstance(saved, list) or len(saved) < 2:
+        return "보합", 0, ["데이터 수집 중"], 0, 0, 0, 0
     
     up_count = 0
     down_count = 0
@@ -277,12 +277,12 @@ def detect_mid_term_trend(code, current_price):
 
 
 def detect_long_term_trend(code, current_price):
-    """장기 추세를 판단한다. 중기추세 결과 5개 종합 기반."""
+    """장기 추세를 판단한다. 중기추세 결과 기반."""
     key = f"mid_trend_history:{code}"
     saved = kv_get(key)
     
-    if not saved or not isinstance(saved, list) or len(saved) < 5:
-        return "보합", 0, ["중기 데이터 부족 (5개 필요)"], 0, 0, 0, 0
+    if not saved or not isinstance(saved, list) or len(saved) < 2:
+        return "보합", 0, ["데이터 수집 중"], 0, 0, 0, 0
     
     up_count = 0
     down_count = 0
