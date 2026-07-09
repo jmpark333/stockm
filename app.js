@@ -1548,6 +1548,26 @@ function calcWavePos(trendPhase, rangePos) {
 }
 
 function makeMidTrendHtml(trendData) {
+  const midTrend = trendData.midTrend || '보합';
+  const midTrendReasons = trendData.midTrendReasons || [];
+  const midCumulativeChange = trendData.midCumulativeChange || 0;
+  const rangePos = trendData.rangePos || 50;
+  
+  const trendLabel = PHASE_LABELS[midTrend] || midTrend;
+  const trendColor = PHASE_COLORS[midTrend] || '#94a3b8';
+  const waveSvg = makeWaveSvg(midTrend, rangePos);
+  
+  const chgText = midTrend.includes('지속') && midCumulativeChange 
+    ? ` (${midCumulativeChange > 0 ? '+' : ''}${midCumulativeChange}%)` 
+    : '';
+  
+  const mainReason = midTrendReasons.length > 0 ? midTrendReasons[0] : '';
+  
+  return `${waveSvg}<span style="font-size:11px;font-weight:600;color:${trendColor}">${trendLabel}${chgText}</span>
+    ${mainReason ? `<br><small style="opacity:0.6;font-size:10px">${mainReason}</small>` : ''}`;
+}
+
+function makeLongTrendHtml(trendData) {
   const longTrend = trendData.longTrend || '보합';
   const longTrendReasons = trendData.longTrendReasons || [];
   const longCumulativeChange = trendData.longCumulativeChange || 0;
@@ -1564,23 +1584,6 @@ function makeMidTrendHtml(trendData) {
   const mainReason = longTrendReasons.length > 0 ? longTrendReasons[0] : '';
   
   return `${waveSvg}<span style="font-size:11px;font-weight:600;color:${trendColor}">${trendLabel}${chgText}</span>
-    ${mainReason ? `<br><small style="opacity:0.6;font-size:10px">${mainReason}</small>` : ''}`;
-}
-
-function makeLongTrendHtml(trendData) {
-  const midTrendReasons = trendData.longTrendReasons || [];
-  const mainReason = midTrendReasons.length > 0 ? midTrendReasons[0] : '';
-  const longTrend = trendData.longTrend || '보합';
-
-  const isUp = longTrend.includes('상승');
-  const isDown = longTrend.includes('하락');
-  const color = isUp ? '#22c55e' : isDown ? '#ef4444' : '#94a3b8';
-  const icon = isUp ? '▲' : isDown ? '▼' : '―';
-
-  const chg = trendData.longCumulativeChange || 0;
-  const chgText = chg !== 0 ? ` (${chg > 0 ? '+' : ''}${chg}%)` : '';
-
-  return `<span style="font-size:11px;font-weight:600;color:${color}">${icon} ${longTrend}${chgText}</span>
     ${mainReason ? `<br><small style="opacity:0.6;font-size:10px">${mainReason}</small>` : ''}`;
 }
 
