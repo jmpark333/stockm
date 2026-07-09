@@ -250,7 +250,7 @@ def detect_mid_term_trend(code, current_price):
             neutral_count += count
     
     if total == 0:
-        return "보합", 0, [], 0
+        return "보합", 0, ["단기 데이터 부족"], 0, 0, 0, 0
     
     up_ratio = up_count / total
     down_ratio = down_count / total
@@ -381,7 +381,7 @@ def detect_long_term_trend(code, current_price):
             neutral_count += count
     
     if total == 0:
-        return "보합", 0, [], 0, 0, 0, 0
+        return "보합", 0, ["중기 데이터 부족"], 0
     
     reasons = [f"상승 {up_count}회 / 하락 {down_count}회 / 보합 {neutral_count}회"]
     
