@@ -88,14 +88,20 @@ def _redis_set(key, value):
         return False
 
 
-def _blob_url(key):
-    safe_key = urllib.parse.quote(key, safe="")
-    return f"https://api.vercel.com/v2/blobs/{BLOB_STORE_ID}/{safe_key}"
+def _blob_store_id_normalized():
+    """Strip 'store_' prefix — CDN URL and API header require bare ID."""
+    sid = BLOB_STORE_ID
+    return sid[len("store_"):] if sid.startswith("store_") else sid
+
+
+BLOB_STORE_ID_NORM = _blob_store_id_normalized()
 
 
 def _blob_get(key):
+    """GET blob content from Vercel Blob private storage (CDN URL)."""
     try:
-        url = _blob_url(key)
+        safe_key = urllib.parse.quote(key, safe="")
+        url = f"https://{BLOB_STORE_ID_NORM}.private.blob.vercel-storage.com/{safe_key}"
         req = urllib.request.Request(url, headers={
             "Authorization": f"Bearer {BLOB_TOKEN}",
         })
@@ -112,15 +118,21 @@ def _blob_get(key):
 
 
 def _blob_set(key, value):
+    """PUT blob content to Vercel Blob private storage (control-plane API)."""
     try:
-        url = _blob_url(key)
         body = json.dumps(value, ensure_ascii=False).encode("utf-8")
+        params = urllib.parse.urlencode({"pathname": key})
+        url = f"https://vercel.com/api/blob?{params}"
         req = urllib.request.Request(
             url,
             data=body,
             headers={
                 "Authorization": f"Bearer {BLOB_TOKEN}",
                 "Content-Type": "application/json",
+                "x-vercel-blob-store-id": BLOB_STORE_ID_NORM,
+                "x-api-version": "12",
+                "x-allow-overwrite": "1",
+                "x-vercel-blob-access": "private",
             },
             method="PUT",
         )
