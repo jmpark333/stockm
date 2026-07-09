@@ -3,12 +3,6 @@
   "refreshSeconds": 5,
   "holdings": [
     {
-      "code": "000660",
-      "name": "SK하이닉스",
-      "quantity": 2,
-      "avgPrice": 2010000
-    },
-    {
       "code": "005380",
       "name": "현대차",
       "quantity": 25,
