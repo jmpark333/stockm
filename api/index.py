@@ -254,20 +254,15 @@ def fetch_quote(code):
         return {"code": code, "error": str(exc)}
 
 def save_short_trend_history(code, trend_phase):
-    """단기추세 결과를 Redis에 저장 (최근 5개)."""
+    """단기추세 결과를 저장 (최근 10개)."""
     key = f"short_trend_history:{code}"
     saved = kv_get(key)
     history = saved if isinstance(saved, list) else []
     
-    # 같은 결과가 연속으로 오면 카운트 증가
-    if history and history[-1].get("phase") == trend_phase:
-        history[-1]["count"] = history[-1].get("count", 1) + 1
-    else:
-        history.append({"phase": trend_phase, "count": 1})
+    history.append({"phase": trend_phase, "count": 1})
     
-    # 최근 5개만 유지
-    if len(history) > 5:
-        history = history[-5:]
+    if len(history) > 10:
+        history = history[-10:]
     
     kv_set(key, history)
 
@@ -281,8 +276,8 @@ def detect_mid_term_trend(code, current_price):
     key = f"short_trend_history:{code}"
     saved = kv_get(key)
     
-    if not saved or not isinstance(saved, list) or len(saved) < 2:
-        return "보합", 0, ["데이터 수집 중"], 0, 0, 0, 0
+    if not saved or not isinstance(saved, list) or len(saved) < 3:
+        return "보합", 0, ["데이터 수집 중 (3개 필요)"], 0, 0, 0, 0
     
     # 상승/하락/보합 카운트
     up_count = 0
@@ -382,26 +377,21 @@ def detect_mid_term_trend(code, current_price):
 
 
 def save_mid_term_trend_history(code, mid_trend_phase, up_count, down_count, neutral_count):
-    """중기추세 결과(단계 + 상승/하락/보합 횟수)를 Redis에 저장 (최근 5개)."""
+    """중기추세 결과를 저장 (최근 10개)."""
     key = f"mid_trend_history:{code}"
     saved = kv_get(key)
     history = saved if isinstance(saved, list) else []
     
-    # 같은 결과가 연속으로 오면 카운트 증가
-    if history and history[-1].get("phase") == mid_trend_phase:
-        history[-1]["count"] = history[-1].get("count", 1) + 1
-    else:
-        history.append({
-            "phase": mid_trend_phase,
-            "count": 1,
-            "up": up_count,
-            "down": down_count,
-            "neutral": neutral_count,
-        })
+    history.append({
+        "phase": mid_trend_phase,
+        "count": 1,
+        "up": up_count,
+        "down": down_count,
+        "neutral": neutral_count,
+    })
     
-    # 최근 5개만 유지
-    if len(history) > 5:
-        history = history[-5:]
+    if len(history) > 10:
+        history = history[-10:]
     
     kv_set(key, history)
 
@@ -415,8 +405,8 @@ def detect_long_term_trend(code, current_price):
     key = f"mid_trend_history:{code}"
     saved = kv_get(key)
     
-    if not saved or not isinstance(saved, list) or len(saved) < 2:
-        return "보합", 0, ["데이터 수집 중"], 0
+    if not saved or not isinstance(saved, list) or len(saved) < 3:
+        return "보합", 0, ["데이터 수집 중 (3개 필요)"], 0
     
     # 중기추세 결과에서 상승/하락/보합 횟수를 직접 합산
     up_count = 0
