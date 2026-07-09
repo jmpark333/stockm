@@ -176,7 +176,8 @@ h2 {
 }
 
 .table-wrap {
-  overflow-x: hidden;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 table {
@@ -820,8 +821,8 @@ td {
 
 @media (max-width: 760px) {
   .page {
-    width: min(100% - 20px, 1180px);
-    padding-top: 24px;
+    width: 100%;
+    padding: 24px 12px 56px;
   }
 
   .chart-modal-box {
