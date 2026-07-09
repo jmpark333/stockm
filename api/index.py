@@ -368,11 +368,11 @@ def detect_long_term_trend(code, current_price):
     for item in saved:
         count = item.get("count", 1)
         total += count
-        # 저장된 횟수 사용 (없으면 phase로 판별)
+        # 저장된 횟수를 그대로 합산 (count 곱하지 않음)
         if "up" in item:
-            up_count += item["up"] * count
-            down_count += item["down"] * count
-            neutral_count += item["neutral"] * count
+            up_count += item["up"]
+            down_count += item["down"]
+            neutral_count += item["neutral"]
         else:
             phase = item.get("phase", "보합")
             up_phases = ("상승시작", "상승지속", "상승세약화", "바닥반등")
