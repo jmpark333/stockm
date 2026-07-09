@@ -365,24 +365,20 @@ def detect_long_term_trend(code, current_price):
     neutral_count = 0
     total = 0
     
+    up_phases = ("상승시작", "상승지속", "상승세약화", "바닥반등")
+    down_phases = ("하락시작", "하락지속", "하락세약화", "천장반락")
+    
     for item in saved:
         count = item.get("count", 1)
         total += count
-        # 저장된 횟수를 그대로 합산 (count 곱하지 않음)
-        if "up" in item:
-            up_count += item["up"]
-            down_count += item["down"]
-            neutral_count += item["neutral"]
+        # 중기추세 단계(상승/하락/보합) 자체의 횟수를 셈
+        phase = item.get("phase", "보합")
+        if phase in up_phases:
+            up_count += count
+        elif phase in down_phases:
+            down_count += count
         else:
-            phase = item.get("phase", "보합")
-            up_phases = ("상승시작", "상승지속", "상승세약화", "바닥반등")
-            down_phases = ("하락시작", "하락지속", "하락세약화", "천장반락")
-            if phase in up_phases:
-                up_count += count
-            elif phase in down_phases:
-                down_count += count
-            else:
-                neutral_count += count
+            neutral_count += count
     
     if total == 0:
         return "보합", 0, [], 0, 0, 0, 0
