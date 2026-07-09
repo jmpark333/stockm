@@ -22,8 +22,8 @@ CHAT_HISTORY_FILE = BASE_DIR / "chat_history.json"
 US_MARKET_FILE = BASE_DIR / "us_market.json"
 
 # Upstash Redis (REST API)
-REDIS_URL = os.environ.get("UPSTASH_REDIS_REST_URL", "")
-REDIS_TOKEN = os.environ.get("UPSTASH_REDIS_REST_TOKEN", "")
+REDIS_URL = os.environ.get("UPSTASH_REDIS_REST_URL", "").strip()
+REDIS_TOKEN = os.environ.get("UPSTASH_REDIS_REST_TOKEN", "").strip()
 
 
 def kv_get(key):
