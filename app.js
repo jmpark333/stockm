@@ -1535,7 +1535,7 @@ function makeMidTrendHtml(trendData) {
   
   const mainReason = midTrendReasons.length > 0 ? midTrendReasons[0] : '';
   
-  return `<span style="font-size:11px;font-weight:600;color:${trendColor}">${trendLabel}${chgText}</span>
+  return `<span style="font-size:13px;font-weight:700;color:${trendColor}">${trendLabel}${chgText}</span>
     ${mainReason ? `<br><small style="opacity:0.6;font-size:10px">${mainReason}</small>` : ''}`;
 }
 
@@ -1553,7 +1553,7 @@ function makeLongTrendHtml(trendData) {
   
   const mainReason = longTrendReasons.length > 0 ? longTrendReasons[0] : '';
   
-  return `<span style="font-size:11px;font-weight:600;color:${trendColor}">${trendLabel}${chgText}</span>
+  return `<span style="font-size:13px;font-weight:700;color:${trendColor}">${trendLabel}${chgText}</span>
     ${mainReason ? `<br><small style="opacity:0.6;font-size:10px">${mainReason}</small>` : ''}`;
 }
 
@@ -1596,7 +1596,7 @@ function renderHoldings(rows) {
       <td class="avg-price-cell" data-code="${row.code}" data-name="${row.name}" data-avg="${row.avgPrice}" data-qty="${row.quantity}" data-price="${row.currentPrice}">${formatMoney(row.avgPrice)}</td>
       <td class="${row.realizedProfit >= 0 ? 'up' : 'down'}">${formatPercent(row.realizedProfitRate)}</td>
       <td class="${row.realizedProfit >= 0 ? 'up' : 'down'}">${formatSignedMoney(row.realizedProfit)}<br><small style="opacity:0.6">(비용 ${formatMoney(Math.round(row.sellFee))})</small></td>
-      <td class="trend-cell trend-clickable" ${trendDataAttr}><span style="font-size:11px;font-weight:600;color:${trendColor}">${trendLabel}</span>${trendSummary ? `<br><small style="opacity:0.6;font-size:10px">${trendSummary}</small>` : ''}</td>
+      <td class="trend-cell trend-clickable" ${trendDataAttr}><span style="font-size:13px;font-weight:700;color:${trendColor}">${trendLabel}</span>${trendSummary ? `<br><small style="opacity:0.6;font-size:10px">${trendSummary}</small>` : ''}</td>
       <td>${makeMidTrendHtml(t)}</td>
       <td>${makeLongTrendHtml(t)}</td>
     `;
@@ -1646,7 +1646,7 @@ function renderWatchlist(rows) {
       <td class="${row.change > 0 ? 'up' : row.change < 0 ? 'down' : 'neutral'}">${formatSignedMoney(row.change)} / ${formatPercent(row.changeRate)}</td>
       <td>${dayRange}<br>${rangeBar(t.rangePos)}</td>
       <td>${t.volatility}%</td>
-      <td class="trend-cell trend-clickable" ${trendDataAttr}><span style="font-size:11px;font-weight:600;color:${trendColor2}">${trendLabel2}</span>${trendSummary ? `<br><small style="opacity:0.6;font-size:10px">${trendSummary}</small>` : ''}</td>
+      <td class="trend-cell trend-clickable" ${trendDataAttr}><span style="font-size:13px;font-weight:700;color:${trendColor2}">${trendLabel2}</span>${trendSummary ? `<br><small style="opacity:0.6;font-size:10px">${trendSummary}</small>` : ''}</td>
       <td>${makeMidTrendHtml(t)}</td>
       <td>${makeLongTrendHtml(t)}</td>
     `;
