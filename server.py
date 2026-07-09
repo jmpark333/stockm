@@ -137,6 +137,201 @@ def fetch_quote(code):
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
         return {"code": code, "error": str(exc)}
 
+def save_short_trend_history(code, trend_phase):
+    """단기추세 결과를 Redis에 저장 (최근 10개)."""
+    key = f"short_trend_history:{code}"
+    saved = kv_get(key)
+    history = saved if isinstance(saved, list) else []
+    
+    if history and history[-1].get("phase") == trend_phase:
+        history[-1]["count"] = history[-1].get("count", 1) + 1
+    else:
+        history.append({"phase": trend_phase, "count": 1})
+    
+    if len(history) > 10:
+        history = history[-10:]
+    
+    kv_set(key, history)
+
+
+def detect_long_term_trend(code, current_price):
+    """장기 추세를 판단한다. 단기추세 결과 10개 종합 기반."""
+    key = f"short_trend_history:{code}"
+    saved = kv_get(key)
+    
+    if not saved or not isinstance(saved, list) or len(saved) < 3:
+        return "보합", 0, ["단기 데이터 부족 (3개 필요)"]
+    
+    up_count = 0
+    down_count = 0
+    neutral_count = 0
+    total = 0
+    
+    up_phases = ("상승시작", "상승지속", "상승세약화", "바닥반등")
+    down_phases = ("하락시작", "하락지속", "하락세약화", "천장반락")
+    
+    for item in saved:
+        phase = item.get("phase", "보합")
+        count = item.get("count", 1)
+        total += count
+        
+        if phase in up_phases:
+            up_count += count
+        elif phase in down_phases:
+            down_count += count
+        else:
+            neutral_count += count
+    
+    if total == 0:
+        return "보합", 0, []
+    
+    up_ratio = up_count / total
+    down_ratio = down_count / total
+    
+    reasons = [f"최근 {len(saved)}개 추세 중 상승 {up_count}회, 하락 {down_count}회"]
+    
+    prev_key = f"long_trend_phase:{code}"
+    prev_data = kv_get(prev_key)
+    prev_phase = prev_data.get("phase") if prev_data else None
+    consec = 1
+    
+    if up_ratio >= 0.7:
+        if prev_phase in ("상승시작", "상승지속", "상승세약화"):
+            consec = (prev_data.get("consec", 1) if prev_data else 1) + 1
+            result = ("상승지속", 70, reasons + [f"{consec}회 연속 상승"])
+        elif prev_phase in ("하락시작", "하락지속", "하락세약화"):
+            result = ("상승시작", 55, reasons + ["하락→상승 전환"])
+        else:
+            result = ("상승시작", 50, reasons)
+        direction = "up"
+    elif up_ratio >= 0.5:
+        if prev_phase in ("상승시작", "상승지속", "상승세약화"):
+            consec = (prev_data.get("consec", 1) if prev_data else 1) + 1
+            result = ("상승지속", 60, reasons + [f"{consec}회 연속 상승"])
+        else:
+            result = ("상승세약화", 50, reasons)
+        direction = "up"
+    elif down_ratio >= 0.7:
+        if prev_phase in ("하락시작", "하락지속", "하락세약화"):
+            consec = (prev_data.get("consec", 1) if prev_data else 1) + 1
+            result = ("하락지속", 70, reasons + [f"{consec}회 연속 하락"])
+        elif prev_phase in ("상승시작", "상승지속", "상승세약화"):
+            result = ("하락시작", 55, reasons + ["상승→하락 전환"])
+        else:
+            result = ("하락시작", 50, reasons)
+        direction = "down"
+    elif down_ratio >= 0.5:
+        if prev_phase in ("하락시작", "하락지속", "하락세약화"):
+            consec = (prev_data.get("consec", 1) if prev_data else 1) + 1
+            result = ("하락지속", 60, reasons + [f"{consec}회 연속 하락"])
+        else:
+            result = ("하락세약화", 50, reasons)
+        direction = "down"
+    else:
+        result = ("보합", 30, reasons)
+        direction = None
+    
+    kv_set(prev_key, {
+        "phase": result[0],
+        "consec": consec,
+        "ts": int(time.time()),
+        "price": current_price,
+        "direction": direction,
+    })
+    
+    return result
+
+
+def detect_mid_term_trend(code, current_price):
+    """중기 추세를 판단한다. 단기추세 결과 5개 종합 기반."""
+    key = f"short_trend_history:{code}"
+    saved = kv_get(key)
+    
+    if not saved or not isinstance(saved, list) or len(saved) < 2:
+        return "보합", 0, ["단기 데이터 부족 (5개 필요)"]
+    
+    recent = saved[-5:] if len(saved) >= 5 else saved
+    
+    up_count = 0
+    down_count = 0
+    neutral_count = 0
+    total = 0
+    
+    up_phases = ("상승시작", "상승지속", "상승세약화", "바닥반등")
+    down_phases = ("하락시작", "하락지속", "하락세약화", "천장반락")
+    
+    for item in recent:
+        phase = item.get("phase", "보합")
+        count = item.get("count", 1)
+        total += count
+        
+        if phase in up_phases:
+            up_count += count
+        elif phase in down_phases:
+            down_count += count
+        else:
+            neutral_count += count
+    
+    if total == 0:
+        return "보합", 0, []
+    
+    up_ratio = up_count / total
+    down_ratio = down_count / total
+    
+    reasons = [f"최근 {len(recent)}개 추세 중 상승 {up_count}회, 하락 {down_count}회"]
+    
+    prev_key = f"mid_trend_phase:{code}"
+    prev_data = kv_get(prev_key)
+    prev_phase = prev_data.get("phase") if prev_data else None
+    consec = 1
+    
+    if up_ratio >= 0.7:
+        if prev_phase in ("상승시작", "상승지속", "상승세약화"):
+            consec = (prev_data.get("consec", 1) if prev_data else 1) + 1
+            result = ("상승지속", 70, reasons + [f"{consec}회 연속 상승"])
+        elif prev_phase in ("하락시작", "하락지속", "하락세약화"):
+            result = ("상승시작", 55, reasons + ["하락→상승 전환"])
+        else:
+            result = ("상승시작", 50, reasons)
+        direction = "up"
+    elif up_ratio >= 0.5:
+        if prev_phase in ("상승시작", "상승지속", "상승세약화"):
+            consec = (prev_data.get("consec", 1) if prev_data else 1) + 1
+            result = ("상승지속", 60, reasons + [f"{consec}회 연속 상승"])
+        else:
+            result = ("상승세약화", 50, reasons)
+        direction = "up"
+    elif down_ratio >= 0.7:
+        if prev_phase in ("하락시작", "하락지속", "하락세약화"):
+            consec = (prev_data.get("consec", 1) if prev_data else 1) + 1
+            result = ("하락지속", 70, reasons + [f"{consec}회 연속 하락"])
+        elif prev_phase in ("상승시작", "상승지속", "상승세약화"):
+            result = ("하락시작", 55, reasons + ["상승→하락 전환"])
+        else:
+            result = ("하락시작", 50, reasons)
+        direction = "down"
+    elif down_ratio >= 0.5:
+        if prev_phase in ("하락시작", "하락지속", "하락세약화"):
+            consec = (prev_data.get("consec", 1) if prev_data else 1) + 1
+            result = ("하락지속", 60, reasons + [f"{consec}회 연속 하락"])
+        else:
+            result = ("하락세약화", 50, reasons)
+        direction = "down"
+    else:
+        result = ("보합", 30, reasons)
+        direction = None
+    
+    kv_set(prev_key, {
+        "phase": result[0],
+        "consec": consec,
+        "ts": int(time.time()),
+        "price": current_price,
+        "direction": direction,
+    })
+    
+    return result
+
+
 def detect_trend_phase(code, current_price, previous_close, open_price):
     """추세 전환 단계를 감지한다. 실시간 가격 변화 기반."""
     reasons = []
@@ -144,23 +339,18 @@ def detect_trend_phase(code, current_price, previous_close, open_price):
     if current_price is None or previous_close is None or previous_close == 0:
         return "보합", 0, ["데이터 부족"]
     
-    # Redis에서 이전 데이터 로드
     prev_key = f"trend_phase:{code}"
     prev_data = kv_get(prev_key)
     prev_phase = prev_data.get("phase") if prev_data else None
     prev_price = prev_data.get("price", 0) if prev_data else 0
     prev_consec = prev_data.get("consec", 1) if prev_data else 1
     
-    # 실시간 가격 변화 (이전 요청 대비)
     if prev_price > 0:
         price_chg = ((current_price - prev_price) / prev_price * 100)
     else:
         price_chg = 0
     
-    # 전일 대비 변화
     day_chg = ((current_price - previous_close) / previous_close * 100)
-    
-    # ── 실시간 추세 판단 ──
     
     if prev_price == 0:
         if day_chg > 2:
@@ -401,6 +591,13 @@ def calc_trend(quote):
     # ── 추세 전환 감지 ──
     trend_phase, trend_confidence, trend_reasons = detect_trend_phase(code, cp, pc, op)
     
+    # 단기추세 결과를 Redis에 저장
+    save_short_trend_history(code, trend_phase)
+    
+    # 중기추세/장기추세 판단 (Redis 이력 기반)
+    mid_trend_phase, mid_trend_confidence, mid_trend_reasons = detect_mid_term_trend(code, cp)
+    long_trend_phase, long_trend_confidence, long_trend_reasons = detect_long_term_trend(code, cp)
+    
     # 추세 단계를 short_trend로 변환
     if trend_phase in ("상승시작", "상승지속", "바닥반등"):
         short_trend = "up"
@@ -408,58 +605,9 @@ def calc_trend(quote):
         short_trend = "down"
     else:
         short_trend = "flat"
-
-    # 중기추세 계산 (MA20 기준)
-    mid_trend = "보합"
-    mid_trend_reasons = []
-    mid_cumulative_change = 0
-    ma20 = indicators.get("ma20")
-    ma60 = indicators.get("ma60")
     
-    if ma20 and cp:
-        price_vs_ma20 = ((cp - ma20) / ma20) * 100
-        mid_cumulative_change = round(price_vs_ma20, 1)
-        
-        if price_vs_ma20 > 5:
-            mid_trend = "상승지속"
-            mid_trend_reasons.append(f"MA20 대비 +{price_vs_ma20:.1f}% 상승")
-        elif price_vs_ma20 > 0:
-            mid_trend = "상승시작"
-            mid_trend_reasons.append(f"MA20 위 ({price_vs_ma20:+.1f}%)")
-        elif price_vs_ma20 < -5:
-            mid_trend = "하락지속"
-            mid_trend_reasons.append(f"MA20 대비 {price_vs_ma20:.1f}% 하락")
-        elif price_vs_ma20 < 0:
-            mid_trend = "하락시작"
-            mid_trend_reasons.append(f"MA20 아래 ({price_vs_ma20:+.1f}%)")
-        else:
-            mid_trend = "보합"
-            mid_trend_reasons.append(f"MA20 근처 ({price_vs_ma20:+.1f}%)")
-    
-    # 장기추세 계산 (MA60 기준)
-    long_trend = "보합"
-    long_trend_reasons = []
-    long_cumulative_change = 0
-    
-    if ma60 and cp:
-        price_vs_ma60 = ((cp - ma60) / ma60) * 100
-        long_cumulative_change = round(price_vs_ma60, 1)
-        
-        if price_vs_ma60 > 10:
-            long_trend = "상승지속"
-            long_trend_reasons.append(f"MA60 대비 +{price_vs_ma60:.1f}% 상승")
-        elif price_vs_ma60 > 0:
-            long_trend = "상승시작"
-            long_trend_reasons.append(f"MA60 위 ({price_vs_ma60:+.1f}%)")
-        elif price_vs_ma60 < -10:
-            long_trend = "하락지속"
-            long_trend_reasons.append(f"MA60 대비 {price_vs_ma60:.1f}% 하락")
-        elif price_vs_ma60 < 0:
-            long_trend = "하락시작"
-            long_trend_reasons.append(f"MA60 아래 ({price_vs_ma60:+.1f}%)")
-        else:
-            long_trend = "보합"
-            long_trend_reasons.append(f"MA60 근처 ({price_vs_ma60:+.1f}%)")
+    mid_trend = mid_trend_phase
+    long_trend = long_trend_phase
 
     # 기본 시그널 (가격 기반)
     signal = "hold"
@@ -526,10 +674,8 @@ def calc_trend(quote):
         "realtimeSignals": realtime_signals,
         "midTrend": mid_trend,
         "midTrendReasons": mid_trend_reasons,
-        "midCumulativeChange": mid_cumulative_change,
         "longTrend": long_trend,
         "longTrendReasons": long_trend_reasons,
-        "longCumulativeChange": long_cumulative_change,
     }
 
 def build_item(quote):
