@@ -409,6 +409,58 @@ def calc_trend(quote):
     else:
         short_trend = "flat"
 
+    # 중기추세 계산 (MA20 기준)
+    mid_trend = "보합"
+    mid_trend_reasons = []
+    mid_cumulative_change = 0
+    ma20 = indicators.get("ma20")
+    ma60 = indicators.get("ma60")
+    
+    if ma20 and cp:
+        price_vs_ma20 = ((cp - ma20) / ma20) * 100
+        mid_cumulative_change = round(price_vs_ma20, 1)
+        
+        if price_vs_ma20 > 5:
+            mid_trend = "상승지속"
+            mid_trend_reasons.append(f"MA20 대비 +{price_vs_ma20:.1f}% 상승")
+        elif price_vs_ma20 > 0:
+            mid_trend = "상승시작"
+            mid_trend_reasons.append(f"MA20 위 ({price_vs_ma20:+.1f}%)")
+        elif price_vs_ma20 < -5:
+            mid_trend = "하락지속"
+            mid_trend_reasons.append(f"MA20 대비 {price_vs_ma20:.1f}% 하락")
+        elif price_vs_ma20 < 0:
+            mid_trend = "하락시작"
+            mid_trend_reasons.append(f"MA20 아래 ({price_vs_ma20:+.1f}%)")
+        else:
+            mid_trend = "보합"
+            mid_trend_reasons.append(f"MA20 근처 ({price_vs_ma20:+.1f}%)")
+    
+    # 장기추세 계산 (MA60 기준)
+    long_trend = "보합"
+    long_trend_reasons = []
+    long_cumulative_change = 0
+    
+    if ma60 and cp:
+        price_vs_ma60 = ((cp - ma60) / ma60) * 100
+        long_cumulative_change = round(price_vs_ma60, 1)
+        
+        if price_vs_ma60 > 10:
+            long_trend = "상승지속"
+            long_trend_reasons.append(f"MA60 대비 +{price_vs_ma60:.1f}% 상승")
+        elif price_vs_ma60 > 0:
+            long_trend = "상승시작"
+            long_trend_reasons.append(f"MA60 위 ({price_vs_ma60:+.1f}%)")
+        elif price_vs_ma60 < -10:
+            long_trend = "하락지속"
+            long_trend_reasons.append(f"MA60 대비 {price_vs_ma60:.1f}% 하락")
+        elif price_vs_ma60 < 0:
+            long_trend = "하락시작"
+            long_trend_reasons.append(f"MA60 아래 ({price_vs_ma60:+.1f}%)")
+        else:
+            long_trend = "보합"
+            long_trend_reasons.append(f"MA60 근처 ({price_vs_ma60:+.1f}%)")
+
     # 기본 시그널 (가격 기반)
     signal = "hold"
     reasons = list(trend_reasons)  # 추세 판단 근거를 먼저 포함
@@ -472,6 +524,12 @@ def calc_trend(quote):
         "techSignals": tech_signals,
         "techSignalScore": signal_score,
         "realtimeSignals": realtime_signals,
+        "midTrend": mid_trend,
+        "midTrendReasons": mid_trend_reasons,
+        "midCumulativeChange": mid_cumulative_change,
+        "longTrend": long_trend,
+        "longTrendReasons": long_trend_reasons,
+        "longCumulativeChange": long_cumulative_change,
     }
 
 def build_item(quote):

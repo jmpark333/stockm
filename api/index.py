@@ -21,14 +21,33 @@ DATA_FILE = BASE_DIR / "data.json"
 CHAT_HISTORY_FILE = BASE_DIR / "chat_history.json"
 US_MARKET_FILE = BASE_DIR / "us_market.json"
 
-# Upstash Redis (REST API)
-REDIS_URL = os.environ.get("UPSTASH_REDIS_REST_URL", "").strip()
-REDIS_TOKEN = os.environ.get("UPSTASH_REDIS_REST_TOKEN", "").strip()
+# Storage: Upstash Redis > Vercel Blob (fallback)
+REDIS_URL = os.environ.get("KV_REST_API_URL", os.environ.get("UPSTASH_REDIS_REST_URL", "")).strip()
+REDIS_TOKEN = os.environ.get("KV_REST_API_TOKEN", os.environ.get("UPSTASH_REDIS_REST_TOKEN", "")).strip()
+BLOB_STORE_ID = os.environ.get("BLOB_STORE_ID", "").strip()
+BLOB_TOKEN = os.environ.get("BLOB_READ_WRITE_TOKEN", "").strip()
+
+STORAGE_BACKEND = "redis" if (REDIS_URL and REDIS_TOKEN) else ("blob" if (BLOB_STORE_ID and BLOB_TOKEN) else "none")
+print(f"[storage] backend={STORAGE_BACKEND}", file=sys.stderr, flush=True)
 
 
 def kv_get(key):
-    if not REDIS_URL or not REDIS_TOKEN:
-        return None
+    if STORAGE_BACKEND == "redis":
+        return _redis_get(key)
+    elif STORAGE_BACKEND == "blob":
+        return _blob_get(key)
+    return None
+
+
+def kv_set(key, value):
+    if STORAGE_BACKEND == "redis":
+        return _redis_set(key, value)
+    elif STORAGE_BACKEND == "blob":
+        return _blob_set(key, value)
+    return False
+
+
+def _redis_get(key):
     try:
         url = f"{REDIS_URL}/get/{urllib.parse.quote(key)}"
         req = urllib.request.Request(url, headers={
@@ -41,14 +60,11 @@ def kv_get(key):
                 return None
             return json.loads(result)
     except Exception as exc:
-        import sys
-        print(f"[kv_get] key={key} error={exc}", file=sys.stderr, flush=True)
+        print(f"[redis_get] key={key} error={exc}", file=sys.stderr, flush=True)
         return None
 
 
-def kv_set(key, value):
-    if not REDIS_URL or not REDIS_TOKEN:
-        return False
+def _redis_set(key, value):
     try:
         body = json.dumps(value, ensure_ascii=False).encode("utf-8")
         url = f"{REDIS_URL}/set/{urllib.parse.quote(key)}"
@@ -65,12 +81,53 @@ def kv_set(key, value):
             payload = json.loads(resp.read().decode("utf-8"))
             ok = payload.get("result") == "OK" and resp.status == 200
             if not ok:
-                import sys
-                print(f"[kv_set] key={key} unexpected payload={payload}", file=sys.stderr, flush=True)
+                print(f"[redis_set] key={key} unexpected payload={payload}", file=sys.stderr, flush=True)
             return ok
     except Exception as exc:
-        import sys
-        print(f"[kv_set] key={key} error={exc}", file=sys.stderr, flush=True)
+        print(f"[redis_set] key={key} error={exc}", file=sys.stderr, flush=True)
+        return False
+
+
+def _blob_url(key):
+    safe_key = urllib.parse.quote(key, safe="")
+    return f"https://api.vercel.com/v2/blobs/{BLOB_STORE_ID}/{safe_key}"
+
+
+def _blob_get(key):
+    try:
+        url = _blob_url(key)
+        req = urllib.request.Request(url, headers={
+            "Authorization": f"Bearer {BLOB_TOKEN}",
+        })
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            return None
+        print(f"[blob_get] key={key} error={exc}", file=sys.stderr, flush=True)
+        return None
+    except Exception as exc:
+        print(f"[blob_get] key={key} error={exc}", file=sys.stderr, flush=True)
+        return None
+
+
+def _blob_set(key, value):
+    try:
+        url = _blob_url(key)
+        body = json.dumps(value, ensure_ascii=False).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=body,
+            headers={
+                "Authorization": f"Bearer {BLOB_TOKEN}",
+                "Content-Type": "application/json",
+            },
+            method="PUT",
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return resp.status in (200, 201)
+    except Exception as exc:
+        print(f"[blob_set] key={key} error={exc}", file=sys.stderr, flush=True)
         return False
 NAVER_REALTIME_URL = "https://polling.finance.naver.com/api/realtime?query=SERVICE_ITEM:{code}"
 
