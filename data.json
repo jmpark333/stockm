@@ -19,18 +19,6 @@
       "name": "삼성전자",
       "quantity": 30,
       "avgPrice": 300250
-    },
-    {
-      "code": "009150",
-      "name": "삼성전기",
-      "quantity": 8,
-      "avgPrice": 1553125
-    },
-    {
-      "code": "011070",
-      "name": "LG이노텍",
-      "quantity": 4,
-      "avgPrice": 752500
     }
   ],
   "watchlist": [
