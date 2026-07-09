@@ -448,7 +448,7 @@ def detect_trend_phase(code, current_price, previous_close, open_price):
     prev_phase = prev_data.get("phase") if prev_data else None
     prev_price = prev_data.get("price", 0) if prev_data else 0
     prev_consec = prev_data.get("consec", 1) if prev_data else 1
-    prev_direction = prev_data.get("direction")
+    prev_direction = prev_data.get("direction") if prev_data else None
     
     if prev_price > 0:
         price_chg = ((current_price - prev_price) / prev_price * 100)
