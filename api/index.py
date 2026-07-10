@@ -1821,6 +1821,19 @@ STATIC_TYPES = {
     ".json": "application/json; charset=utf-8",
 }
 
+@app.route("/api/debug-storage")
+def _debug_storage():
+    return Response(json.dumps({
+        "backend": STORAGE_BACKEND,
+        "supabase_url_set": bool(SUPABASE_URL),
+        "supabase_key_set": bool(SUPABASE_KEY),
+        "blob_id_set": bool(BLOB_STORE_ID),
+        "blob_token_set": bool(BLOB_TOKEN),
+        "redis_url_set": bool(REDIS_URL),
+        "redis_token_set": bool(REDIS_TOKEN),
+    }, ensure_ascii=False), mimetype="application/json")
+
+
 @app.route("/")
 def index():
     return serve_static("index.html")
