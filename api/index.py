@@ -117,7 +117,10 @@ def _redis_set(key, value):
         return False
 
 
+_SUPABASE_ERR = ""
+
 def _supabase_get(key):
+    global _SUPABASE_ERR
     try:
         url = f"{SUPABASE_URL}/rest/v1/kv_store?key=eq.{urllib.parse.quote(key, safe='')}&select=value"
         req = urllib.request.Request(url, headers={
@@ -127,12 +130,19 @@ def _supabase_get(key):
         with urllib.request.urlopen(req, timeout=5) as resp:
             rows = json.loads(resp.read().decode("utf-8"))
             return rows[0]["value"] if rows else None
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")[:300]
+        _SUPABASE_ERR = f"HTTP {exc.code}: {body}"
+        print(f"[supabase_get] key={key} {_SUPABASE_ERR}", file=sys.stderr, flush=True)
+        return None
     except Exception as exc:
+        _SUPABASE_ERR = str(exc)
         print(f"[supabase_get] key={key} error={exc}", file=sys.stderr, flush=True)
         return None
 
 
 def _supabase_set(key, value):
+    global _SUPABASE_ERR
     try:
         url = f"{SUPABASE_URL}/rest/v1/kv_store"
         body = json.dumps({"key": key, "value": value}).encode("utf-8")
@@ -150,9 +160,15 @@ def _supabase_set(key, value):
         with urllib.request.urlopen(req, timeout=5) as resp:
             ok = resp.status in (200, 201)
             if not ok:
-                print(f"[supabase_set] key={key} status={resp.status}", file=sys.stderr, flush=True)
+                _SUPABASE_ERR = f"status={resp.status}"
             return ok
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")[:300]
+        _SUPABASE_ERR = f"HTTP {exc.code}: {body}"
+        print(f"[supabase_set] key={key} {_SUPABASE_ERR}", file=sys.stderr, flush=True)
+        return False
     except Exception as exc:
+        _SUPABASE_ERR = str(exc)
         print(f"[supabase_set] key={key} error={exc}", file=sys.stderr, flush=True)
         return False
 
@@ -1845,6 +1861,9 @@ def _debug_storage():
     got = _supabase_get("__debug_test")
     result["supabase_get_ok"] = got is not None
     result["supabase_get_value"] = got
+    result["last_error"] = _SUPABASE_ERR
+    result["url_preview"] = SUPABASE_URL[:40] if SUPABASE_URL else None
+    result["key_preview"] = SUPABASE_KEY[:20] + "..." if SUPABASE_KEY else None
     return Response(json.dumps(result, ensure_ascii=False, default=str), mimetype="application/json")
 
 
