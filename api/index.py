@@ -1855,22 +1855,7 @@ STATIC_TYPES = {
 
 @app.route("/api/debug-storage")
 def _debug_storage():
-    result = {"backend": STORAGE_BACKEND}
-    ok = _supabase_set("__debug_test", {"ts": int(time.time())})
-    result["supabase_set_ok"] = ok
-    got = _supabase_get("__debug_test")
-    result["supabase_get_ok"] = got is not None
-    result["supabase_get_value"] = got
-    result["last_error"] = _SUPABASE_ERR
-    result["url_preview"] = SUPABASE_URL[:40] if SUPABASE_URL else None
-    result["key_preview"] = SUPABASE_KEY[:20] + "..." if SUPABASE_KEY else None
-    result["raw_env"] = {
-        "SUPABASE_URL_raw": os.environ.get("SUPABASE_URL", "<UNSET>")[:50],
-        "NEXT_PUBLIC_SUPABASE_URL_raw": os.environ.get("NEXT_PUBLIC_SUPABASE_URL", "<UNSET>")[:50],
-        "SUPABASE_PUBLISHABLE_KEY_raw": (os.environ.get("SUPABASE_PUBLISHABLE_KEY", "<UNSET>") or "")[:30],
-        "SUPABASE_SECRET_KEY_raw": (os.environ.get("SUPABASE_SECRET_KEY", "<UNSET>") or "")[:30],
-    }
-    return Response(json.dumps(result, ensure_ascii=False, default=str), mimetype="application/json")
+    return Response(json.dumps({"backend": STORAGE_BACKEND}, ensure_ascii=False), mimetype="application/json")
 
 
 @app.route("/")
