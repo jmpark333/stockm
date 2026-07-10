@@ -1823,15 +1823,13 @@ STATIC_TYPES = {
 
 @app.route("/api/debug-storage")
 def _debug_storage():
-    return Response(json.dumps({
-        "backend": STORAGE_BACKEND,
-        "supabase_url_set": bool(SUPABASE_URL),
-        "supabase_key_set": bool(SUPABASE_KEY),
-        "blob_id_set": bool(BLOB_STORE_ID),
-        "blob_token_set": bool(BLOB_TOKEN),
-        "redis_url_set": bool(REDIS_URL),
-        "redis_token_set": bool(REDIS_TOKEN),
-    }, ensure_ascii=False), mimetype="application/json")
+    result = {"backend": STORAGE_BACKEND}
+    ok = _supabase_set("__debug_test", {"ts": int(time.time())})
+    result["supabase_set_ok"] = ok
+    got = _supabase_get("__debug_test")
+    result["supabase_get_ok"] = got is not None
+    result["supabase_get_value"] = got
+    return Response(json.dumps(result, ensure_ascii=False, default=str), mimetype="application/json")
 
 
 @app.route("/")
