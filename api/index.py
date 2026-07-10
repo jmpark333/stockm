@@ -24,15 +24,24 @@ US_MARKET_FILE = BASE_DIR / "us_market.json"
 # Storage: Upstash Redis > Supabase > Vercel Blob (fallback)
 REDIS_URL = os.environ.get("KV_REST_API_URL", os.environ.get("UPSTASH_REDIS_REST_URL", "")).strip()
 REDIS_TOKEN = os.environ.get("KV_REST_API_TOKEN", os.environ.get("UPSTASH_REDIS_REST_TOKEN", "")).strip()
-SUPABASE_URL = os.environ.get("SUPABASE_URL", os.environ.get("NEXT_PUBLIC_SUPABASE_URL", "")).strip()
-SUPABASE_KEY = (
-    os.environ.get("SUPABASE_SECRET_KEY")
-    or os.environ.get("SUPABASE_PUBLISHABLE_KEY")
-    or os.environ.get("SUPABASE_ANON_KEY")
-    or os.environ.get("NEXT_PUBLIC_SUPABASE_ANON_KEY")
-    or os.environ.get("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY")
-    or ""
-).strip()
+def _first_nonempty(*vals):
+    for v in vals:
+        v = (v or "").strip()
+        if v:
+            return v
+    return ""
+
+SUPABASE_URL = _first_nonempty(
+    os.environ.get("SUPABASE_URL"),
+    os.environ.get("NEXT_PUBLIC_SUPABASE_URL"),
+)
+SUPABASE_KEY = _first_nonempty(
+    os.environ.get("SUPABASE_SECRET_KEY"),
+    os.environ.get("SUPABASE_PUBLISHABLE_KEY"),
+    os.environ.get("SUPABASE_ANON_KEY"),
+    os.environ.get("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
+    os.environ.get("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"),
+)
 BLOB_STORE_ID = os.environ.get("BLOB_STORE_ID", "").strip()
 BLOB_TOKEN = os.environ.get("BLOB_READ_WRITE_TOKEN", "").strip()
 
