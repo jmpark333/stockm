@@ -1529,7 +1529,8 @@ function makeBuySellScoreHtml(trendData) {
   const grade = bss.grade;
   const factors = bss.factors || [];
 
-  // 등급별 색상
+  // 매도 모드: 점수가 높을수록 매도 적기 (빨강=강한매도신호)
+  // 매수 모드: 점수가 높을수록 매수 적기 (초록=강한매수신호)
   const gradeColors = {
     strong_buy: { bg: '#059669', bar: '#10b981', text: '#10b981' },
     buy:        { bg: '#0d9488', bar: '#2dd4bf', text: '#2dd4bf' },

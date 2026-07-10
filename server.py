@@ -566,7 +566,7 @@ def detect_all_signals(code, quote):
     
     return all_signals
 
-def calc_trend(quote):
+def calc_trend(quote, mode="buy", holding=None):
     cp = quote.get("currentPrice")
     pc = quote.get("previousClose")
     hv = quote.get("high")
@@ -705,16 +705,16 @@ def calc_trend(quote):
             "midTrend": mid_trend,
             "longTrend": long_trend,
             "rangePos": range_pos,
-        }),
+        }, mode=mode, holding=holding),
     }
 
-def build_item(quote):
+def build_item(quote, mode="buy", holding=None):
     cp = quote.get("currentPrice")
     pc = quote.get("previousClose")
     hv = quote.get("high")
     lv = quote.get("low")
     op = quote.get("open")
-    trend = calc_trend(quote)
+    trend = calc_trend(quote, mode=mode, holding=holding)
     return {
         "code": quote.get("code"),
         "name": quote.get("name"),
@@ -758,7 +758,7 @@ def build_portfolio(section=None):
         realized_profit = profit - sell_fee
         realized_profit_rate = (realized_profit / cost * 100) if cost else 0
         holdings_rows.append({
-            **build_item(quote),
+            **build_item(quote, mode="sell", holding={"avgPrice": avg_price, "quantity": quantity}),
             "quantity": quantity,
             "avgPrice": avg_price,
             "cost": cost,
@@ -774,7 +774,7 @@ def build_portfolio(section=None):
     if section != "holdings":
         for watch in config.get("watchlist", []):
             quote = quotes.get(watch["code"], {"code": watch["code"], "error": "호가 데이터 없음"})
-            watchlist_rows.append(build_item(quote))
+            watchlist_rows.append(build_item(quote, mode="buy"))
 
     total_cost = sum(row["cost"] for row in holdings_rows)
     total_current = sum(row["currentValue"] for row in holdings_rows)
@@ -1191,19 +1191,36 @@ def calc_atr(highs: list[float], lows: list[float], closes: list[float], period:
     return result
 
 
-def calc_buy_sell_score(code: str, quote: dict, trend: dict) -> dict:
-    """매수/매도 종합 점수를 계산한다. 0(강력매도) ~ 100(강력매수)."""
+def calc_buy_sell_score(code: str, quote: dict, trend: dict, mode: str = "buy", holding: dict | None = None) -> dict:
+    """매수/매도 종합 점수를 계산한다. 0 ~ 100.
+    mode="buy": 관심종목 매수점수 (높을수록 매수 적기)
+    mode="sell": 보유종목 매도점수 (높을수록 매도 적기)
+    holding: {"avgPrice": float, "quantity": int} (sell 모드에서 사용)
+    """
     score = 50  # 중립 시작점
     factors = []
 
     # ── 1. 기술적 지표 점수 (가중치 35%) ──
     tech_score = trend.get("techSignalScore", 0)  # -100 ~ +100
-    tech_contrib = tech_score * 0.35
-    score += tech_contrib
-    if tech_score > 20:
-        factors.append(f"기술적지표 강세(+{tech_score:.0f})")
-    elif tech_score < -20:
-        factors.append(f"기술적지표 약세({tech_score:.0f})")
+
+    if mode == "sell":
+        # 매도: 과매수(tech_score 높음) = 매도 적기 → 양방향 기여
+        tech_contrib = tech_score * 0.35
+        score += tech_contrib
+        if tech_score > 30:
+            factors.append(f"과매수 진입(+{tech_score:.0f})")
+        elif tech_score < -30:
+            factors.append(f"과매도 구간({tech_score:.0f})")
+        elif tech_score > 15:
+            factors.append(f"기술적 강세(+{tech_score:.0f})")
+    else:
+        # 매수: 과매도(tech_score 낮음) = 매수 적기 → 반전 기여
+        tech_contrib = tech_score * 0.35
+        score += tech_contrib
+        if tech_score > 20:
+            factors.append(f"기술적지표 강세(+{tech_score:.0f})")
+        elif tech_score < -20:
+            factors.append(f"기술적지표 약세({tech_score:.0f})")
 
     # ── 2. 추세 정렬 점수 (가중치 25%) ──
     trend_score = 0
@@ -1211,31 +1228,48 @@ def calc_buy_sell_score(code: str, quote: dict, trend: dict) -> dict:
     mid = trend.get("midTrend", "보합")
     long_t = trend.get("longTrend", "보합")
 
-    # 단기 추세
-    if short == "up":
-        trend_score += 15
-    elif short == "down":
-        trend_score -= 15
+    if mode == "sell":
+        # 매도: 상승 추세 = 이익 실현 기회, 하락 추세 전환 = 매도 신호
+        if short == "up":
+            trend_score += 12
+        elif short == "down":
+            trend_score -= 10
+        if "상승" in mid:
+            trend_score += 8
+        elif "하락" in mid:
+            trend_score -= 8
+        if "상승" in long_t:
+            trend_score += 5
+        elif "하락" in long_t:
+            trend_score -= 5
 
-    # 중기 추세
-    if "상승" in mid:
-        trend_score += 10
-    elif "하락" in mid:
-        trend_score -= 10
+        directions = [short, "up" if "상승" in mid else "down" if "하락" in mid else "flat",
+                      "up" if "상승" in long_t else "down" if "하락" in long_t else "flat"]
+        unique = set(d for d in directions if d != "flat")
+        if len(unique) == 1 and "상승" in mid:
+            trend_score = int(trend_score * 1.2)
+            factors.append("추세 3개 동반 상승 → 이익실현 기회")
+    else:
+        # 매수: 상승 추세 전환 = 매수 신호
+        if short == "up":
+            trend_score += 15
+        elif short == "down":
+            trend_score -= 15
+        if "상승" in mid:
+            trend_score += 10
+        elif "하락" in mid:
+            trend_score -= 10
+        if "상승" in long_t:
+            trend_score += 5
+        elif "하락" in long_t:
+            trend_score -= 5
 
-    # 장기 추세
-    if "상승" in long_t:
-        trend_score += 5
-    elif "하락" in long_t:
-        trend_score -= 5
-
-    # 3개 추세 동시 방향일 때 보너스
-    directions = [short, "up" if "상승" in mid else "down" if "하락" in mid else "flat",
-                  "up" if "상승" in long_t else "down" if "하락" in long_t else "flat"]
-    unique = set(d for d in directions if d != "flat")
-    if len(unique) == 1:
-        trend_score = int(trend_score * 1.3)
-        factors.append("추세 3개 동반" + (" 상승" in mid and "상승" or " 하락"))
+        directions = [short, "up" if "상승" in mid else "down" if "하락" in mid else "flat",
+                      "up" if "상승" in long_t else "down" if "하락" in long_t else "flat"]
+        unique = set(d for d in directions if d != "flat")
+        if len(unique) == 1:
+            trend_score = int(trend_score * 1.3)
+            factors.append("추세 3개 동반" + (" 상승" in mid and "상승" or " 하락"))
 
     score += trend_score * 0.25
 
@@ -1249,35 +1283,66 @@ def calc_buy_sell_score(code: str, quote: dict, trend: dict) -> dict:
 
     if cp and pc and pc > 0:
         day_chg = (cp - pc) / pc * 100
-        if day_chg > 3:
-            momentum += 15
-            factors.append(f"일간 +{day_chg:.1f}% 상승")
-        elif day_chg > 1:
-            momentum += 8
-        elif day_chg < -3:
-            momentum -= 15
-            factors.append(f"일간 {day_chg:.1f}% 하락")
-        elif day_chg < -1:
-            momentum -= 8
+        if mode == "sell":
+            # 매도: 급등 = 이익실현 기회, 급락 = 손절 타이밍
+            if day_chg > 3:
+                momentum += 15
+                factors.append(f"일간 +{day_chg:.1f}% 급등 → 이익실현")
+            elif day_chg > 1:
+                momentum += 8
+            elif day_chg < -3:
+                momentum -= 5
+                factors.append(f"일간 {day_chg:.1f}% 급락")
+            elif day_chg < -1:
+                momentum -= 3
+        else:
+            # 매수: 급등 = 추격매수 위험, 급락 = 매수 기회
+            if day_chg > 3:
+                momentum += 15
+                factors.append(f"일간 +{day_chg:.1f}% 상승")
+            elif day_chg > 1:
+                momentum += 8
+            elif day_chg < -3:
+                momentum -= 15
+                factors.append(f"일간 {day_chg:.1f}% 하락")
+            elif day_chg < -1:
+                momentum -= 8
 
     # 갭 분석
     if cp and pc and op and pc > 0:
         gap = (op - pc) / pc * 100
-        if gap > 2:
-            momentum += 5
-            factors.append(f"갭업 +{gap:.1f}%")
-        elif gap < -2:
-            momentum -= 5
-            factors.append(f"갭다운 {gap:.1f}%")
+        if mode == "sell":
+            if gap > 2:
+                momentum += 5
+                factors.append(f"갭업 +{gap:.1f}% → 차익실현 기회")
+            elif gap < -2:
+                momentum -= 5
+                factors.append(f"갭다운 {gap:.1f}%")
+        else:
+            if gap > 2:
+                momentum += 5
+                factors.append(f"갭업 +{gap:.1f}%")
+            elif gap < -2:
+                momentum -= 5
+                factors.append(f"갭다운 {gap:.1f}%")
 
     # 일중 범위 위치
     range_pos = trend.get("rangePos", 50)
-    if range_pos > 80:
-        momentum -= 8
-        factors.append("일중 고점권")
-    elif range_pos < 20:
-        momentum += 8
-        factors.append("일중 저점권")
+    if mode == "sell":
+        # 매도: 고점권 = 매도 유리, 저점권 = 매도 불리
+        if range_pos > 80:
+            momentum += 8
+            factors.append("일중 고점권 → 매도 유리")
+        elif range_pos < 20:
+            momentum -= 8
+            factors.append("일중 저점권 → 매도 불리")
+    else:
+        if range_pos > 80:
+            momentum -= 8
+            factors.append("일중 고점권")
+        elif range_pos < 20:
+            momentum += 8
+            factors.append("일중 저점권")
 
     score += momentum * 0.25
 
@@ -1286,49 +1351,111 @@ def calc_buy_sell_score(code: str, quote: dict, trend: dict) -> dict:
     vol = quote.get("volume")
     if vol and vol > 0 and cp and pc:
         price_up = cp > pc
-        # 거래량 급증은 방향 확인 신호
-        if vol > 1000000:
-            if price_up:
-                vol_score += 10
-                factors.append("거래량 증가+상승")
-            else:
-                vol_score -= 10
-                factors.append("거래량 증가+하락")
-        elif vol < 100000:
-            vol_score -= 3  # 거래량 감소는 불확실성
+        if mode == "sell":
+            # 매도: 거래량+상락 방향 분석
+            if vol > 1000000:
+                if price_up:
+                    vol_score += 8
+                    factors.append("거래량 증가+상승 → 이익실현 수요")
+                else:
+                    vol_score -= 10
+                    factors.append("거래량 증가+하락 → 매도 압력")
+            elif vol < 100000:
+                vol_score -= 3
+        else:
+            if vol > 1000000:
+                if price_up:
+                    vol_score += 10
+                    factors.append("거래량 증가+상승")
+                else:
+                    vol_score -= 10
+                    factors.append("거래량 증가+하락")
+            elif vol < 100000:
+                vol_score -= 3
 
     score += vol_score * 0.15
+
+    # ── 5. 매도 전용: 수익률 보정 (가중치 10%) ──
+    if mode == "sell" and holding:
+        avg_p = holding.get("avgPrice", 0)
+        if avg_p and avg_p > 0 and cp:
+            profit_rate = (cp - avg_p) / avg_p * 100
+            profit_score = 0
+            if profit_rate > 30:
+                profit_score = 15
+                factors.append(f"수익률 +{profit_rate:.1f}% → 적극매도")
+            elif profit_rate > 15:
+                profit_score = 10
+                factors.append(f"수익률 +{profit_rate:.1f}% → 이익실현")
+            elif profit_rate > 5:
+                profit_score = 5
+                factors.append(f"수익률 +{profit_rate:.1f}%")
+            elif profit_rate > 0:
+                profit_score = 2
+            elif profit_rate < -10:
+                profit_score = -10
+                factors.append(f"손실 {profit_rate:.1f}% → 홀드")
+            elif profit_rate < -5:
+                profit_score = -5
+                factors.append(f"손실 {profit_rate:.1f}%")
+            score += profit_score
 
     # ── 점수 범위 제한 ──
     score = max(0, min(100, round(score)))
 
     # ── 등급 분류 ──
-    if score >= 80:
-        label = "강력매수"
-        grade = "strong_buy"
-    elif score >= 65:
-        label = "매수"
-        grade = "buy"
-    elif score >= 55:
-        label = "관망(상승)"
-        grade = "lean_buy"
-    elif score > 45:
-        label = "관망"
-        grade = "hold"
-    elif score > 35:
-        label = "관망(하락)"
-        grade = "lean_sell"
-    elif score > 20:
-        label = "매도"
-        grade = "sell"
+    if mode == "sell":
+        # 매도 점수: 높을수록 매도 적기
+        if score >= 80:
+            label = "적극매도"
+            grade = "strong_sell"
+        elif score >= 65:
+            label = "매도"
+            grade = "sell"
+        elif score >= 55:
+            label = "관망(매도)"
+            grade = "lean_sell"
+        elif score > 45:
+            label = "관망"
+            grade = "hold"
+        elif score > 35:
+            label = "관망(보유)"
+            grade = "lean_buy"
+        elif score > 20:
+            label = "보유"
+            grade = "buy"
+        else:
+            label = "적극보유"
+            grade = "strong_buy"
     else:
-        label = "강력매도"
-        grade = "strong_sell"
+        # 매수 점수: 높을수록 매수 적기
+        if score >= 80:
+            label = "적극매수"
+            grade = "strong_buy"
+        elif score >= 65:
+            label = "매수"
+            grade = "buy"
+        elif score >= 55:
+            label = "관망(매수)"
+            grade = "lean_buy"
+        elif score > 45:
+            label = "관망"
+            grade = "hold"
+        elif score > 35:
+            label = "관망(하락)"
+            grade = "lean_sell"
+        elif score > 20:
+            label = "매도"
+            grade = "sell"
+        else:
+            label = "강력매도"
+            grade = "strong_sell"
 
     return {
         "score": score,
         "label": label,
         "grade": grade,
+        "mode": mode,
         "factors": factors[:6],
     }
 
