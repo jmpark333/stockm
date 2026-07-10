@@ -2379,3 +2379,39 @@ tr.drag-over {
 tr[draggable="true"]:hover {
   background: rgba(148, 163, 184, 0.08);
 }
+
+/* 매수/매도 점수 게이지 */
+.buy-sell-score {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 110px;
+}
+
+.score-bar-bg {
+  width: 48px;
+  height: 6px;
+  background: rgba(148, 163, 184, 0.15);
+  border-radius: 3px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.score-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.4s ease;
+}
+
+.score-num {
+  font-size: 13px;
+  font-weight: 700;
+  min-width: 22px;
+  text-align: right;
+}
+
+.score-label {
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}

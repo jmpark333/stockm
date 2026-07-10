@@ -672,7 +672,7 @@ function updateCalcResult() {
     const newTotalCost = calcState.totalCost + addCost;
     const newAvg = newQty > 0 ? newTotalCost / newQty : 0;
     const newValue = calcState.currentPrice * newQty;
-    const newProfit = (calcState.currentPrice - newAvg) * newQty;
+    const newProfit = Math.round(calcState.currentPrice * newQty - newTotalCost);
     const avgDiff = newAvg - calcState.avgPrice;
     const avgDiffRate = calcState.avgPrice > 0 ? (avgDiff / calcState.avgPrice) * 100 : 0;
 
@@ -1521,6 +1521,34 @@ const PHASE_LABELS = {
   '바닥반등': '⤴ 바닥반등', '천장반락': '⤵ 천장반락', '보합': '― 보합'
 };
 
+function makeBuySellScoreHtml(trendData) {
+  const bss = trendData.buySellScore;
+  if (!bss) return '<span style="color:var(--muted);font-size:11px">-</span>';
+  const score = bss.score;
+  const label = bss.label;
+  const grade = bss.grade;
+  const factors = bss.factors || [];
+
+  // 등급별 색상
+  const gradeColors = {
+    strong_buy: { bg: '#059669', bar: '#10b981', text: '#10b981' },
+    buy:        { bg: '#0d9488', bar: '#2dd4bf', text: '#2dd4bf' },
+    lean_buy:   { bg: '#1e40af', bar: '#60a5fa', text: '#60a5fa' },
+    hold:       { bg: '#374151', bar: '#9ca3af', text: '#9ca3af' },
+    lean_sell:  { bg: '#92400e', bar: '#fbbf24', text: '#fbbf24' },
+    sell:       { bg: '#b45309', bar: '#f59e0b', text: '#f59e0b' },
+    strong_sell:{ bg: '#dc2626', bar: '#ef4444', text: '#ef4444' },
+  };
+  const c = gradeColors[grade] || gradeColors.hold;
+
+  const factorText = factors.length > 0 ? factors.join(' · ') : '';
+  return `<div class="buy-sell-score" title="${factorText}">
+    <div class="score-bar-bg"><div class="score-bar-fill" style="width:${score}%;background:${c.bar}"></div></div>
+    <span class="score-num" style="color:${c.text}">${score}</span>
+    <span class="score-label" style="color:${c.text}">${label}</span>
+  </div>`;
+}
+
 function makeMidTrendHtml(trendData) {
   const midTrend = trendData.midTrend || '보합';
   const midTrendReasons = trendData.midTrendReasons || [];
@@ -1612,15 +1640,16 @@ function renderHoldings(rows) {
       <td class="trend-cell trend-clickable" ${trendDataAttr}><span style="font-size:13px;font-weight:700;color:${trendColor}">${trendLabel}</span>${trendSummary ? `<br><small style="opacity:0.6;font-size:10px">${trendSummary}</small>` : ''}</td>
       <td>${makeMidTrendHtml(t)}</td>
       <td>${makeLongTrendHtml(t)}</td>
+      <td>${makeBuySellScoreHtml(t)}</td>
     `;
     holdingsBody.appendChild(tr);
-    
+
     // AI 요약 표시
     const summary = stockSummaries[row.code];
     if (summary) {
       const summaryTr = document.createElement('tr');
       summaryTr.className = 'stock-summary-row';
-      summaryTr.innerHTML = `<td colspan="10" style="padding:4px 12px 8px;font-size:11px;color:var(--muted);border-bottom:1px solid var(--border);white-space:pre-line">${summary}</td>`;
+      summaryTr.innerHTML = `<td colspan="11" style="padding:4px 12px 8px;font-size:11px;color:var(--muted);border-bottom:1px solid var(--border);white-space:pre-line">${summary}</td>`;
       holdingsBody.appendChild(summaryTr);
     }
     
@@ -1672,15 +1701,16 @@ function renderWatchlist(rows) {
       <td class="trend-cell trend-clickable" ${trendDataAttr}><span style="font-size:13px;font-weight:700;color:${trendColor2}">${trendLabel2}</span>${trendSummary ? `<br><small style="opacity:0.6;font-size:10px">${trendSummary}</small>` : ''}</td>
       <td>${makeMidTrendHtml(t)}</td>
       <td>${makeLongTrendHtml(t)}</td>
+      <td>${makeBuySellScoreHtml(t)}</td>
     `;
     watchlistBody.appendChild(tr);
-    
+
     // AI 요약 표시
     const summary = stockSummaries[row.code];
     if (summary) {
       const summaryTr = document.createElement('tr');
       summaryTr.className = 'stock-summary-row';
-      summaryTr.innerHTML = `<td colspan="8" style="padding:4px 12px 8px;font-size:11px;color:var(--muted);border-bottom:1px solid var(--border);white-space:pre-line">${summary}</td>`;
+      summaryTr.innerHTML = `<td colspan="9" style="padding:4px 12px 8px;font-size:11px;color:var(--muted);border-bottom:1px solid var(--border);white-space:pre-line">${summary}</td>`;
       watchlistBody.appendChild(summaryTr);
     }
     
@@ -2048,6 +2078,7 @@ async function loadPortfolio() {
         renderWatchlist(sortBySavedOrder(data.watchlist, WATCHLIST_ORDER_KEY));
       }
     }
+    window.__refreshSeconds = data.refreshSeconds || 10;
     sourceText.textContent = `네이버 금융 polling API · ${data.refreshSeconds}초 자동 갱신`;
     statusPill.textContent = `정상 · ${new Date().toLocaleTimeString('ko-KR')}`;
     
@@ -2120,7 +2151,7 @@ function setAutoRefresh(enabled) {
     autoTimer = setInterval(() => {
       if (isOffHours()) return;
       loadPortfolio();
-    }, 5000);
+    }, (window.__refreshSeconds || 10) * 1000);
   }
 }
 
@@ -2309,7 +2340,7 @@ watchlistToggle.addEventListener('click', async () => {
   watchlistToggle.textContent = watchlistExpanded ? '접기' : '펼치기';
   watchlistWrap.style.display = watchlistExpanded ? '' : 'none';
   if (watchlistExpanded && !watchlistLoaded) {
-    watchlistBody.innerHTML = '<tr><td colspan="7" class="loading">관심종목 데이터를 불러오는 중...</td></tr>';
+    watchlistBody.innerHTML = '<tr><td colspan="9" class="loading">관심종목 데이터를 불러오는 중...</td></tr>';
     try {
       const res = await fetch('/api/portfolio', { cache: 'no-store' });
       if (!res.ok) return;
@@ -2317,7 +2348,7 @@ watchlistToggle.addEventListener('click', async () => {
       renderWatchlist(sortBySavedOrder(data.watchlist, WATCHLIST_ORDER_KEY));
       watchlistLoaded = true;
     } catch (e) {
-      watchlistBody.innerHTML = '<tr><td colspan="7" class="muted" style="text-align:center">관심종목을 불러올 수 없습니다.</td></tr>';
+      watchlistBody.innerHTML = '<tr><td colspan="9" class="muted" style="text-align:center">관심종목을 불러올 수 없습니다.</td></tr>';
     }
   }
 });

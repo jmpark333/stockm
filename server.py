@@ -699,6 +699,13 @@ def calc_trend(quote):
         "midTrendReasons": mid_trend_reasons,
         "longTrend": long_trend,
         "longTrendReasons": long_trend_reasons,
+        "buySellScore": calc_buy_sell_score(code, quote, {
+            "techSignalScore": signal_score,
+            "shortTrend": short_trend,
+            "midTrend": mid_trend,
+            "longTrend": long_trend,
+            "rangePos": range_pos,
+        }),
     }
 
 def build_item(quote):
@@ -1182,6 +1189,148 @@ def calc_atr(highs: list[float], lows: list[float], closes: list[float], period:
             result[i] = (result[i - 1] * (period - 1) + true_ranges[i]) / period
     
     return result
+
+
+def calc_buy_sell_score(code: str, quote: dict, trend: dict) -> dict:
+    """매수/매도 종합 점수를 계산한다. 0(강력매도) ~ 100(강력매수)."""
+    score = 50  # 중립 시작점
+    factors = []
+
+    # ── 1. 기술적 지표 점수 (가중치 35%) ──
+    tech_score = trend.get("techSignalScore", 0)  # -100 ~ +100
+    tech_contrib = tech_score * 0.35
+    score += tech_contrib
+    if tech_score > 20:
+        factors.append(f"기술적지표 강세(+{tech_score:.0f})")
+    elif tech_score < -20:
+        factors.append(f"기술적지표 약세({tech_score:.0f})")
+
+    # ── 2. 추세 정렬 점수 (가중치 25%) ──
+    trend_score = 0
+    short = trend.get("shortTrend", "flat")
+    mid = trend.get("midTrend", "보합")
+    long_t = trend.get("longTrend", "보합")
+
+    # 단기 추세
+    if short == "up":
+        trend_score += 15
+    elif short == "down":
+        trend_score -= 15
+
+    # 중기 추세
+    if "상승" in mid:
+        trend_score += 10
+    elif "하락" in mid:
+        trend_score -= 10
+
+    # 장기 추세
+    if "상승" in long_t:
+        trend_score += 5
+    elif "하락" in long_t:
+        trend_score -= 5
+
+    # 3개 추세 동시 방향일 때 보너스
+    directions = [short, "up" if "상승" in mid else "down" if "하락" in mid else "flat",
+                  "up" if "상승" in long_t else "down" if "하락" in long_t else "flat"]
+    unique = set(d for d in directions if d != "flat")
+    if len(unique) == 1:
+        trend_score = int(trend_score * 1.3)
+        factors.append("추세 3개 동반" + (" 상승" in mid and "상승" or " 하락"))
+
+    score += trend_score * 0.25
+
+    # ── 3. 가격 모멘텀 점수 (가중치 25%) ──
+    cp = quote.get("currentPrice")
+    pc = quote.get("previousClose")
+    op = quote.get("open")
+    hv = quote.get("high")
+    lv = quote.get("low")
+    momentum = 0
+
+    if cp and pc and pc > 0:
+        day_chg = (cp - pc) / pc * 100
+        if day_chg > 3:
+            momentum += 15
+            factors.append(f"일간 +{day_chg:.1f}% 상승")
+        elif day_chg > 1:
+            momentum += 8
+        elif day_chg < -3:
+            momentum -= 15
+            factors.append(f"일간 {day_chg:.1f}% 하락")
+        elif day_chg < -1:
+            momentum -= 8
+
+    # 갭 분석
+    if cp and pc and op and pc > 0:
+        gap = (op - pc) / pc * 100
+        if gap > 2:
+            momentum += 5
+            factors.append(f"갭업 +{gap:.1f}%")
+        elif gap < -2:
+            momentum -= 5
+            factors.append(f"갭다운 {gap:.1f}%")
+
+    # 일중 범위 위치
+    range_pos = trend.get("rangePos", 50)
+    if range_pos > 80:
+        momentum -= 8
+        factors.append("일중 고점권")
+    elif range_pos < 20:
+        momentum += 8
+        factors.append("일중 저점권")
+
+    score += momentum * 0.25
+
+    # ── 4. 거래량 분석 (가중치 15%) ──
+    vol_score = 0
+    vol = quote.get("volume")
+    if vol and vol > 0 and cp and pc:
+        price_up = cp > pc
+        # 거래량 급증은 방향 확인 신호
+        if vol > 1000000:
+            if price_up:
+                vol_score += 10
+                factors.append("거래량 증가+상승")
+            else:
+                vol_score -= 10
+                factors.append("거래량 증가+하락")
+        elif vol < 100000:
+            vol_score -= 3  # 거래량 감소는 불확실성
+
+    score += vol_score * 0.15
+
+    # ── 점수 범위 제한 ──
+    score = max(0, min(100, round(score)))
+
+    # ── 등급 분류 ──
+    if score >= 80:
+        label = "강력매수"
+        grade = "strong_buy"
+    elif score >= 65:
+        label = "매수"
+        grade = "buy"
+    elif score >= 55:
+        label = "관망(상승)"
+        grade = "lean_buy"
+    elif score > 45:
+        label = "관망"
+        grade = "hold"
+    elif score > 35:
+        label = "관망(하락)"
+        grade = "lean_sell"
+    elif score > 20:
+        label = "매도"
+        grade = "sell"
+    else:
+        label = "강력매도"
+        grade = "strong_sell"
+
+    return {
+        "score": score,
+        "label": label,
+        "grade": grade,
+        "factors": factors[:6],
+    }
 
 
 def calc_tech_indicators(code: str) -> dict:

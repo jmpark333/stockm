@@ -53,7 +53,7 @@ elif BLOB_STORE_ID and BLOB_TOKEN:
     STORAGE_BACKEND = "blob"
 else:
     STORAGE_BACKEND = "none"
-print(f"[storage] backend={STORAGE_BACKEND}", file=sys.stderr, flush=True)
+print(f"[storage] backend={STORAGE_BACKEND} supabase_url={'set' if SUPABASE_URL else 'unset'} key={'set' if SUPABASE_KEY else 'unset'}", file=sys.stderr, flush=True)
 
 
 def kv_get(key):
@@ -118,9 +118,23 @@ def _redis_set(key, value):
 
 
 _SUPABASE_ERR = ""
+_KV_CACHE = {}  # key -> (value, expiry_ts)
+_KV_CACHE_TTL = 60  # seconds — short cache to dedupe rapid repeat calls
+
+def _kv_cache_get(key):
+    entry = _KV_CACHE.get(key)
+    if entry and entry[1] > time.time():
+        return entry[0]
+    return None
+
+def _kv_cache_set(key, value):
+    _KV_CACHE[key] = (value, time.time() + _KV_CACHE_TTL)
 
 def _supabase_get(key):
     global _SUPABASE_ERR
+    cached = _kv_cache_get(key)
+    if cached is not None:
+        return cached
     try:
         url = f"{SUPABASE_URL}/rest/v1/kv_store?key=eq.{urllib.parse.quote(key, safe='')}&select=value"
         req = urllib.request.Request(url, headers={
@@ -129,7 +143,10 @@ def _supabase_get(key):
         })
         with urllib.request.urlopen(req, timeout=5) as resp:
             rows = json.loads(resp.read().decode("utf-8"))
-            return rows[0]["value"] if rows else None
+            val = rows[0]["value"] if rows else None
+            if val is not None:
+                _kv_cache_set(key, val)
+            return val
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")[:300]
         _SUPABASE_ERR = f"HTTP {exc.code}: {body}"
@@ -143,6 +160,7 @@ def _supabase_get(key):
 
 def _supabase_set(key, value):
     global _SUPABASE_ERR
+    _kv_cache_set(key, value)  # optimistically update cache
     try:
         url = f"{SUPABASE_URL}/rest/v1/kv_store"
         body = json.dumps({"key": key, "value": value}).encode("utf-8")
@@ -913,6 +931,13 @@ def calc_trend(quote):
         "techIndicators": indicators,
         "techSignals": tech_signals,
         "techSignalScore": signal_score,
+        "buySellScore": calc_buy_sell_score(code, quote, {
+            "techSignalScore": signal_score,
+            "shortTrend": short_trend,
+            "midTrend": mid_trend_phase,
+            "longTrend": long_trend_phase,
+            "rangePos": range_pos,
+        }),
     }
 
 def build_item(quote):
@@ -1281,6 +1306,123 @@ def calc_atr(highs, lows, closes, period=14):
 _tech_cache = {}
 _tech_cache_time = {}
 TECH_CACHE_TTL = 300
+
+
+def calc_buy_sell_score(code, quote, trend):
+    """매수/매도 종합 점수를 계산한다. 0(강력매도) ~ 100(강력매수)."""
+    score = 50
+    factors = []
+
+    # 1. 기술적 지표 점수 (35%)
+    tech_score = trend.get("techSignalScore", 0)
+    tech_contrib = tech_score * 0.35
+    score += tech_contrib
+    if tech_score > 20:
+        factors.append(f"기술적지표 강세(+{tech_score:.0f})")
+    elif tech_score < -20:
+        factors.append(f"기술적지표 약세({tech_score:.0f})")
+
+    # 2. 추세 정렬 점수 (25%)
+    trend_score = 0
+    short = trend.get("shortTrend", "flat")
+    mid = trend.get("midTrend", "보합")
+    long_t = trend.get("longTrend", "보합")
+
+    if short == "up":
+        trend_score += 15
+    elif short == "down":
+        trend_score -= 15
+    if "상승" in mid:
+        trend_score += 10
+    elif "하락" in mid:
+        trend_score -= 10
+    if "상승" in long_t:
+        trend_score += 5
+    elif "하락" in long_t:
+        trend_score -= 5
+
+    directions = [short, "up" if "상승" in mid else "down" if "하락" in mid else "flat",
+                  "up" if "상승" in long_t else "down" if "하락" in long_t else "flat"]
+    unique = set(d for d in directions if d != "flat")
+    if len(unique) == 1:
+        trend_score = int(trend_score * 1.3)
+        factors.append("추세 3개 동반" + ("상승" in mid and " 상승" or " 하락"))
+
+    score += trend_score * 0.25
+
+    # 3. 가격 모멘텀 점수 (25%)
+    cp = quote.get("currentPrice")
+    pc = quote.get("previousClose")
+    op = quote.get("open")
+    hv = quote.get("high")
+    lv = quote.get("low")
+    momentum = 0
+
+    if cp and pc and pc > 0:
+        day_chg = (cp - pc) / pc * 100
+        if day_chg > 3:
+            momentum += 15
+            factors.append(f"일간 +{day_chg:.1f}% 상승")
+        elif day_chg > 1:
+            momentum += 8
+        elif day_chg < -3:
+            momentum -= 15
+            factors.append(f"일간 {day_chg:.1f}% 하락")
+        elif day_chg < -1:
+            momentum -= 8
+
+    if cp and pc and op and pc > 0:
+        gap = (op - pc) / pc * 100
+        if gap > 2:
+            momentum += 5
+            factors.append(f"갭업 +{gap:.1f}%")
+        elif gap < -2:
+            momentum -= 5
+            factors.append(f"갭다운 {gap:.1f}%")
+
+    range_pos = trend.get("rangePos", 50)
+    if range_pos > 80:
+        momentum -= 8
+        factors.append("일중 고점권")
+    elif range_pos < 20:
+        momentum += 8
+        factors.append("일중 저점권")
+
+    score += momentum * 0.25
+
+    # 4. 거래량 분석 (15%)
+    vol = quote.get("volume")
+    if vol and vol > 0 and cp and pc:
+        price_up = cp > pc
+        if vol > 1000000:
+            if price_up:
+                score += 10 * 0.15
+                factors.append("거래량 증가+상승")
+            else:
+                score -= 10 * 0.15
+                factors.append("거래량 증가+하락")
+        elif vol < 100000:
+            score -= 3 * 0.15
+
+    score = max(0, min(100, round(score)))
+
+    if score >= 80:
+        label, grade = "강력매수", "strong_buy"
+    elif score >= 65:
+        label, grade = "매수", "buy"
+    elif score >= 55:
+        label, grade = "관망(상승)", "lean_buy"
+    elif score > 45:
+        label, grade = "관망", "hold"
+    elif score > 35:
+        label, grade = "관망(하락)", "lean_sell"
+    elif score > 20:
+        label, grade = "매도", "sell"
+    else:
+        label, grade = "강력매도", "strong_sell"
+
+    return {"score": score, "label": label, "grade": grade, "factors": factors[:6]}
+
 
 def calc_tech_indicators(code):
     import time
