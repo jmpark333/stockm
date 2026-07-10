@@ -21,19 +21,30 @@ DATA_FILE = BASE_DIR / "data.json"
 CHAT_HISTORY_FILE = BASE_DIR / "chat_history.json"
 US_MARKET_FILE = BASE_DIR / "us_market.json"
 
-# Storage: Upstash Redis > Vercel Blob (fallback)
+# Storage: Upstash Redis > Supabase > Vercel Blob (fallback)
 REDIS_URL = os.environ.get("KV_REST_API_URL", os.environ.get("UPSTASH_REDIS_REST_URL", "")).strip()
 REDIS_TOKEN = os.environ.get("KV_REST_API_TOKEN", os.environ.get("UPSTASH_REDIS_REST_TOKEN", "")).strip()
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "").strip()
+SUPABASE_KEY = os.environ.get("SUPABASE_ANON_KEY", "").strip()
 BLOB_STORE_ID = os.environ.get("BLOB_STORE_ID", "").strip()
 BLOB_TOKEN = os.environ.get("BLOB_READ_WRITE_TOKEN", "").strip()
 
-STORAGE_BACKEND = "redis" if (REDIS_URL and REDIS_TOKEN) else ("blob" if (BLOB_STORE_ID and BLOB_TOKEN) else "none")
+if REDIS_URL and REDIS_TOKEN:
+    STORAGE_BACKEND = "redis"
+elif SUPABASE_URL and SUPABASE_KEY:
+    STORAGE_BACKEND = "supabase"
+elif BLOB_STORE_ID and BLOB_TOKEN:
+    STORAGE_BACKEND = "blob"
+else:
+    STORAGE_BACKEND = "none"
 print(f"[storage] backend={STORAGE_BACKEND}", file=sys.stderr, flush=True)
 
 
 def kv_get(key):
     if STORAGE_BACKEND == "redis":
         return _redis_get(key)
+    elif STORAGE_BACKEND == "supabase":
+        return _supabase_get(key)
     elif STORAGE_BACKEND == "blob":
         return _blob_get(key)
     return None
@@ -42,6 +53,8 @@ def kv_get(key):
 def kv_set(key, value):
     if STORAGE_BACKEND == "redis":
         return _redis_set(key, value)
+    elif STORAGE_BACKEND == "supabase":
+        return _supabase_set(key, value)
     elif STORAGE_BACKEND == "blob":
         return _blob_set(key, value)
     return False
@@ -85,6 +98,46 @@ def _redis_set(key, value):
             return ok
     except Exception as exc:
         print(f"[redis_set] key={key} error={exc}", file=sys.stderr, flush=True)
+        return False
+
+
+def _supabase_get(key):
+    try:
+        url = f"{SUPABASE_URL}/rest/v1/kv_store?key=eq.{urllib.parse.quote(key, safe='')}&select=value"
+        req = urllib.request.Request(url, headers={
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {SUPABASE_KEY}",
+        })
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            rows = json.loads(resp.read().decode("utf-8"))
+            return rows[0]["value"] if rows else None
+    except Exception as exc:
+        print(f"[supabase_get] key={key} error={exc}", file=sys.stderr, flush=True)
+        return None
+
+
+def _supabase_set(key, value):
+    try:
+        url = f"{SUPABASE_URL}/rest/v1/kv_store"
+        body = json.dumps({"key": key, "value": value}).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=body,
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": "application/json",
+                "Prefer": "resolution=merge-duplicates",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            ok = resp.status in (200, 201)
+            if not ok:
+                print(f"[supabase_set] key={key} status={resp.status}", file=sys.stderr, flush=True)
+            return ok
+    except Exception as exc:
+        print(f"[supabase_set] key={key} error={exc}", file=sys.stderr, flush=True)
         return False
 
 
