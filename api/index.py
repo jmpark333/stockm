@@ -890,19 +890,12 @@ def generate_stock_summary(item):
     change_rate = item.get("changeRate", 0) or 0
     profit_rate = item.get("realizedProfitRate") or item.get("profitRate") or 0
     
-    # 추세 요약
+    # 추세 요약 — 보합 포함 모든 추세 표시
     trend_parts = []
-    if short_phase not in ("보합",):
-        trend_parts.append(f"단기{short_phase}")
-    if mid_trend not in ("보합",):
-        trend_parts.append(f"중기{mid_trend}")
-    if long_trend not in ("보합",):
-        trend_parts.append(f"장기{long_trend}")
-    
-    if not trend_parts:
-        trend_desc = "모든 추세 보합"
-    else:
-        trend_desc = ", ".join(trend_parts)
+    trend_parts.append(f"단기{short_phase}")
+    trend_parts.append(f"중기{mid_trend}")
+    trend_parts.append(f"장기{long_trend}")
+    trend_desc = ", ".join(trend_parts)
     
     # 가격 및 수익률 요약
     if change_rate > 0:
@@ -1847,15 +1840,12 @@ def api_stock_summaries():
         articles = news_map.get(code, [])
         news_headline = articles[0]["title"] if articles else ""
         
-        # 추세 요약
+        # 추세 요약 — 보합 포함 모든 추세 표시
         trend_parts = []
-        if short_phase != "보합":
-            trend_parts.append(f"단기 {short_phase}")
-        if mid_trend != "보합":
-            trend_parts.append(f"중기 {mid_trend}")
-        if long_trend != "보합":
-            trend_parts.append(f"장기 {long_trend}")
-        trend_desc = ", ".join(trend_parts) if trend_parts else "모든 추세 보합"
+        trend_parts.append(f"단기 {short_phase}")
+        trend_parts.append(f"중기 {mid_trend}")
+        trend_parts.append(f"장기 {long_trend}")
+        trend_desc = ", ".join(trend_parts)
         
         # 가격 요약
         if change_rate > 0:
