@@ -130,7 +130,7 @@ def fetch_quote(code):
             "high": item.get("hv"),
             "low": item.get("lv"),
             "open": item.get("ov"),
-            "volume": item.get("nmv") or item.get("vlm"),  # 누적 거래량
+            "volume": item.get("aq"),  # 거래량
             "afterMarketPrice": over_price,
             "updatedAt": extra.get("localTradedAt") or payload.get("time"),
         }

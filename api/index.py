@@ -367,6 +367,7 @@ def fetch_quote(code):
             "high": item.get("hv"),
             "low": item.get("lv"),
             "open": item.get("ov"),
+            "volume": item.get("aq"),
             "afterMarketPrice": over_price,
             "updatedAt": extra.get("localTradedAt") or payload.get("time"),
         }
@@ -2429,7 +2430,7 @@ def get_ai_opinion(code, mode="buy"):
     chg_rate = quote.get("changeRate", 0)
     hv = quote.get("high", 0)
     lv = quote.get("low", 0)
-    vol = quote.get("volume", 0)
+    vol = quote.get("volume") or 0
 
     # 기술적 지표
     tech_ctx = ""
@@ -2541,9 +2542,10 @@ def get_ai_opinion(code, mode="buy"):
 - 두 개의 필드만 허용: "opinion" (매수/매도/관망 중 하나), "reason" (3~5줄 분석 근거)
 - 불확실성은 '~할 수 있습니다', '~가능성이 있습니다'로 표현
 - 기술적 지표 수치를 반드시 인용
+- 제공된 데이터만 근거로 사용하고, 없는 데이터는 언급하지 마세요
 - 3줄 이내로 간결하게 답변
 
-예시: {{"opinion": "매수", "reason": "RSI 32로 과매도 구간 진입. 볼린저 하단 접근으로 반등 가능성 높음. 거래량 증가 확인."}}
+예시: {{"opinion": "매수", "reason": "RSI 32로 과매도 구간 진입. 볼린저 하단 접근으로 반등 가능성 높음."}}
 
 [종목 정보]
 - 종목: {name} ({code})
