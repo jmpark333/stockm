@@ -2392,10 +2392,16 @@ def call_llm_for_ai_opinion(messages):
             raw = resp.read().decode("utf-8")
         result = json.loads(raw)
         choice = result["choices"][0]
-        content = (choice.get("message") or {}).get("content") or ""
+        msg = choice.get("message") or {}
+        content = msg.get("content") or ""
+        # reasoning 모델의 경우 content가 비어있을 수 있음
+        if not content:
+            reasoning = msg.get("reasoning") or ""
+            if reasoning:
+                content = reasoning
         if not content:
             return {"reply": "AI 분석 실패: 빈 응답"}
-        return {"reply": content.strip()}
+        return {"reply": _strip_thinking_artifacts(content).strip()}
     except Exception as exc:
         return {"reply": f"AI 분석 실패: {exc}"}
 
@@ -2574,7 +2580,11 @@ def get_ai_opinion(code, mode="buy"):
     # JSON 파싱 시도
     opinion_data = {"opinion": "관망", "reason": reply}
     try:
-        json_match = re.search(r'\{[^{}]*\}', reply, re.DOTALL)
+        # markdown 코드 블록 제거
+        cleaned = re.sub(r'```json\s*', '', reply)
+        cleaned = re.sub(r'```\s*$', '', cleaned.strip())
+        cleaned = re.sub(r'```\s*', '', cleaned)
+        json_match = re.search(r'\{[^{}]*\}', cleaned, re.DOTALL)
         if json_match:
             parsed = json.loads(json_match.group())
             opinion_data["opinion"] = parsed.get("opinion", "관망")
