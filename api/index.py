@@ -1526,11 +1526,11 @@ def calc_buy_sell_score(code, quote, trend, mode="buy", holding=None):
         elif score > 45:
             label, grade = "관망", "hold"
         elif score > 35:
-            label, grade = "관망(하락)", "lean_sell"
+            label, grade = "관망(보류)", "lean_sell"
         elif score > 20:
-            label, grade = "매도", "sell"
+            label, grade = "매수불리", "sell"
         else:
-            label, grade = "강력매도", "strong_sell"
+            label, grade = "매수매우불리", "strong_sell"
 
     return {"score": score, "label": label, "grade": grade, "mode": mode, "factors": factors[:6]}
 

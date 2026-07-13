@@ -2415,3 +2415,73 @@ tr[draggable="true"]:hover {
   font-weight: 600;
   white-space: nowrap;
 }
+
+.clickable-score:hover {
+  opacity: 0.85;
+}
+
+.score-modal-box {
+  max-width: 480px;
+}
+
+.score-detail-header {
+  text-align: center;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 16px;
+}
+
+.score-detail-value {
+  font-size: 48px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.score-detail-label {
+  font-size: 16px;
+  font-weight: 600;
+  margin-top: 8px;
+}
+
+.score-detail-mode {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.score-detail-desc {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 8px;
+  line-height: 1.5;
+}
+
+.score-factors {
+  margin-top: 16px;
+}
+
+.score-factors-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.score-factor-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.score-factor-item:last-child {
+  border-bottom: none;
+}
+
+.score-factor-bullet {
+  color: var(--accent);
+  font-weight: 700;
+  flex-shrink: 0;
+  margin-top: 1px;
+}

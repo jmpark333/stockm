@@ -824,6 +824,7 @@ document.addEventListener('keydown', e => {
     closeCalcModal();
     closeSignalModal();
     closeTechDetailModal();
+    closeScoreModal();
     toggleChat(false);
   }
 });
@@ -1378,6 +1379,109 @@ function attachTrendHandlers(container) {
   });
 }
 
+/* Attach score click handlers (매도/매수점수 클릭) */
+const scoreModal = document.querySelector('#scoreModal');
+const scoreModalTitle = document.querySelector('#scoreModalTitle');
+const scoreModalClose = document.querySelector('#scoreModalClose');
+const scoreModalBody = document.querySelector('#scoreModalBody');
+
+function showScoreModal(name, score, label, mode, factors) {
+  const isSell = mode === 'sell';
+  const modeText = isSell ? '매도점수' : '매수점수';
+  const modeDesc = isSell
+    ? '현재 보유 중인 종목에서 높은 가격에 팔 수 있는 적기를 판단하는 점수입니다.'
+    : '관심종목에서 낮은 가격에 살 수 있는 적기를 판단하는 점수입니다.';
+
+  const gradeColors = {
+    strong_buy: '#10b981', buy: '#2dd4bf', lean_buy: '#60a5fa',
+    hold: '#9ca3af', lean_sell: '#fbbf24', sell: '#f59e0b', strong_sell: '#ef4444'
+  };
+  const gradeMap = {
+    80: isSell ? 'strong_sell' : 'strong_buy',
+    65: isSell ? 'sell' : 'buy',
+    55: isSell ? 'lean_sell' : 'lean_buy',
+    45: 'hold',
+  };
+  let grade = 'hold';
+  if (score >= 80) grade = gradeMap[80];
+  else if (score >= 65) grade = gradeMap[65];
+  else if (score >= 55) grade = gradeMap[55];
+  else if (score >= 45) grade = gradeMap[45];
+  else if (isSell) {
+    if (score > 35) grade = 'lean_buy';
+    else if (score > 20) grade = 'buy';
+    else grade = 'strong_buy';
+  } else {
+    if (score > 35) grade = 'lean_sell';
+    else if (score > 20) grade = 'sell';
+    else grade = 'strong_sell';
+  }
+  const color = gradeColors[grade] || '#9ca3af';
+
+  let desc = '';
+  if (isSell) {
+    if (score >= 80) desc = '매도 적기가 매우 높습니다. 이익실현을 적극적으로 고려하세요.';
+    else if (score >= 65) desc = '매도 적기가 높습니다. 차익실현을 검토해보세요.';
+    else if (score >= 55) desc = '약간 매도에 유리한 구간이나, 추가 상승 여지가 있습니다.';
+    else if (score >= 45) desc = '뚜렷한 매도/보유 시그널이 없는 관망 구간입니다.';
+    else if (score >= 35) desc = '보유에 유리한 구간입니다. 당장 매도할 이유가 크지 않습니다.';
+    else if (score >= 20) desc = '보유가 유리합니다. 추가 상승을 기대할 수 있습니다.';
+    else desc = '매우 보유에 유리합니다. 매도보다는 보유 전략이 적합합니다.';
+  } else {
+    if (score >= 80) desc = '매수 적기가 매우 높습니다. 분할매수를 적극 고려하세요.';
+    else if (score >= 65) desc = '매수 적기가 높습니다. 매수 기회를 검토해보세요.';
+    else if (score >= 55) desc = '약간 매수에 유리하나, 추가 하락 가능성이 있습니다.';
+    else if (score >= 45) desc = '뚜렷한 매수 시그널이 없는 관망 구간입니다.';
+    else if (score >= 35) desc = '매수에 다소 불리한 구간입니다. 서두르지 마세요.';
+    else if (score >= 20) desc = '매수에 불리합니다. 추격매수를 피하세요.';
+    else desc = '매수에 매우 불리합니다. 추가 하락 가능성이 높습니다.';
+  }
+
+  let html = `<div class="score-detail-header">
+    <div class="score-detail-value" style="color:${color}">${score}</div>
+    <div class="score-detail-label" style="color:${color}">${label}</div>
+    <div class="score-detail-mode">${modeText}</div>
+    <div class="score-detail-desc">${desc}</div>
+  </div>`;
+
+  if (factors && factors.length > 0) {
+    html += '<div class="score-factors">';
+    html += '<div class="score-factors-title">분석 근거</div>';
+    factors.forEach(f => {
+      html += `<div class="score-factor-item">
+        <span class="score-factor-bullet">•</span>
+        <span>${f}</span>
+      </div>`;
+    });
+    html += '</div>';
+  } else {
+    html += '<div class="score-factors"><div class="score-factors-title">분석 근거</div><div style="font-size:13px;color:var(--muted)">특이사항 없음</div></div>';
+  }
+
+  scoreModalTitle.textContent = `${name || ''} — ${modeText} 상세`;
+  scoreModalBody.innerHTML = html;
+  scoreModal.hidden = false;
+}
+
+function closeScoreModal() { scoreModal.hidden = true; }
+scoreModalClose.addEventListener('click', closeScoreModal);
+scoreModal.addEventListener('click', e => { if (e.target === scoreModal) closeScoreModal(); });
+
+function attachScoreHandlers(container) {
+  container.querySelectorAll('.clickable-score').forEach(el => {
+    el.addEventListener('click', () => {
+      const row = el.closest('tr');
+      const name = row ? (row.querySelector('.name-cell strong')?.textContent || '') : '';
+      const score = parseInt(el.dataset.score) || 0;
+      const label = el.dataset.label || '';
+      const mode = el.dataset.mode || 'buy';
+      let factors = [];
+      try { factors = JSON.parse(el.dataset.factors || '[]'); } catch(e) {}
+      showScoreModal(name, score, label, mode, factors);
+    });
+  });
+}
+
 /* Attach AI analysis button handlers */
 function attachAIHandlers(container) {
   container.querySelectorAll('.ai-btn:not(.done)').forEach(btn => {
@@ -1527,10 +1631,9 @@ function makeBuySellScoreHtml(trendData) {
   const score = bss.score;
   const label = bss.label;
   const grade = bss.grade;
+  const mode = bss.mode || 'buy';
   const factors = bss.factors || [];
 
-  // 매도 모드: 점수가 높을수록 매도 적기 (빨강=강한매도신호)
-  // 매수 모드: 점수가 높을수록 매수 적기 (초록=강한매수신호)
   const gradeColors = {
     strong_buy: { bg: '#059669', bar: '#10b981', text: '#10b981' },
     buy:        { bg: '#0d9488', bar: '#2dd4bf', text: '#2dd4bf' },
@@ -1543,7 +1646,9 @@ function makeBuySellScoreHtml(trendData) {
   const c = gradeColors[grade] || gradeColors.hold;
 
   const factorText = factors.length > 0 ? factors.join(' · ') : '';
-  return `<div class="buy-sell-score" title="${factorText}">
+  const encodedFactors = JSON.stringify(factors).replace(/'/g, "&#39;");
+  const encodedLabel = label.replace(/"/g, '&quot;');
+  return `<div class="buy-sell-score clickable-score" data-score="${score}" data-label="${encodedLabel}" data-mode="${mode}" data-factors='${encodedFactors}' title="${factorText} (클릭하여 상세보기)" style="cursor:pointer">
     <div class="score-bar-bg"><div class="score-bar-fill" style="width:${score}%;background:${c.bar}"></div></div>
     <span class="score-num" style="color:${c.text}">${score}</span>
     <span class="score-label" style="color:${c.text}">${label}</span>
@@ -1659,6 +1764,7 @@ function renderHoldings(rows) {
   attachChartHandlers(holdingsBody);
   attachCalcHandlers(holdingsBody);
   attachTrendHandlers(holdingsBody);
+  attachScoreHandlers(holdingsBody);
   updateSortIcons();
 }
 
@@ -1719,6 +1825,7 @@ function renderWatchlist(rows) {
   });
   attachChartHandlers(watchlistBody);
   attachTrendHandlers(watchlistBody);
+  attachScoreHandlers(watchlistBody);
 }
 
 /* ────────────────────────────────────────── */

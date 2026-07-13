@@ -1445,10 +1445,10 @@ def calc_buy_sell_score(code: str, quote: dict, trend: dict, mode: str = "buy", 
             label = "관망(하락)"
             grade = "lean_sell"
         elif score > 20:
-            label = "매도"
+            label = "매수불리"
             grade = "sell"
         else:
-            label = "강력매도"
+            label = "매수매우불리"
             grade = "strong_sell"
 
     return {
