@@ -3036,6 +3036,181 @@ def chat_with_ai(user_message, history, portfolio, news, search_results=None):
     return reply
 
 
+def get_ai_opinion(code, mode="buy"):
+    """AI에게 특정 종목의 매수/매도 의견을 요청한다."""
+    try:
+        quote = fetch_quote(code)
+    except Exception:
+        quote = {"code": code, "error": "호가 데이터 없음"}
+
+    name = quote.get("name", code)
+    cp = quote.get("currentPrice", 0)
+    pc = quote.get("previousClose", 0)
+    chg = quote.get("change", 0)
+    chg_rate = quote.get("changeRate", 0)
+    hv = quote.get("high", 0)
+    lv = quote.get("low", 0)
+    vol = quote.get("volume", 0)
+
+    # 기술적 지표
+    tech_ctx = ""
+    try:
+        tech = calc_tech_indicators(code)
+        ind = tech.get("indicators", {})
+        sigs = tech.get("signals", [])
+        sig_score = tech.get("signalScore", 0)
+        sig_label = tech.get("techSignal", "hold")
+        signal_names = {"strong_buy": "강력매수", "buy": "매수", "hold": "관망", "sell": "매도", "strong_sell": "강력매도"}
+
+        tech_ctx = f"기술적 종합: {signal_names.get(sig_label, '관망')} (점수: {sig_score})\n"
+        if ind.get("rsi14") is not None:
+            rsi = ind["rsi14"]
+            rsi_s = "과매수" if rsi > 70 else "강세" if rsi > 60 else "약세" if rsi < 40 else "과매도" if rsi < 30 else "중립"
+            tech_ctx += f"RSI(14): {rsi:.1f} ({rsi_s})\n"
+        if ind.get("macd"):
+            m = ind["macd"]
+            macd_v = m.get("macd", 0)
+            sig_v = m.get("signal", 0)
+            tech_ctx += f"MACD: {macd_v:.2f} (시그널: {sig_v:.2f}) {'상승모멘텀' if macd_v > sig_v else '하락모멘텀'}\n"
+        if ind.get("bollinger"):
+            bb = ind["bollinger"]
+            if cp and bb.get("upper") and bb.get("lower"):
+                bb_pos = (cp - bb["lower"]) / (bb["upper"] - bb["lower"]) * 100
+                tech_ctx += f"볼린저밴드 위치: {bb_pos:.0f}% (상단: {bb.get('upper', 0):,.0f}원, 하단: {bb.get('lower', 0):,.0f}원)\n"
+        if ind.get("stochastic"):
+            st = ind["stochastic"]
+            tech_ctx += f"스토캐스틱: %K={st.get('k', 0):.1f} %D={st.get('d', 0):.1f}\n"
+        if sigs:
+            tech_ctx += f"기술적 시그널: {', '.join(sigs[:5])}\n"
+    except Exception:
+        tech_ctx = "기술적 지표 없음\n"
+
+    # 뉴스
+    news_ctx = ""
+    try:
+        news_items = build_news()
+        for item in news_items:
+            if item.get("code") == code or item.get("name") == name:
+                articles = item.get("articles", [])
+                if articles:
+                    news_ctx = f"{name} 관련 뉴스:\n"
+                    for a in articles[:5]:
+                        title = a.get("title", "")
+                        src = a.get("source", "")
+                        if title:
+                            news_ctx += f"• {title}"
+                            if src:
+                                news_ctx += f" ({src})"
+                            news_ctx += "\n"
+                break
+    except Exception:
+        pass
+
+    # 시장 컨텍스트
+    market_ctx = ""
+    try:
+        us_ctx = build_us_market_context()
+        if us_ctx:
+            market_ctx += us_ctx + "\n"
+        kr_ctx = build_kospi_kosdaq_context()
+        if kr_ctx:
+            market_ctx += kr_ctx + "\n"
+    except Exception:
+        pass
+
+    # 추세 데이터
+    trend_ctx = ""
+    try:
+        trend = calc_trend(quote, mode=mode)
+        trend_phase = trend.get("trendPhase", "보합")
+        mid_trend = trend.get("midTrend", "보합")
+        long_trend = trend.get("longTrend", "보합")
+        trend_ctx = f"단기 추세: {trend_phase}, 중기 추세: {mid_trend}, 장기 추세: {long_trend}\n"
+        signal_reasons = trend.get("signalReasons", [])
+        if signal_reasons:
+            trend_ctx += f"추세 근거: {', '.join(signal_reasons[:3])}\n"
+    except Exception:
+        pass
+
+    # 매수/매도 점수
+    score_ctx = ""
+    try:
+        bss = calc_buy_sell_score(code, quote, {
+            "techSignalScore": tech.get("signalScore", 0) if 'tech' in dir() else 0,
+            "shortTrend": trend.get("shortTrend", "flat") if 'trend' in dir() else "flat",
+            "midTrend": trend.get("midTrend", "보합") if 'trend' in dir() else "보합",
+            "longTrend": trend.get("longTrend", "보합") if 'trend' in dir() else "보합",
+            "rangePos": trend.get("rangePos", 50) if 'trend' in dir() else 50,
+        }, mode=mode)
+        score_ctx = f"{'매도' if mode == 'sell' else '매수'} 점수: {bss.get('score', 50)}/100 ({bss.get('label', '관망')})\n"
+        factors = bss.get("factors", [])
+        if factors:
+            score_ctx += f"점수 근거: {', '.join(factors)}\n"
+    except Exception:
+        pass
+
+    # 프롬프트 구성
+    mode_text = "매도" if mode == "sell" else "매수"
+    opposite_text = "매수" if mode == "sell" else "매도"
+
+    system_prompt = f"""당신은 전문 주식 투자 분석가입니다. 아래 데이터를 바탕으로 {name} 종목의 {mode_text} 의견을 제공하세요.
+
+[규칙]
+- 결과는 반드시 JSON으로만 답변하세요.
+- 두 개의 필드만 허용: "opinion" (매수/매도/관망 중 하나), "reason" (3~5줄 분석 근거)
+- 불확실성은 '~할 수 있습니다', '~가능성이 있습니다'로 표현
+- 기술적 지표 수치를 반드시 인용
+- 3줄 이내로 간결하게 답변
+
+예시: {{"opinion": "매수", "reason": "RSI 32로 과매도 구간 진입. 볼린저 하단 접근으로 반등 가능성 높음. 거래량 증가 확인."}}
+
+[종목 정보]
+- 종목: {name} ({code})
+- 현재가: {cp:,}원
+- 전일대비: {chg:+,}원 ({chg_rate:+.2f}%)
+- 고가: {hv:,}원 / 저가: {lv:,}원
+- 거래량: {vol:,}주
+
+[기술적 분석]
+{tech_ctx}
+
+[추세 분석]
+{trend_ctx}
+
+[매매 점수]
+{score_ctx}
+
+[뉴스]
+{news_ctx if news_ctx else "최신 뉴스 없음"}
+
+[시장 컨텍스트]
+{market_ctx if market_ctx else "시장 데이터 없음"}
+
+현재 시점에서 {mode_text} 의견을 제시하세요."""
+
+    messages = [{"role": "system", "content": system_prompt}]
+    result = call_llm(messages)
+    reply = result.get("reply", "")
+
+    # JSON 파싱 시도
+    opinion_data = {"opinion": "관망", "reason": reply}
+    try:
+        # JSON 블록 추출
+        json_match = re.search(r'\{[^{}]*\}', reply, re.DOTALL)
+        if json_match:
+            parsed = json.loads(json_match.group())
+            opinion_data["opinion"] = parsed.get("opinion", "관망")
+            opinion_data["reason"] = parsed.get("reason", reply)
+    except Exception:
+        pass
+
+    opinion_data["stockName"] = name
+    opinion_data["stockCode"] = code
+    opinion_data["mode"] = mode
+    opinion_data["currentPrice"] = cp
+    return opinion_data
+
+
 class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
@@ -3097,6 +3272,15 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_json({"error": "code parameter required"})
                 return
             self.send_json(handle_analyze_signal(code))
+            return
+        if p == "/api/ai-opinion":
+            qs = urllib.parse.parse_qs(parsed.query)
+            code = qs.get("code", [None])[0]
+            mode = qs.get("mode", ["buy"])[0]
+            if not code:
+                self.send_json({"error": "code parameter required"})
+                return
+            self.send_json(get_ai_opinion(code, mode))
             return
         if p == "/api/us-market":
             self.send_json(load_us_market())

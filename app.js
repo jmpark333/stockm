@@ -825,6 +825,7 @@ document.addEventListener('keydown', e => {
     closeSignalModal();
     closeTechDetailModal();
     closeScoreModal();
+    closeAiOpinionModal();
     toggleChat(false);
   }
 });
@@ -1467,6 +1468,58 @@ function closeScoreModal() { scoreModal.hidden = true; }
 scoreModalClose.addEventListener('click', closeScoreModal);
 scoreModal.addEventListener('click', e => { if (e.target === scoreModal) closeScoreModal(); });
 
+/* AI 의견 모달 */
+const aiOpinionModal = document.querySelector('#aiOpinionModal');
+const aiOpinionTitle = document.querySelector('#aiOpinionTitle');
+const aiOpinionClose = document.querySelector('#aiOpinionClose');
+const aiOpinionBody = document.querySelector('#aiOpinionBody');
+
+function closeAiOpinionModal() { aiOpinionModal.hidden = true; }
+aiOpinionClose.addEventListener('click', closeAiOpinionModal);
+aiOpinionModal.addEventListener('click', e => { if (e.target === aiOpinionModal) closeAiOpinionModal(); });
+
+async function showAiOpinion(code, mode) {
+  const modeText = mode === 'sell' ? '매도' : '매수';
+  aiOpinionTitle.textContent = `AI ${modeText} 의견 — 분석 중...`;
+  aiOpinionBody.innerHTML = '<div style="text-align:center;padding:32px;color:var(--muted)"><div class="ai-opinion-loading"></div><p style="margin-top:12px">뉴스, 시황, 기술적 지표를 분석하고 있습니다...</p></div>';
+  aiOpinionModal.hidden = false;
+
+  try {
+    const res = await fetch(`/api/ai-opinion?code=${code}&mode=${mode}`, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    const stockName = data.stockName || code;
+    const cp = data.currentPrice || 0;
+    const opinion = data.opinion || '관망';
+    const reason = data.reason || '분석 불가';
+
+    const opinionColors = {
+      '매수': '#10b981', '적극매수': '#059669',
+      '매도': '#ef4444', '적극매도': '#dc2626',
+      '관망': '#9ca3af',
+    };
+    const color = opinionColors[opinion] || '#9ca3af';
+
+    aiOpinionTitle.textContent = `AI ${modeText} 의견 — ${stockName}`;
+    aiOpinionBody.innerHTML = `
+      <div class="ai-opinion-header">
+        <div class="ai-opinion-stock">${stockName} <small>${code}</small></div>
+        ${cp ? `<div class="ai-opinion-price">${formatMoney(cp)}</div>` : ''}
+      </div>
+      <div class="ai-opinion-result">
+        <div class="ai-opinion-badge" style="background:${color}20;color:${color};border:1px solid ${color}40">${opinion}</div>
+        <div class="ai-opinion-reason">${reason.replace(/\n/g, '<br>')}</div>
+      </div>
+      <div class="ai-opinion-disclaimer">AI 분석은 참고용이며, 투자 판단의 최종 책임은 투자자 본인에게 있습니다.</div>
+    `;
+  } catch (err) {
+    aiOpinionTitle.textContent = `AI ${modeText} 의견`;
+    aiOpinionBody.innerHTML = `<div style="text-align:center;padding:32px;color:var(--muted)">AI 분석 실패: ${err.message}</div>`;
+  }
+}
+
 function attachScoreHandlers(container) {
   container.querySelectorAll('.clickable-score').forEach(el => {
     el.addEventListener('click', () => {
@@ -1478,6 +1531,13 @@ function attachScoreHandlers(container) {
       let factors = [];
       try { factors = JSON.parse(el.dataset.factors || '[]'); } catch(e) {}
       showScoreModal(name, score, label, mode, factors);
+    });
+  });
+  container.querySelectorAll('.ai-opinion-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const code = btn.dataset.code;
+      const mode = btn.dataset.mode || 'buy';
+      if (code) showAiOpinion(code, mode);
     });
   });
 }
@@ -1625,7 +1685,11 @@ const PHASE_LABELS = {
   '바닥반등': '⤴ 바닥반등', '천장반락': '⤵ 천장반락', '보합': '― 보합'
 };
 
-function makeBuySellScoreHtml(trendData) {
+function mode_text(mode) {
+  return mode === 'sell' ? '매도' : '매수';
+}
+
+function makeBuySellScoreHtml(trendData, stockCode) {
   const bss = trendData.buySellScore;
   if (!bss) return '<span style="color:var(--muted);font-size:11px">-</span>';
   const score = bss.score;
@@ -1648,10 +1712,13 @@ function makeBuySellScoreHtml(trendData) {
   const factorText = factors.length > 0 ? factors.join(' · ') : '';
   const encodedFactors = JSON.stringify(factors).replace(/'/g, "&#39;");
   const encodedLabel = label.replace(/"/g, '&quot;');
-  return `<div class="buy-sell-score clickable-score" data-score="${score}" data-label="${encodedLabel}" data-mode="${mode}" data-factors='${encodedFactors}' title="${factorText} (클릭하여 상세보기)" style="cursor:pointer">
-    <div class="score-bar-bg"><div class="score-bar-fill" style="width:${score}%;background:${c.bar}"></div></div>
-    <span class="score-num" style="color:${c.text}">${score}</span>
-    <span class="score-label" style="color:${c.text}">${label}</span>
+  return `<div class="buy-sell-score-wrap">
+    <div class="buy-sell-score clickable-score" data-score="${score}" data-label="${encodedLabel}" data-mode="${mode}" data-factors='${encodedFactors}' title="${factorText} (클릭하여 상세보기)" style="cursor:pointer">
+      <div class="score-bar-bg"><div class="score-bar-fill" style="width:${score}%;background:${c.bar}"></div></div>
+      <span class="score-num" style="color:${c.text}">${score}</span>
+      <span class="score-label" style="color:${c.text}">${label}</span>
+    </div>
+    <button class="ai-opinion-btn" data-code="${stockCode || ''}" data-mode="${mode}" title="AI ${mode_text(mode)} 의견">AI</button>
   </div>`;
 }
 
@@ -1746,7 +1813,7 @@ function renderHoldings(rows) {
       <td class="trend-cell trend-clickable" ${trendDataAttr}><span style="font-size:13px;font-weight:700;color:${trendColor}">${trendLabel}</span>${trendSummary ? `<br><small style="opacity:0.6;font-size:10px">${trendSummary}</small>` : ''}</td>
       <td>${makeMidTrendHtml(t)}</td>
       <td>${makeLongTrendHtml(t)}</td>
-      <td>${makeBuySellScoreHtml(t)}</td>
+      <td>${makeBuySellScoreHtml(t, row.code)}</td>
     `;
     holdingsBody.appendChild(tr);
 
@@ -1808,7 +1875,7 @@ function renderWatchlist(rows) {
       <td class="trend-cell trend-clickable" ${trendDataAttr}><span style="font-size:13px;font-weight:700;color:${trendColor2}">${trendLabel2}</span>${trendSummary ? `<br><small style="opacity:0.6;font-size:10px">${trendSummary}</small>` : ''}</td>
       <td>${makeMidTrendHtml(t)}</td>
       <td>${makeLongTrendHtml(t)}</td>
-      <td>${makeBuySellScoreHtml(t)}</td>
+      <td>${makeBuySellScoreHtml(t, row.code)}</td>
     `;
     watchlistBody.appendChild(tr);
 
