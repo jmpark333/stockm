@@ -2581,17 +2581,31 @@ def get_ai_opinion(code, mode="buy"):
     # JSON 파싱 시도
     opinion_data = {"opinion": "관망", "reason": reply}
     try:
-        # markdown 코드 블록 제거
-        cleaned = re.sub(r'```json\s*', '', reply)
-        cleaned = re.sub(r'```\s*$', '', cleaned.strip())
-        cleaned = re.sub(r'```\s*', '', cleaned)
-        json_match = re.search(r'\{[^{}]*\}', cleaned, re.DOTALL)
-        if json_match:
-            parsed = json.loads(json_match.group())
+        # 1. 전체 문자열에서 JSON 파싱 시도
+        parsed = json.loads(reply)
+        opinion_data["opinion"] = parsed.get("opinion", "관망")
+        opinion_data["reason"] = parsed.get("reason", reply)
+    except Exception:
+        try:
+            # 2. markdown 코드 블록 제거 후 파싱 시도
+            cleaned = re.sub(r'```json\s*', '', reply)
+            cleaned = re.sub(r'```\s*$', '', cleaned.strip())
+            cleaned = re.sub(r'```\s*', '', cleaned)
+            parsed = json.loads(cleaned)
             opinion_data["opinion"] = parsed.get("opinion", "관망")
             opinion_data["reason"] = parsed.get("reason", reply)
-    except Exception:
-        pass
+        except Exception:
+            try:
+                # 3. 중괄호 매칭으로 JSON 블록 추출
+                start = reply.find('{')
+                end = reply.rfind('}')
+                if start != -1 and end != -1 and end > start:
+                    json_str = reply[start:end+1]
+                    parsed = json.loads(json_str)
+                    opinion_data["opinion"] = parsed.get("opinion", "관망")
+                    opinion_data["reason"] = parsed.get("reason", reply)
+            except Exception:
+                pass
 
     opinion_data["stockName"] = name
     opinion_data["stockCode"] = code
