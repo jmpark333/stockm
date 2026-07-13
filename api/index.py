@@ -349,6 +349,14 @@ def fetch_quote(code):
         if session_type in ("PRE_MARKET", "AFTER_MARKET") and extra.get("overPrice"):
             over_price = int(extra["overPrice"].replace(",", ""))
         
+        # 프리마켓 거래량: aq가 0이면 nxtOverMarketPriceInfo에서 가져오기
+        volume = item.get("aq")
+        if (volume is None or volume == 0) and extra.get("accumulatedTradingVolumeRaw"):
+            try:
+                volume = int(extra["accumulatedTradingVolumeRaw"].replace(",", ""))
+            except (ValueError, TypeError):
+                pass
+        
         # 실제 현재가 결정: overPrice > nv 순서
         current = over_price or nv
         
@@ -367,7 +375,7 @@ def fetch_quote(code):
             "high": item.get("hv"),
             "low": item.get("lv"),
             "open": item.get("ov"),
-            "volume": item.get("aq"),
+            "volume": volume,  # 거래량
             "afterMarketPrice": over_price,
             "updatedAt": extra.get("localTradedAt") or payload.get("time"),
         }
