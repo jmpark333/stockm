@@ -2388,21 +2388,6 @@ tr[draggable="true"]:hover {
   min-width: 110px;
 }
 
-.score-bar-bg {
-  width: 48px;
-  height: 6px;
-  background: rgba(148, 163, 184, 0.15);
-  border-radius: 3px;
-  overflow: hidden;
-  flex-shrink: 0;
-}
-
-.score-bar-fill {
-  height: 100%;
-  border-radius: 3px;
-  transition: width 0.4s ease;
-}
-
 .score-num {
   font-size: 13px;
   font-weight: 700;

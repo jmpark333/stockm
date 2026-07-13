@@ -1716,7 +1716,6 @@ function makeBuySellScoreHtml(trendData, stockCode) {
   const encodedLabel = label.replace(/"/g, '&quot;');
   return `<div class="buy-sell-score-wrap">
     <div class="buy-sell-score clickable-score" data-score="${score}" data-label="${encodedLabel}" data-mode="${mode}" data-factors='${encodedFactors}' title="${factorText} (클릭하여 상세보기)" style="cursor:pointer">
-      <div class="score-bar-bg"><div class="score-bar-fill" style="width:${score}%;background:${c.bar}"></div></div>
       <span class="score-num" style="color:${c.text}">${score}</span>
       <span class="score-label" style="color:${c.text}">${label}</span>
     </div>
@@ -1808,13 +1807,13 @@ function renderHoldings(rows) {
       <td><div class="name-cell"><strong class="clickable" data-code="${row.code}" data-name="${row.name}" data-avg="${row.avgPrice}">${row.name}</strong><small>${row.code}</small></div></td>
       <td>${money.format(row.quantity)}주</td>
       <td class="clickable" data-code="${row.code}" data-name="${row.name}" data-avg="${row.avgPrice}">${formatMoney(row.currentPrice)}</td>
+      <td>${row.volume ? money.format(row.volume) : '-'}</td>
       <td class="${row.change > 0 ? 'up' : row.change < 0 ? 'down' : 'neutral'}">${formatSignedMoney(row.change)} / ${formatPercent(row.changeRate)}</td>
       <td class="avg-price-cell" data-code="${row.code}" data-name="${row.name}" data-avg="${row.avgPrice}" data-qty="${row.quantity}" data-price="${row.currentPrice}">${formatMoney(row.avgPrice)}</td>
       <td class="${row.realizedProfit >= 0 ? 'up' : 'down'}">${formatPercent(row.realizedProfitRate)}</td>
       <td class="${row.realizedProfit >= 0 ? 'up' : 'down'}">${formatSignedMoney(row.realizedProfit)}<br><small style="opacity:0.6">(비용 ${formatMoney(Math.round(row.sellFee))})</small></td>
       <td class="trend-cell trend-clickable" ${trendDataAttr}><span style="font-size:13px;font-weight:700;color:${trendColor}">${trendLabel}</span>${trendSummary ? `<br><small style="opacity:0.6;font-size:10px">${trendSummary}</small>` : ''}</td>
       <td>${makeMidTrendHtml(t)}</td>
-      <td>${makeLongTrendHtml(t)}</td>
       <td>${makeBuySellScoreHtml(t, row.code)}</td>
     `;
     holdingsBody.appendChild(tr);
@@ -1824,7 +1823,7 @@ function renderHoldings(rows) {
     if (summary) {
       const summaryTr = document.createElement('tr');
       summaryTr.className = 'stock-summary-row';
-      summaryTr.innerHTML = `<td colspan="11" style="padding:4px 12px 8px;font-size:11px;color:var(--muted);border-bottom:1px solid var(--border);white-space:pre-line">${summary}</td>`;
+      summaryTr.innerHTML = `<td colspan="10" style="padding:4px 12px 8px;font-size:11px;color:var(--muted);border-bottom:1px solid var(--border);white-space:pre-line">${summary}</td>`;
       holdingsBody.appendChild(summaryTr);
     }
     
@@ -1876,7 +1875,6 @@ function renderWatchlist(rows) {
       <td>${t.volatility}%</td>
       <td class="trend-cell trend-clickable" ${trendDataAttr}><span style="font-size:13px;font-weight:700;color:${trendColor2}">${trendLabel2}</span>${trendSummary ? `<br><small style="opacity:0.6;font-size:10px">${trendSummary}</small>` : ''}</td>
       <td>${makeMidTrendHtml(t)}</td>
-      <td>${makeLongTrendHtml(t)}</td>
       <td>${makeBuySellScoreHtml(t, row.code)}</td>
     `;
     watchlistBody.appendChild(tr);
@@ -1886,7 +1884,7 @@ function renderWatchlist(rows) {
     if (summary) {
       const summaryTr = document.createElement('tr');
       summaryTr.className = 'stock-summary-row';
-      summaryTr.innerHTML = `<td colspan="9" style="padding:4px 12px 8px;font-size:11px;color:var(--muted);border-bottom:1px solid var(--border);white-space:pre-line">${summary}</td>`;
+      summaryTr.innerHTML = `<td colspan="8" style="padding:4px 12px 8px;font-size:11px;color:var(--muted);border-bottom:1px solid var(--border);white-space:pre-line">${summary}</td>`;
       watchlistBody.appendChild(summaryTr);
     }
     
