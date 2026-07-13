@@ -129,6 +129,17 @@ function formatSignedMoney(value) {
   return `${prefix}${money.format(Math.round(value || 0))}원`;
 }
 
+function formatVolumeWithRatio(volume, yesterdayVolume) {
+  if (!volume) return '-';
+  const volText = money.format(volume);
+  if (!yesterdayVolume || yesterdayVolume === 0) return volText;
+  const ratio = (volume / yesterdayVolume * 100).toFixed(1);
+  const cls = ratio < 50 ? 'vol-down' : ratio < 80 ? 'vol-neutral' : 'vol-up';
+  return `<span class="${cls}">${volText} <small>(${ratio}%)</small></span>`;
+}
+  return `${prefix}${money.format(Math.round(value || 0))}원`;
+}
+
 function formatPercent(value) {
   const prefix = value > 0 ? '+' : '';
   return `${prefix}${percent.format(value || 0)}%`;
@@ -1807,7 +1818,7 @@ function renderHoldings(rows) {
       <td><div class="name-cell"><strong class="clickable" data-code="${row.code}" data-name="${row.name}" data-avg="${row.avgPrice}">${row.name}</strong><small>${row.code}</small></div></td>
       <td>${money.format(row.quantity)}주</td>
       <td class="clickable" data-code="${row.code}" data-name="${row.name}" data-avg="${row.avgPrice}">${formatMoney(row.currentPrice)}</td>
-      <td>${row.volume ? money.format(row.volume) : '-'}</td>
+      <td>${formatVolumeWithRatio(row.volume, row.yesterdayVolume)}</td>
       <td class="${row.change > 0 ? 'up' : row.change < 0 ? 'down' : 'neutral'}">${formatSignedMoney(row.change)} / ${formatPercent(row.changeRate)}</td>
       <td class="avg-price-cell" data-code="${row.code}" data-name="${row.name}" data-avg="${row.avgPrice}" data-qty="${row.quantity}" data-price="${row.currentPrice}">${formatMoney(row.avgPrice)}</td>
       <td class="${row.realizedProfit >= 0 ? 'up' : 'down'}">${formatPercent(row.realizedProfitRate)}</td>
@@ -1870,6 +1881,7 @@ function renderWatchlist(rows) {
     tr.innerHTML = `
       <td><div class="name-cell"><strong class="clickable" data-code="${row.code}" data-name="${row.name}">${row.name}</strong><small>${row.code}</small></div></td>
       <td class="clickable" data-code="${row.code}" data-name="${row.name}">${formatMoney(row.currentPrice)}</td>
+      <td>${formatVolumeWithRatio(row.volume, row.yesterdayVolume)}</td>
       <td class="${row.change > 0 ? 'up' : row.change < 0 ? 'down' : 'neutral'}">${formatSignedMoney(row.change)} / ${formatPercent(row.changeRate)}</td>
       <td>${dayRange}<br>${rangeBar(t.rangePos)}</td>
       <td>${t.volatility}%</td>
@@ -1884,7 +1896,7 @@ function renderWatchlist(rows) {
     if (summary) {
       const summaryTr = document.createElement('tr');
       summaryTr.className = 'stock-summary-row';
-      summaryTr.innerHTML = `<td colspan="8" style="padding:4px 12px 8px;font-size:11px;color:var(--muted);border-bottom:1px solid var(--border);white-space:pre-line">${summary}</td>`;
+      summaryTr.innerHTML = `<td colspan="9" style="padding:4px 12px 8px;font-size:11px;color:var(--muted);border-bottom:1px solid var(--border);white-space:pre-line">${summary}</td>`;
       watchlistBody.appendChild(summaryTr);
     }
     

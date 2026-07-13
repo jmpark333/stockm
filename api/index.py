@@ -277,6 +277,50 @@ AI_OPINION_URL = "https://opencode.ai/zen/v1/chat/completions"
 AI_OPINION_KEY = "sk-pero02gJQKOUNxVQ4c5tJWNZptId3KnoohgMITzWYXC5vJqRZpWLCwkLxXeyMv9b"
 AI_OPINION_MODEL = "big-pickle"
 
+# Toss Open API (거래량 비교용)
+TOSS_CLIENT_ID = "tsck_live_Goy8p8nYIN9mrCNxLyi2lC"
+TOSS_CLIENT_SECRET = "tssk_live_31UK7Gq3cHvuhZjUdIwMrg13xernaAJ4flisZ6wGfEGA"
+TOSS_TOKEN_URL = "https://openapi.tossinvest.com/oauth2/token"
+TOSS_CANDLES_URL = "https://openapi.tossinvest.com/api/v1/candles"
+_toss_token = None
+_toss_token_ts = 0
+
+def _get_toss_token():
+    global _toss_token, _toss_token_ts
+    now = time.time()
+    if _toss_token and now - _toss_token_ts < 3600:
+        return _toss_token
+    data = urllib.parse.urlencode({
+        'grant_type': 'client_credentials',
+        'client_id': TOSS_CLIENT_ID,
+        'client_secret': TOSS_CLIENT_SECRET
+    }).encode()
+    req = urllib.request.Request(TOSS_TOKEN_URL, data=data, method='POST')
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            result = json.loads(resp.read().decode())
+            _toss_token = result.get('access_token')
+            _toss_token_ts = now
+            return _toss_token
+    except Exception:
+        return None
+
+def fetch_yesterday_volume(code):
+    token = _get_toss_token()
+    if not token:
+        return None
+    url = f'{TOSS_CANDLES_URL}?symbol={code}&interval=1d&count=2'
+    req = urllib.request.Request(url, headers={'Authorization': f'Bearer {token}'})
+    try:
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            result = json.loads(resp.read().decode())
+            candles = result.get('result', {}).get('candles', [])
+            if len(candles) >= 2:
+                return candles[1].get('volume')
+    except Exception:
+        pass
+    return None
+
 ai_cache: dict[str, dict] = {}
 AI_CACHE_TTL = 300
 
@@ -364,6 +408,9 @@ def fetch_quote(code):
             cv = current - pcv
             cr = round(cv / pcv * 100, 2)
         
+        # 어제 거래량 (토스 API)
+        yesterday_volume = fetch_yesterday_volume(code)
+        
         return {
             "code": code,
             "name": item.get("nm"),
@@ -376,6 +423,7 @@ def fetch_quote(code):
             "low": item.get("lv"),
             "open": item.get("ov"),
             "volume": volume,  # 거래량
+            "yesterdayVolume": yesterday_volume,  # 어제 총 거래량
             "afterMarketPrice": over_price,
             "updatedAt": extra.get("localTradedAt") or payload.get("time"),
         }
@@ -999,6 +1047,7 @@ def build_item(quote, mode="buy", holding=None):
         "low": lv,
         "open": quote.get("open"),
         "volume": quote.get("volume"),
+        "yesterdayVolume": quote.get("yesterdayVolume"),
         "afterMarketPrice": amp,
         "updatedAt": quote.get("updatedAt"),
         "error": quote.get("error"),
