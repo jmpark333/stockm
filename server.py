@@ -2724,7 +2724,7 @@ def chat_from_opencode(messages):
         "model": OPENCODE_MODEL,
         "messages": messages,
         "thinking": {"type": "disabled"},
-        "temperature": 0.7,
+        "temperature": 0.3,
         "max_tokens": 2500,
     }
     headers = {
@@ -3153,43 +3153,24 @@ def get_ai_opinion(code, mode="buy"):
     mode_text = "매도" if mode == "sell" else "매수"
     opposite_text = "매수" if mode == "sell" else "매도"
 
-    system_prompt = f"""당신은 전문 주식 투자 분석가입니다. 아래 데이터를 바탕으로 {name} 종목의 {mode_text} 의견을 제공하세요.
+    system_prompt = f"""{name}({code}) 종목 분석. JSON만 출력.
 
-[규칙]
-- 결과는 반드시 JSON으로만 답변하세요.
-- 두 개의 필드만 허용: "opinion" (아래 옵션 중 하나), "reason" (3~5줄 분석 근거)
-- opinion 옵션: "적극매수", "매수", "분할매수", "관망", "분할매도", "매도", "적극매도", "손절"
-- 불확실성은 '~할 수 있습니다', '~가능성이 있습니다'로 표현
-- 기술적 지표 수치를 반드시 인용
-- 한자(漢字)를 사용하지 말고 반드시 한국어로만 답변하세요
-- 3줄 이내로 간결하게 답변
-- 구체적인 액션을 포함: 지금 매도하는 것이 좋다, 2~3일 기다려라, 손절하는 것이 좋다 등
+opinion: 적극매수/매수/분할매수/관망/분할매도/매도/적극매도/손절 중 택1
+reason: 분석 근거 3줄
 
-예시: {{"opinion": "분할매수", "reason": "RSI 32로 과매도 구간 진입. 볼린저 하단 접근으로 반등 가능성 높음. 소량 분할 매수 고려."}}
+예시 출력:
+{{"opinion": "분할매수", "reason": "RSI 32 과매도. 볼린저 하단 접근. 소량 분할매수 고려."}}
 
-[종목 정보]
-- 종목: {name} ({code})
-- 현재가: {cp:,}원
-- 전일대비: {chg:+,}원 ({chg_rate:+.2f}%)
-- 고가: {hv:,}원 / 저가: {lv:,}원
-- 거래량: {vol:,}주
+데이터:
+현재가 {cp:,}원, 전일 {chg:+,}원({chg_rate:+.2f}%)
+고가 {hv:,}원/저가 {lv:,}원, 거래량 {vol:,}주
+기술적분석: {tech_ctx}
+추세: {trend_ctx}
+매매점수: {score_ctx}
+뉴스: {news_ctx if news_ctx else "없음"}
+시장: {market_ctx if market_ctx else "없음"}
 
-[기술적 분석]
-{tech_ctx}
-
-[추세 분석]
-{trend_ctx}
-
-[매매 점수]
-{score_ctx}
-
-[뉴스]
-{news_ctx if news_ctx else "최신 뉴스 없음"}
-
-[시장 컨텍스트]
-{market_ctx if market_ctx else "시장 데이터 없음"}
-
-현재 시점에서 {mode_text} 의견을 제시하세요."""
+한글로만 답변. JSON만 출력."""
 
     messages = [{"role": "system", "content": system_prompt}]
     result = call_llm(messages)
