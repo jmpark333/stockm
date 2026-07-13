@@ -1493,7 +1493,9 @@ async function showAiOpinion(code, mode) {
     const stockName = data.stockName || code;
     const cp = data.currentPrice || 0;
     const opinion = data.opinion || '관망';
-    const reason = data.reason || '분석 불가';
+    let reason = data.reason || '분석 불가';
+    // 한자(漢字) 제거 - 한국어만 남기기
+    reason = reason.replace(/[\u4e00-\u9fff\u3400-\u4dbf]/g, '').replace(/\s+/g, ' ').trim();
 
     const opinionColors = {
       '매수': '#10b981', '적극매수': '#059669',
