@@ -1,0 +1,32 @@
+[
+  {
+    "role": "user",
+    "content": "두산로보틱스 관련뉴스 뭐가있어?",
+    "timestamp": 1782909085555
+  },
+  {
+    "role": "user",
+    "content": "두산로보틱스 관련뉴스 뭐가있어?",
+    "timestamp": 1782909124572
+  },
+  {
+    "role": "assistant",
+    "content": "1. 결론: 두산로보틱스 관련 뉴스는 정부의 피지컬AI 육성 정책 관련 내용 2건이 확인됩니다.\n2. 근거(뉴스인용): 우먼타임스 보도에 따르면 이억원 장관이 \"초격차 산업강국 만들겠다\"는 목표 아래 국민성장펀드를 활용해 피지컬AI를 육성할 계획을 밝혔습니다.\n3. 근거(뉴스인용): 더나은미래 보도에 따르면 금융위·산업부가 국민성장펀드를 통해 피지컬AI·AI·로봇 등 6대 분야에 총 16조원을 투자할 계획이라고 전했습니다.\n4. 유의사항: 두산로보틱스는 피지컬AI 핵심 수혜 기업으로 분류되나 정책 투자가 실제 기업 실적으로 연결되기까지 시차가 발생할 수 있고, 최근 외국인 이탈로 반도체주 중심의 코스피가 2% 급락하는 등 시장 변동성이 확대된 점을 유의해야 합니다.\n\n📚 출처:\n[1] https://news.google.com/rss/articles/CBMiaEFVX3lxTE1JQUtmdk04bV90Q184dDZEZGpyVWU2R3l6UG1SajRPWXZqal93VUlTSWUzWkl4ZUdGSGd5enZ6amdLX1hFQnExTzBaOWhpenJnX201ZlcyUUhaekQ0QTA3N2JNWXUzSUxo?oc=5\n[2] https://news.google.com/rss/articles/CBMiaEFVX3lxTFBQeUtmRldMMWNpeWZ5QUtrT3BXYW5nTlczNUY5R3pTMVNGSlFrdU5kdTlrdWt1UWdsMThtZWhDRUFWZENLeDRpclNaUXQ2cUJCZ2U2dkVQS0J5cENNclg0MFBOejRTbkRU?oc=5\n[3] https://news.google.com/rss/articles/CBMibkFVX3lxTE9wc3ZMT2lYX1dTWXdHa29ndXRuWjNPQThXekU5WUp5TkI2MEpleFpUdXVWd3E1dWZWbWZJMVliNGgycW0wLXV0eEx4SXg3eExIdmU1NURyUS1SbUgwRHJaTUVqQzllQXlkbmR4Nkx3?oc=5\n",
+    "timestamp": 1782909127463
+  },
+  {
+    "role": "assistant",
+    "content": "1. 결론: 확인된 두산로보틱스 관련 뉴스는 정부 피지컬AI 육성 정책 관련 내용 2건입니다.\n2. 근거(뉴스인용): 우먼타임스 보도에 따르면 이억원 장관이 \"초격차 산업강국 만들겠다\"는 목표 아래 국민성장펀드로 피지컬AI를 육성할 계획을 밝혔습니다.\n3. 근거(뉴스인용): 더나은미래 보도에 따르면 금융위·산업부가 국민성장펀드를 통해 피지컬AI 분야에 16조원을 투자할 계획을 발표했습니다.\n4. 유의사항: 제공된 뉴스에는 두산로보틱스 자체의 사업·실적·계약 관련 내용은 없으며, 해당 뉴스는 두산로보틱스가 속한 피지컬AI 분야 전반의 정부 지원 정책 내용으로 직접적인 영향은 명시되지 않았습니다.\n\n📚 출처:\n[1] https://news.google.com/rss/articles/CBMiaEFVX3lxTE1JQUtmdk04bV90Q184dDZEZGpyVWU2R3l6UG1SajRPWXZqal93VUlTSWUzWkl4ZUdGSGd5enZ6amdLX1hFQnExTzBaOWhpenJnX201ZlcyUUhaekQ0QTA3N2JNWXUzSUxo?oc=5\n[2] https://news.google.com/rss/articles/CBMiaEFVX3lxTFBQeUtmRldMMWNpeWZ5QUtrT3BXYW5nTlczNUY5R3pTMVNGSlFrdU5kdTlrdWt1UWdsMThtZWhDRUFWZENLeDRpclNaUXQ2cUJCZ2U2dkVQS0J5cENNclg0MFBOejRTbkRU?oc=5\n[3] https://news.google.com/rss/articles/CBMibkFVX3lxTE9wc3ZMT2lYX1dTWXdHa29ndXRuWjNPQThXekU5WUp5TkI2MEpleFpUdXVWd3E1dWZWbWZJMVliNGgycW0wLXV0eEx4SXg3eExIdmU1NURyUS1SbUgwRHJaTUVqQzllQXlkbmR4Nkx3?oc=5\n",
+    "timestamp": 1782909152320
+  },
+  {
+    "role": "user",
+    "content": "SK하이닉스 주식 전망을 한문장으로 요약해줘",
+    "timestamp": 1782973819109
+  },
+  {
+    "role": "assistant",
+    "content": "SK하이닉스는 청주 100조 원 낸드 투자 등 장기 성장 재료에도 미국 반도체 급락 여파로 단기 조정을 받은 가운데 스토캐스틱 과매도 구간 진입으로 반등 가능성이 있으나, 미국 반독점 소송 리스크와 거시적 시장 불확실성으로 단기 변동성이 확대될 것으로 예상된다.\n\n📚 출처:\n[1] https://news.google.com/rss/articles/CBMic0FVX3lxTE42WDhCOXA5VmJfR0d1bXNmaWNzQzRMUWM1aHRUNzlfd285Skc5dGxrdHBRTGppbTVVdmowUk1maV9pRHFHeXdJRXhtME5JVnJiYnk0TGVDd1ZoSGhwako2VlRJQXBOSk40SHNWdVR2dy1YVTDSAXNBVV95cUxONlg4QjlwOVZiX0dHdW1zZmljc0M0TFFjNWh0VDc5X3dvOUpHOXRsa3RwUUxqaW01VXZqMFJNZmlfaURxR3l3SUV4bTBOSVZyYmJ5NExlQ3dWaEhocGpKNlZUSUFwTkpONEhzVnVUdnctWFUw?oc=5\n[2] https://news.google.com/rss/articles/CBMiUEFVX3lxTFBRR0dPd28zMzFjY1VEQmhqUmFQSnNQM0gwc1lob2FnWUZ0bFQzVENpRi10ZUs1SGl1Z3prU1JoZG5LRnJfN2JRcjJBZU56Y2Za?oc=5\n[3] https://news.google.com/rss/articles/CBMiaEFVX3lxTFBFUzJpWHV1MFJRSDRvbHQxbzRoWllVN0s4Rl94YWt1SkNPcFhPYkJJU3BXWmtTTS1nWlZFTlFVRGd2am5FTnlfTXhiNkxFbW1UUXNCczRLZlM2TnV6eW5xNUo0STNOMm5u?oc=5\n",
+    "timestamp": 1782973861551
+  }
+]

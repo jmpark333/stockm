@@ -1498,9 +1498,9 @@ async function showAiOpinion(code, mode) {
     reason = reason.replace(/[\u4e00-\u9fff\u3400-\u4dbf]/g, '').replace(/\s+/g, ' ').trim();
 
     const opinionColors = {
-      '매수': '#10b981', '적극매수': '#059669',
-      '매도': '#ef4444', '적극매도': '#dc2626',
+      '적극매수': '#059669', '매수': '#10b981', '분할매수': '#34d399',
       '관망': '#9ca3af',
+      '분할매도': '#fbbf24', '매도': '#f97316', '적극매도': '#ef4444', '손절': '#dc2626',
     };
     const color = opinionColors[opinion] || '#9ca3af';
 
