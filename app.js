@@ -137,8 +137,6 @@ function formatVolumeWithRatio(volume, yesterdayVolume) {
   const cls = ratio < 50 ? 'vol-down' : ratio < 80 ? 'vol-neutral' : 'vol-up';
   return `<span class="${cls}">${volText} <small>(${ratio}%)</small></span>`;
 }
-  return `${prefix}${money.format(Math.round(value || 0))}원`;
-}
 
 function formatPercent(value) {
   const prefix = value > 0 ? '+' : '';
