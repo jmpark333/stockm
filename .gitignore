@@ -2,3 +2,6 @@ __pycache__/
 *.pyc
 .env
 .vercel
+data/
+chat_history.json
+__pycache__/
