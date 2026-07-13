@@ -2371,6 +2371,7 @@ def api_analyze_signal():
 
 def call_llm_for_ai_opinion(messages):
     """AI 의견 전용 LLM 호출 (big-pickle 모델 사용)"""
+    import requests as _requests
     payload = {
         "model": AI_OPINION_MODEL,
         "messages": messages,
@@ -2380,21 +2381,16 @@ def call_llm_for_ai_opinion(messages):
     headers = {
         "Authorization": f"Bearer {AI_OPINION_KEY}",
         "Content-Type": "application/json",
+        "User-Agent": "StockDashboard/1.0",
     }
-    req = urllib.request.Request(
-        AI_OPINION_URL,
-        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-        headers=headers,
-        method="POST",
-    )
     try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            raw = resp.read().decode("utf-8")
-        result = json.loads(raw)
+        resp = _requests.post(AI_OPINION_URL, json=payload, headers=headers, timeout=60)
+        if resp.status_code != 200:
+            return {"reply": f"AI 분석 실패: HTTP {resp.status_code}"}
+        result = resp.json()
         choice = result["choices"][0]
         msg = choice.get("message") or {}
         content = msg.get("content") or ""
-        # reasoning 모델의 경우 content가 비어있을 수 있음
         if not content:
             reasoning = msg.get("reasoning") or ""
             if reasoning:
