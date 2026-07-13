@@ -408,9 +408,6 @@ def fetch_quote(code):
             cv = current - pcv
             cr = round(cv / pcv * 100, 2)
         
-        # 어제 거래량 (토스 API)
-        yesterday_volume = fetch_yesterday_volume(code)
-        
         return {
             "code": code,
             "name": item.get("nm"),
@@ -423,7 +420,6 @@ def fetch_quote(code):
             "low": item.get("lv"),
             "open": item.get("ov"),
             "volume": volume,  # 거래량
-            "yesterdayVolume": yesterday_volume,  # 어제 총 거래량
             "afterMarketPrice": over_price,
             "updatedAt": extra.get("localTradedAt") or payload.get("time"),
         }
@@ -1107,6 +1103,27 @@ def build_portfolio(section=None):
         all_codes = [h["code"] for h in config["holdings"]]
         all_codes += [w["code"] for w in config.get("watchlist", [])]
 
+    # 어제 거래량 캐싱 (하루에 한번만 토스 API 호출)
+    yesterday_vol_cache = kv_get("yesterday_volume_cache") or {}
+    today_str = time.strftime("%Y%m%d")
+    codes_needing_vol = [c for c in all_codes if c not in yesterday_vol_cache or yesterday_vol_cache[c].get("date") != today_str]
+    if codes_needing_vol:
+        token = _get_toss_token()
+        if token:
+            headers = {'Authorization': f'Bearer {token}'}
+            for code in codes_needing_vol:
+                url = f'{TOSS_CANDLES_URL}?symbol={code}&interval=1d&count=2'
+                req = urllib.request.Request(url, headers=headers)
+                try:
+                    with urllib.request.urlopen(req, timeout=8) as resp:
+                        result = json.loads(resp.read().decode())
+                        candles = result.get('result', {}).get('candles', [])
+                        if len(candles) >= 2:
+                            yesterday_vol_cache[code] = {"date": today_str, "volume": candles[1].get("volume")}
+                except Exception:
+                    pass
+            kv_set("yesterday_volume_cache", yesterday_vol_cache)
+
     # Parallel fetch_quote: previously N sequential HTTP calls (~200ms each).
     # With ~10 codes this cuts the "포트폴리오 로딩" phase from ~2s to ~0.3s.
     seen: set[str] = set()
@@ -1141,12 +1158,15 @@ def build_portfolio(section=None):
             "sellFee": sell_fee,
             "realizedProfit": realized_profit,
             "realizedProfitRate": realized_profit_rate,
+            "yesterdayVolume": yesterday_vol_cache.get(holding["code"], {}).get("volume"),
         })
     watchlist_rows = []
     if section != "holdings":
         for watch in config.get("watchlist", []):
             quote = quotes.get(watch["code"], {"code": watch["code"], "error": "호가 데이터 없음"})
-            watchlist_rows.append(build_item(quote, mode="buy"))
+            item = build_item(quote, mode="buy")
+            item["yesterdayVolume"] = yesterday_vol_cache.get(watch["code"], {}).get("volume")
+            watchlist_rows.append(item)
     total_cost = sum(row["cost"] for row in holdings_rows)
     total_current = sum(row["currentValue"] for row in holdings_rows)
     total_profit = total_current - total_cost
