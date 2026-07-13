@@ -998,6 +998,7 @@ def build_item(quote, mode="buy", holding=None):
         "high": hv,
         "low": lv,
         "open": quote.get("open"),
+        "volume": quote.get("volume"),
         "afterMarketPrice": amp,
         "updatedAt": quote.get("updatedAt"),
         "error": quote.get("error"),
