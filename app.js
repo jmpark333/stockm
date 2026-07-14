@@ -151,7 +151,7 @@ function formatVolumeWithRatio(volume, previousVolume) {
     if (ratio > 120) interpretation = '매도 압력 강함';
     else if (ratio > 80) interpretation = '보통';
     else interpretation = '매도 약세';
-    return `<span class="${cls}">${volText} <small>(${ratio}%) ${interpretation}</small></span>`;
+    return `<span class="${cls}">${volText} <small>(${ratio}%)</small><br><small>${interpretation}</small></span>`;
   }
   
   // 장 시간 중: 시간 비례 비교
@@ -172,7 +172,7 @@ function formatVolumeWithRatio(volume, previousVolume) {
   else if (ratio > 50) interpretation = '매도 약세 (바닥 신호 가능)';
   else interpretation = '매도 매우 약세 (반등 기대)';
   
-  return `<span class="${cls}">${volText} <small>(${ratio}% ${diffText}) ${interpretation}</small></span>`;
+  return `<span class="${cls}">${volText} <small>(${ratio}% ${diffText})</small><br><small>${interpretation}</small></span>`;
 }
 
 function formatPercent(value) {
