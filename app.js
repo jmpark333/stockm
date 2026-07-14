@@ -129,13 +129,39 @@ function formatSignedMoney(value) {
   return `${prefix}${money.format(Math.round(value || 0))}원`;
 }
 
-function formatVolumeWithRatio(volume, yesterdayVolume) {
+function formatVolumeWithRatio(volume, previousVolume) {
   if (!volume) return '-';
   const volText = money.format(volume);
-  if (!yesterdayVolume || yesterdayVolume === 0) return volText;
-  const ratio = (volume / yesterdayVolume * 100).toFixed(1);
-  const cls = ratio < 50 ? 'vol-down' : ratio < 80 ? 'vol-neutral' : 'vol-up';
-  return `<span class="${cls}">${volText} <small>(${ratio}%)</small></span>`;
+  if (!previousVolume || previousVolume === 0) return volText;
+  
+  // 장 시간: 09:00-15:30 = 6.5시간 = 390분
+  const MARKET_MINUTES = 390;
+  const now = new Date();
+  const marketOpen = new Date(now);
+  marketOpen.setHours(9, 0, 0, 0);
+  const marketClose = new Date(now);
+  marketClose.setHours(15, 30, 0, 0);
+  
+  // 장 시간 외에는 전일 대비 비율만 표시
+  if (now < marketOpen || now > marketClose) {
+    const ratio = (volume / previousVolume * 100).toFixed(1);
+    const cls = ratio < 50 ? 'vol-down' : ratio < 80 ? 'vol-neutral' : 'vol-up';
+    return `<span class="${cls}">${volText} <small>(${ratio}%)</small></span>`;
+  }
+  
+  // 장 시간 중: 시간 비례로 예상 거래량 계산
+  const elapsed = Math.max(0, Math.min((now - marketOpen) / 60000, MARKET_MINUTES));
+  const progress = elapsed / MARKET_MINUTES;
+  const expectedVol = Math.round(previousVolume * progress);
+  
+  if (expectedVol === 0) return volText;
+  
+  const ratio = (volume / expectedVol * 100).toFixed(0);
+  const diff = volume - expectedVol;
+  const diffText = diff > 0 ? `+${money.format(diff)}` : money.format(diff);
+  const cls = ratio > 120 ? 'vol-up' : ratio < 80 ? 'vol-down' : 'vol-neutral';
+  
+  return `<span class="${cls}">${volText} <small>(${ratio}% ${diffText})</small></span>`;
 }
 
 function formatPercent(value) {
@@ -1816,7 +1842,7 @@ function renderHoldings(rows) {
       <td><div class="name-cell"><strong class="clickable" data-code="${row.code}" data-name="${row.name}" data-avg="${row.avgPrice}">${row.name}</strong><small>${row.code}</small></div></td>
       <td>${money.format(row.quantity)}주</td>
       <td class="clickable" data-code="${row.code}" data-name="${row.name}" data-avg="${row.avgPrice}">${formatMoney(row.currentPrice)}</td>
-      <td>${formatVolumeWithRatio(row.volume, row.yesterdayVolume)}</td>
+      <td>${formatVolumeWithRatio(row.volume, row.previousVolume)}</td>
       <td class="${row.change > 0 ? 'up' : row.change < 0 ? 'down' : 'neutral'}">${formatSignedMoney(row.change)} / ${formatPercent(row.changeRate)}</td>
       <td class="avg-price-cell" data-code="${row.code}" data-name="${row.name}" data-avg="${row.avgPrice}" data-qty="${row.quantity}" data-price="${row.currentPrice}">${formatMoney(row.avgPrice)}</td>
       <td class="${row.realizedProfit >= 0 ? 'up' : 'down'}">${formatPercent(row.realizedProfitRate)}</td>
@@ -1879,7 +1905,7 @@ function renderWatchlist(rows) {
     tr.innerHTML = `
       <td><div class="name-cell"><strong class="clickable" data-code="${row.code}" data-name="${row.name}">${row.name}</strong><small>${row.code}</small></div></td>
       <td class="clickable" data-code="${row.code}" data-name="${row.name}">${formatMoney(row.currentPrice)}</td>
-      <td>${formatVolumeWithRatio(row.volume, row.yesterdayVolume)}</td>
+      <td>${formatVolumeWithRatio(row.volume, row.previousVolume)}</td>
       <td class="${row.change > 0 ? 'up' : row.change < 0 ? 'down' : 'neutral'}">${formatSignedMoney(row.change)} / ${formatPercent(row.changeRate)}</td>
       <td>${dayRange}<br>${rangeBar(t.rangePos)}</td>
       <td>${t.volatility}%</td>

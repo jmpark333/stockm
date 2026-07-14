@@ -351,6 +351,27 @@ def fetch_previous_close(code):
         pass
     return None
 
+def fetch_previous_volume(code):
+    """네이버 금융 과거 시세에서 전일 거래량을 가져온다."""
+    url = f"https://finance.naver.com/item/sise_day.naver?code={code}&page=1"
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            html = resp.read().decode("utf-8", errors="replace")
+        rows = re.findall(r'<tr[^>]*>(.*?)</tr>', html, re.DOTALL)
+        for row in rows:
+            cols = re.findall(r'<td[^>]*>(.*?)</td>', row, re.DOTALL)
+            if cols and len(cols) >= 7:
+                date_text = re.sub(r'<[^>]+>', '', cols[0]).strip()
+                volume_text = re.sub(r'<[^>]+>', '', cols[6]).strip()
+                # 오늘 날짜가 아니면 전일 데이터
+                today = time.strftime("%Y.%m.%d")
+                if date_text and volume_text and date_text != today:
+                    return int(volume_text.replace(",", ""))
+    except Exception:
+        pass
+    return None
+
 def _decode_naver_response(raw: bytes) -> str:
     """네이버 API 응답을 안전하게 디코딩. UTF-8 우선, EUC-KR/CP949 fallback."""
     for enc in ("utf-8", "euc-kr", "cp949"):
@@ -1103,6 +1124,17 @@ def build_portfolio(section=None):
         all_codes = [h["code"] for h in config["holdings"]]
         all_codes += [w["code"] for w in config.get("watchlist", [])]
 
+    # 전일 거래량 캐싱 (하루에 한번만 스크래핑)
+    prev_vol_cache = kv_get("prev_volume_cache") or {}
+    today_str = time.strftime("%Y%m%d")
+    codes_needing_vol = [c for c in all_codes if c not in prev_vol_cache or prev_vol_cache[c].get("date") != today_str]
+    if codes_needing_vol:
+        for code in codes_needing_vol:
+            vol = fetch_previous_volume(code)
+            if vol:
+                prev_vol_cache[code] = {"date": today_str, "volume": vol}
+        kv_set("prev_volume_cache", prev_vol_cache)
+
     # Parallel fetch_quote: previously N sequential HTTP calls (~200ms each).
     # With ~10 codes this cuts the "포트폴리오 로딩" phase from ~2s to ~0.3s.
     seen: set[str] = set()
@@ -1137,12 +1169,15 @@ def build_portfolio(section=None):
             "sellFee": sell_fee,
             "realizedProfit": realized_profit,
             "realizedProfitRate": realized_profit_rate,
+            "previousVolume": prev_vol_cache.get(holding["code"], {}).get("volume"),
         })
     watchlist_rows = []
     if section != "holdings":
         for watch in config.get("watchlist", []):
             quote = quotes.get(watch["code"], {"code": watch["code"], "error": "호가 데이터 없음"})
-            watchlist_rows.append(build_item(quote, mode="buy"))
+            item = build_item(quote, mode="buy")
+            item["previousVolume"] = prev_vol_cache.get(watch["code"], {}).get("volume")
+            watchlist_rows.append(item)
     total_cost = sum(row["cost"] for row in holdings_rows)
     total_current = sum(row["currentValue"] for row in holdings_rows)
     total_profit = total_current - total_cost
