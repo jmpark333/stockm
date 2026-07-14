@@ -129,7 +129,7 @@ function formatSignedMoney(value) {
   return `${prefix}${money.format(Math.round(value || 0))}원`;
 }
 
-function formatVolumeWithRatio(volume, previousVolume) {
+function formatVolumeWithRatio(volume, previousVolume, changeRate) {
   if (!volume) return '-';
   const volText = money.format(volume);
   if (!previousVolume || previousVolume === 0) return volText;
@@ -144,13 +144,22 @@ function formatVolumeWithRatio(volume, previousVolume) {
   
   let ratio, diffText, cls, interpretation;
   
+  // 전일비(가격 변동)를 매수/매도 판단에 활용
+  const priceUp = changeRate > 0;
+  const priceFlat = Math.abs(changeRate || 0) < 0.5;
+  
   if (now < marketOpen || now > marketClose) {
     // 장 시간 외: 전일 대비 비율
     ratio = (volume / previousVolume * 100).toFixed(1);
     cls = ratio < 50 ? 'vol-down' : ratio < 80 ? 'vol-neutral' : 'vol-up';
-    if (ratio > 120) interpretation = '매도 압력 강함';
-    else if (ratio > 80) interpretation = '보통';
-    else interpretation = '매도 약세';
+    
+    // 거래량 + 가격 변동으로 매수/매도 판단
+    if (ratio > 120 && !priceUp) interpretation = '매도 압력 강함';
+    else if (ratio > 120 && priceUp) interpretation = '매수 세력 강함';
+    else if (ratio < 80 && !priceUp) interpretation = '매도 약세 (바닥 신호 가능)';
+    else if (ratio < 80 && priceUp) interpretation = '매수 약세 (상승 피로)';
+    else interpretation = '보통';
+    
     return `<span class="${cls}">${volText} <small>(${ratio}%)</small><br><small>${interpretation}</small></span>`;
   }
   
@@ -166,11 +175,15 @@ function formatVolumeWithRatio(volume, previousVolume) {
   diffText = diff > 0 ? `+${money.format(diff)}` : money.format(diff);
   cls = ratio > 120 ? 'vol-up' : ratio < 80 ? 'vol-down' : 'vol-neutral';
   
-  if (ratio > 150) interpretation = '매도 압력 강함 (추가 하락 가능)';
-  else if (ratio > 120) interpretation = '매도 압력 다소 강함';
+  // 거래량 + 가격 변동으로 매수/매도 종합 판단
+  if (ratio > 150 && !priceUp) interpretation = '매도 압력 강함 (추가 하락 가능)';
+  else if (ratio > 150 && priceUp) interpretation = '매수 세력 강함 (상승 지속 가능)';
+  else if (ratio > 120 && !priceUp) interpretation = '매도 압력 다소 강함';
+  else if (ratio > 120 && priceUp) interpretation = '매수 세력 다소 강함';
   else if (ratio > 80) interpretation = '보통';
-  else if (ratio > 50) interpretation = '매도 약세 (바닥 신호 가능)';
-  else interpretation = '매도 매우 약세 (반등 기대)';
+  else if (ratio > 50 && !priceUp) interpretation = '매도 약세 (바닥 신호 가능)';
+  else if (ratio > 50 && priceUp) interpretation = '매수 약세 (상승 피로)';
+  else interpretation = '관망세 (방향성 대기)';
   
   return `<span class="${cls}">${volText} <small>(${ratio}% ${diffText})</small><br><small>${interpretation}</small></span>`;
 }
@@ -1853,7 +1866,7 @@ function renderHoldings(rows) {
       <td><div class="name-cell"><strong class="clickable" data-code="${row.code}" data-name="${row.name}" data-avg="${row.avgPrice}">${row.name}</strong><small>${row.code}</small></div></td>
       <td>${money.format(row.quantity)}주</td>
       <td class="clickable" data-code="${row.code}" data-name="${row.name}" data-avg="${row.avgPrice}">${formatMoney(row.currentPrice)}</td>
-      <td>${formatVolumeWithRatio(row.volume, row.previousVolume)}</td>
+      <td>${formatVolumeWithRatio(row.volume, row.previousVolume, row.changeRate)}</td>
       <td class="${row.change > 0 ? 'up' : row.change < 0 ? 'down' : 'neutral'}">${formatSignedMoney(row.change)} / ${formatPercent(row.changeRate)}</td>
       <td class="avg-price-cell" data-code="${row.code}" data-name="${row.name}" data-avg="${row.avgPrice}" data-qty="${row.quantity}" data-price="${row.currentPrice}">${formatMoney(row.avgPrice)}</td>
       <td class="${row.realizedProfit >= 0 ? 'up' : 'down'}">${formatPercent(row.realizedProfitRate)}</td>
@@ -1916,7 +1929,7 @@ function renderWatchlist(rows) {
     tr.innerHTML = `
       <td><div class="name-cell"><strong class="clickable" data-code="${row.code}" data-name="${row.name}">${row.name}</strong><small>${row.code}</small></div></td>
       <td class="clickable" data-code="${row.code}" data-name="${row.name}">${formatMoney(row.currentPrice)}</td>
-      <td>${formatVolumeWithRatio(row.volume, row.previousVolume)}</td>
+      <td>${formatVolumeWithRatio(row.volume, row.previousVolume, row.changeRate)}</td>
       <td class="${row.change > 0 ? 'up' : row.change < 0 ? 'down' : 'neutral'}">${formatSignedMoney(row.change)} / ${formatPercent(row.changeRate)}</td>
       <td>${dayRange}<br>${rangeBar(t.rangePos)}</td>
       <td>${t.volatility}%</td>
