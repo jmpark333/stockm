@@ -142,26 +142,37 @@ function formatVolumeWithRatio(volume, previousVolume) {
   const marketClose = new Date(now);
   marketClose.setHours(15, 30, 0, 0);
   
-  // 장 시간 외에는 전일 대비 비율만 표시
+  let ratio, diffText, cls, interpretation;
+  
   if (now < marketOpen || now > marketClose) {
-    const ratio = (volume / previousVolume * 100).toFixed(1);
-    const cls = ratio < 50 ? 'vol-down' : ratio < 80 ? 'vol-neutral' : 'vol-up';
-    return `<span class="${cls}">${volText} <small>(${ratio}%)</small></span>`;
+    // 장 시간 외: 전일 대비 비율
+    ratio = (volume / previousVolume * 100).toFixed(1);
+    cls = ratio < 50 ? 'vol-down' : ratio < 80 ? 'vol-neutral' : 'vol-up';
+    if (ratio > 120) interpretation = '매도 압력 강함';
+    else if (ratio > 80) interpretation = '보통';
+    else interpretation = '매도 약세';
+    return `<span class="${cls}">${volText} <small>(${ratio}%) ${interpretation}</small></span>`;
   }
   
-  // 장 시간 중: 시간 비례로 예상 거래량 계산
+  // 장 시간 중: 시간 비례 비교
   const elapsed = Math.max(0, Math.min((now - marketOpen) / 60000, MARKET_MINUTES));
   const progress = elapsed / MARKET_MINUTES;
   const expectedVol = Math.round(previousVolume * progress);
   
   if (expectedVol === 0) return volText;
   
-  const ratio = (volume / expectedVol * 100).toFixed(0);
+  ratio = (volume / expectedVol * 100).toFixed(0);
   const diff = volume - expectedVol;
-  const diffText = diff > 0 ? `+${money.format(diff)}` : money.format(diff);
-  const cls = ratio > 120 ? 'vol-up' : ratio < 80 ? 'vol-down' : 'vol-neutral';
+  diffText = diff > 0 ? `+${money.format(diff)}` : money.format(diff);
+  cls = ratio > 120 ? 'vol-up' : ratio < 80 ? 'vol-down' : 'vol-neutral';
   
-  return `<span class="${cls}">${volText} <small>(${ratio}% ${diffText})</small></span>`;
+  if (ratio > 150) interpretation = '매도 압력 강함 (추가 하락 가능)';
+  else if (ratio > 120) interpretation = '매도 압력 다소 강함';
+  else if (ratio > 80) interpretation = '보통';
+  else if (ratio > 50) interpretation = '매도 약세 (바닥 신호 가능)';
+  else interpretation = '매도 매우 약세 (반등 기대)';
+  
+  return `<span class="${cls}">${volText} <small>(${ratio}% ${diffText}) ${interpretation}</small></span>`;
 }
 
 function formatPercent(value) {
